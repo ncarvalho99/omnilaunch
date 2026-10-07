@@ -2650,8 +2650,6 @@ GridModel WiiUMenuApp::buildOpenFolderModel(std::uint32_t folderId) const {
         else
             model.addEntry({});
     }
-    if (isCarouselLayout() || isXmbLayout() || isListLayout() || isMetroLayout())
-        return compactDynamicLineEntries(model, m_appLayoutMode == AppLayoutMode::Flow || m_appLayoutMode == AppLayoutMode::Shelf || m_appLayoutMode == AppLayoutMode::Deck || m_appLayoutMode == AppLayoutMode::Cover || m_appLayoutMode == AppLayoutMode::Xmb || m_appLayoutMode == AppLayoutMode::List || m_appLayoutMode == AppLayoutMode::Metro);
     return model;
 }
 
@@ -4691,7 +4689,7 @@ void WiiUMenuApp::syncPageIndicator() {
     m_pageIndicator->setCurrentPage(m_grid->currentPage());
 }
 
-// Minus cycles the enabled views on the unobstructed Home route:
+// R cycles the enabled views on the unobstructed Home route:
 // Grid -> DynamicLine -> Flow -> Shelf -> Deck -> Grid. Grid stays reachable from every view, so
 // it remains the escape hatch if a newer view misbehaves.
 void WiiUMenuApp::toggleAppLayoutMode() {
@@ -4967,6 +4965,27 @@ void WiiUMenuApp::openCapturedFolder() {
         m_folderHeader->clearActions();
         m_folderHeader->addAction(static_cast<std::uint64_t>(nxui::Button::A),
                                   [this]() { renameFolder(m_openFolderId); });
+        auto onDownFromHeader = [this]() -> bool {
+            if (!m_grid) return false;
+            // Land on the first focusable icon in the current page
+            const int perPage = std::max(1, m_grid->iconsPerPage());
+            const int start = m_grid->currentPage() * perPage;
+            const int end = std::min(start + perPage, static_cast<int>(m_grid->allIcons().size()));
+            for (int i = start; i < end; ++i) {
+                const auto& icon = m_grid->allIcons()[static_cast<std::size_t>(i)];
+                if (icon && icon->isFocusable() && icon->isVisible()) {
+                    if (m_grid->focusGlobalIndex(i)) {
+                        if (auto* cur = m_grid->focusManager().current())
+                            focusManager().setFocus(cur);
+                        m_audio.playSfx(Sfx::Navigate);
+                        return true;
+                    }
+                }
+            }
+            return false;
+        };
+        m_folderHeader->addAction(static_cast<std::uint64_t>(nxui::Button::DDown), onDownFromHeader);
+        m_folderHeader->addAction(static_cast<std::uint64_t>(nxui::Button::LStickD), onDownFromHeader);
         if (m_grid) m_grid->setGridUpTarget(m_folderHeader.get());
         // setGridUpTarget only covers the paged grid. The line keeps its own
         // UP target, and it has to be pointed at the name too.
@@ -5277,8 +5296,9 @@ std::shared_ptr<GlossyIcon> WiiUMenuApp::makeIcon(const AppEntry& entry) {
         // The dynamic line compacts real entries to the front and pads the rest
         // with empty slots. Leaving those focusable gave the carousel a run of
         // blank cells past the last game, which is the "last icon" the cycle kept
-        // stopping on. They are not offered in this mode.
-        const bool lineMode = isCarouselLayout();
+        // stopping on. Inside an open folder, however, presentation is always Grid,
+        // so empty slots must always remain visible and focusable.
+        const bool lineMode = isCarouselLayout() && (m_openFolderId == 0);
         icon->setFocusable(!lineMode);
         icon->setVisible(!lineMode);
         auto& i18n = nxui::I18n::instance();
@@ -7997,7 +8017,7 @@ void WiiUMenuApp::onUpdate(float dt) {
 #endif
 
     if (!lockScreenUp &&
-        app().input().isDown(nxui::Button::Minus) &&
+        app().input().isDown(nxui::Button::R) &&
         !app().input().isDown(nxui::Button::Plus) &&
         m_navigator.route() == switchu::navigation::Route::Home &&
         !m_editMode &&
@@ -8540,7 +8560,7 @@ std::vector<WiiUMenuApp::ActionHint> WiiUMenuApp::buildActionHints() {
             }
             add(buttonGlyph(nxui::Button::Y), i18n.tr("hint.tile_size", "Tile Size"));
             add(buttonGlyph(nxui::Button::Plus), i18n.tr("hint.options", "Options"));
-            add(buttonGlyph(nxui::Button::Minus), i18n.tr("hint.switch_layout", "Switch view"));
+            add(buttonGlyph(nxui::Button::R), i18n.tr("hint.switch_layout", "Switch view"));
             return hints;
         }
     }
@@ -8604,7 +8624,10 @@ std::vector<WiiUMenuApp::ActionHint> WiiUMenuApp::buildActionHints() {
             if (deletePageAvailable()) {
                 add(buttonGlyph(nxui::Button::ZL), i18n.tr("folder.delete_page", "Delete page"));
             }
-            add(buttonGlyph(nxui::Button::Minus), i18n.tr("hint.switch_layout", "Switch view"));
+            if (!isCarouselLayout()) {
+                add(buttonGlyph(nxui::Button::Minus), sortModeLabel());
+            }
+            add(buttonGlyph(nxui::Button::R), i18n.tr("hint.switch_layout", "Switch view"));
         } else if (m_openFolderId != 0 && deletePageAvailable()) {
             add(buttonGlyph(nxui::Button::ZL), i18n.tr("folder.delete_page", "Delete page"));
         }
@@ -8630,8 +8653,11 @@ std::vector<WiiUMenuApp::ActionHint> WiiUMenuApp::buildActionHints() {
     }
 
     if (m_navigator.route() == switchu::navigation::Route::Home && !m_editMode) {
-        if (m_openFolderId == 0 && !hasIcon(buttonGlyph(nxui::Button::Minus))) {
-            add(buttonGlyph(nxui::Button::Minus),
+        if (m_openFolderId == 0 && !hasIcon(buttonGlyph(nxui::Button::Minus)) && !isCarouselLayout()) {
+            add(buttonGlyph(nxui::Button::Minus), sortModeLabel());
+        }
+        if (m_openFolderId == 0 && !hasIcon(buttonGlyph(nxui::Button::R))) {
+            add(buttonGlyph(nxui::Button::R),
                 i18n.tr("hint.switch_layout", "Switch view"));
         }
         if (!hasIcon(buttonGlyph(nxui::Button::LStick))) {
