@@ -209,7 +209,7 @@ void TutorialActivity::buildSteps() {
         {
             StepKind::Text,
             i18n.tr("tutorial.support.title", "Support"),
-            i18n.tr("tutorial.support.body", "To report an issue, open the project GitHub: github.com/PoloNX/SwitchU"),
+            i18n.tr("tutorial.support.body", "To report an issue, open the project GitHub: github.com/ncarvalho99/omnilauncher"),
             ""
         },
     };

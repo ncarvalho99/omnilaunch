@@ -179,7 +179,7 @@ void WiiUMenuApp::publishUpdateState() {
     const bool havePublished = !m_latestRelease.notes.empty();
     const bool restartPending = updateRestartPending();
     m_themeShop->setUpdateState(
-        std::string("SwitchU ") + SWITCHU_VERSION,
+        std::string("OmniLaunch ") + SWITCHU_VERSION,
         // With the restart pending there is nothing left to install, so the row
         // that offers it must not appear at all.
         restartPending ? std::string() : m_pendingUpdate.version,
@@ -217,7 +217,7 @@ void WiiUMenuApp::syncUpdateCheck() {
         DebugLog::log("[update] already on the newest release");
         m_latestRelease = snapshot.release;
         m_pendingUpdate = {};
-        m_updateStatus = i18n.tr("dialog.update_up_to_date", "SwitchU is up to date.");
+        m_updateStatus = i18n.tr("dialog.update_up_to_date", "OmniLaunch is up to date.");
         publishUpdateState();
         if (m_updateCheckForced && m_settings)
             m_settings->requestToast(m_updateStatus, 2.6f);
@@ -249,7 +249,7 @@ void WiiUMenuApp::showReleaseNotes() {
     m_audio.playSfx(Sfx::ModalShow);
     raiseOverlay(m_dialog);
     m_dialog->show(
-        std::string("SwitchU ") + (havePublished ? m_latestRelease.version : SWITCHU_VERSION),
+        std::string("OmniLaunch ") + (havePublished ? m_latestRelease.version : SWITCHU_VERSION),
         notes,
         {{i18n.tr("button.ok", "OK"), [this]() {}, true}},
         0, {});
@@ -284,7 +284,7 @@ void WiiUMenuApp::offerUpdate(const update::UpdateClient::Release& release, bool
     auto& i18n = nxui::I18n::instance();
     const std::string notes = update::UpdateClient::condenseNotes(
         release.notes, i18n.activeLanguageTag());
-    std::string body = i18n.tr("dialog.update_body", "A new version of SwitchU is available.");
+    std::string body = i18n.tr("dialog.update_body", "A new version of OmniLaunch is available.");
     body += "\n\n" + i18n.tr("dialog.update_installed", "Installed") + ": " + SWITCHU_VERSION;
     body += "\n" + i18n.tr("dialog.update_new", "New") + ": " + release.version;
     if (!notes.empty())

@@ -5521,7 +5521,7 @@ std::shared_ptr<GlossyIcon> WiiUMenuApp::makeIcon(const AppEntry& entry) {
             m_dialog->show(
                 "Resume recovery test",
                 "DIAGNOSTIC BUILD. Failure recovery keeps the suspended title "
-                "alive. After SwitchU returns, select it again and choose Resume selected.",
+                "alive. After OmniLaunch returns, select it again and choose Resume selected.",
                 {
                     {"Resume selected", [continueResume]() mutable {
                         continueResume();

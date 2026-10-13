@@ -26,7 +26,7 @@ ThemeShopScreen::Tab themeshop::tabs::UpdateTab::build(ThemeShopScreen& screen) 
         it.label = i18n.tr("settings.about.version", "Version");
         it.type = ItemType::Info;
         it.infoText = screen.m_updateInstalledVersion.empty()
-            ? std::string("SwitchU " SWITCHU_VERSION)
+            ? std::string("OmniLaunch " SWITCHU_VERSION)
             : screen.m_updateInstalledVersion;
         t.items.push_back(std::move(it));
     }
@@ -59,7 +59,7 @@ ThemeShopScreen::Tab themeshop::tabs::UpdateTab::build(ThemeShopScreen& screen) 
         it.label = i18n.tr("themeshop.update_notes", "What changed");
         it.description = screen.m_updateLatestVersion.empty()
             ? std::string()
-            : std::string("SwitchU ") + screen.m_updateLatestVersion;
+            : std::string("OmniLaunch ") + screen.m_updateLatestVersion;
         it.type = ItemType::Action;
         it.onChange = [&screen](SettingItem&) {
             if (screen.m_releaseNotesCb) screen.m_releaseNotesCb();

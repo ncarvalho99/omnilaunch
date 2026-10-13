@@ -482,7 +482,7 @@ void drawBuiltInThemePreview(nxui::Renderer& ren,
                              bool light,
                              float opacity) {
     // The original built-in themes have no wallpaper or screenshot asset.
-    // Keep their preview honest and zero-byte: a miniature of SwitchU's own
+    // Keep their preview honest and zero-byte: a miniature of the launcher's own
     // chrome, painted from the dark/light palette rather than a fake photo.
     const nxui::Color background = light ? nxui::Color(0.79f, 0.85f, 0.91f, opacity)
                                         : nxui::Color(0.035f, 0.055f, 0.080f, opacity);
@@ -524,7 +524,11 @@ void drawBuiltInThemePreview(nxui::Renderer& ren,
         ren.drawRoundedRect(card, index == 0 ? accent.withAlpha(0.72f * opacity) : panel, 5.f);
     }
     if (smallFont) {
-        ren.drawText("SwitchU", {inner.right() - 46.f, topBar.y + 4.f}, smallFont,
+        // Right-aligned by measuring: the product name is longer than the old
+        // fixed 46 px slot allowed for.
+        const std::string brand = "OmniLaunch";
+        const float brandW = measureTextCached(smallFont, brand).x * 0.42f;
+        ren.drawText(brand, {inner.right() - brandW - 8.f, topBar.y + 4.f}, smallFont,
                      light ? nxui::Color(0.08f, 0.18f, 0.29f, opacity) : nxui::Color::white().withAlpha(opacity),
                      0.42f);
     }

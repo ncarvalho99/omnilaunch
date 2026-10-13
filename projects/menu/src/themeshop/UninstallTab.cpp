@@ -13,9 +13,9 @@ ThemeShopScreen::Tab UninstallTab::build(ThemeShopScreen& screen) {
     t.name = i18n.tr("themeshop.tabs.uninstall", "Uninstall");
 
     SettingItem it;
-    it.label = i18n.tr("themeshop.uninstall", "Uninstall SwitchU");
+    it.label = i18n.tr("themeshop.uninstall", "Uninstall OmniLaunch");
     it.description = i18n.tr("themeshop.uninstall_desc",
-                             "Permanently delete SwitchU and return to the Nintendo HOME Menu.");
+                             "Permanently delete OmniLaunch and return to the Nintendo HOME Menu.");
     it.type = ItemType::Action;
     it.onChange = [&screen](SettingItem&) {
         if (screen.m_selfUninstallCb) screen.m_selfUninstallCb();

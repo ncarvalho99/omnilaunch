@@ -209,9 +209,9 @@ SettingsScreen::Tab settings::tabs::SystemTab::build(SettingsScreen& screen) {
         // is read-only, and placing both among hardware details made users find
         // that value while missing the actual selector.
         SettingItem it;
-        it.label = i18n.tr("settings.system.ui_language", "SwitchU Language");
+        it.label = i18n.tr("settings.system.ui_language", "OmniLaunch Language");
         it.description = i18n.tr("settings.system.ui_language_desc",
-                                 "Press A to choose the language used by SwitchU.");
+                                 "Press A to choose the language used by OmniLaunch.");
         it.type = ItemType::Selector;
 
         std::vector<std::string> tags = nxui::I18n::supportedLanguageTags();
