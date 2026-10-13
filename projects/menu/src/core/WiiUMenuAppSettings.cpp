@@ -930,8 +930,19 @@ void WiiUMenuApp::closeActivityLog() {
     m_activityLogReturnFocus = nullptr;
 }
 
+void WiiUMenuApp::ensureWaraWaraServices() {
+    if (!m_miiAvatarManager.isInitialized())
+        m_miiAvatarManager.initialize(app().gpu(), app().renderer(), SD_ASSETS);
+    if (!m_plazaDialogueEngine.isLoaded())
+        m_plazaDialogueEngine.initialize(SD_ASSETS);
+    if (!m_animalesePlayer.isReady())
+        m_animalesePlayer.initialize(std::string(SD_ASSETS) + "/sounds/animalese");
+}
+
 void WiiUMenuApp::createWaraWaraPlaza() {
     if (m_plazaScreen) return;
+
+    ensureWaraWaraServices();
 
     m_plazaScreen = std::make_shared<warawara::WaraWaraPlazaScreen>();
     m_plazaScreen->setFonts(&m_fontNormal, &m_fontSmall);
@@ -1905,6 +1916,41 @@ void WiiUMenuApp::reloadThemePresets() {
         DebugLog::log("[safe-mode] presets limited to the built-in defaults (%zu)", m_allPresets.size());
         return;
     }
+
+    if (m_fastReturnRequested) {
+        const bool isBuiltIn = (m_config.themePreset == "Default Dark" ||
+                                m_config.themePreset == "Default Light" ||
+                                m_config.themePreset.rfind("builtin:", 0) == 0);
+        if (isBuiltIn) {
+            DebugLog::log("[theme-apply] fast-return with built-in theme; deferred full preset scan");
+            return;
+        }
+
+        if (m_config.themePreset.rfind("package:", 0) == 0) {
+            auto single = ThemePreset::loadSinglePackage(m_config.themePreset);
+            if (single) {
+                m_allPresets.push_back(std::move(*single));
+                DebugLog::log("[theme-apply] fast-return loaded active package theme '%s' directly",
+                              m_config.themePreset.c_str());
+                return;
+            }
+        }
+
+        if (m_config.themePreset.rfind("user:", 0) == 0) {
+            auto userPresets = ThemePreset::loadUserPresets();
+            auto it = std::find_if(userPresets.begin(), userPresets.end(),
+                                   [this](const ThemePreset& p) {
+                                       return p.id == m_config.themePreset || p.name == m_config.themePreset;
+                                   });
+            if (it != userPresets.end()) {
+                m_allPresets.push_back(std::move(*it));
+                DebugLog::log("[theme-apply] fast-return loaded active user theme '%s' directly",
+                              m_config.themePreset.c_str());
+                return;
+            }
+        }
+    }
+
     auto userPresets = ThemePreset::loadUserPresets();
     auto installedPackages = ThemePreset::loadInstalledPackages();
     m_allPresets.insert(m_allPresets.end(), userPresets.begin(), userPresets.end());
@@ -2352,6 +2398,38 @@ void WiiUMenuApp::applyThemeResources(const ThemePreset& preset) {
 
     const bool imageExists = !backgroundImagePath.empty() && pathExists(backgroundImagePath);
     const bool wantsBackgroundImage = imageExists || wantsVideo;
+
+    // Resolve the desired still/poster image path through a single deterministic rule
+    // so background comparison and loading cannot disagree.
+    std::string desiredBackgroundImagePath;
+    if (wantsVideo) {
+        if (!backgroundImagePath.empty() && imageExists) {
+            desiredBackgroundImagePath = backgroundImagePath;
+        } else if (!preset.installPath.empty()) {
+            static constexpr const char* kPosterCandidates[] = {
+                "media/screenshots/00.jpg",
+                "media/screenshots/00.png",
+                "media/screenshot.jpg",
+                "media/screenshot.png",
+                "preview.jpg",
+                "preview.png",
+                "poster.jpg",
+                "poster.png",
+                "thumb.jpg",
+                "thumb.png",
+            };
+            for (const char* rel : kPosterCandidates) {
+                std::string cand = joinPath(preset.installPath, rel);
+                if (pathExists(cand)) {
+                    desiredBackgroundImagePath = std::move(cand);
+                    break;
+                }
+            }
+        }
+    } else if (imageExists) {
+        desiredBackgroundImagePath = backgroundImagePath;
+    }
+
     // A frames-only theme has no imagePath, so both sides of the path check are
     // empty and this decided nothing needed loading -- the frames never loaded
     // and the wallpaper came up blank. The gate has to know about the sequence
@@ -2359,7 +2437,7 @@ void WiiUMenuApp::applyThemeResources(const ThemePreset& preset) {
     const bool wantsFrames = !preset.background.imageFrames.empty();
     const bool hasFramesLoaded = m_background && m_background->hasAnimatedBackground();
     const bool backgroundImageNeedsReload = forceResourceReload
-        || m_loadedBackgroundImagePath != backgroundImagePath
+        || m_loadedBackgroundImagePath != desiredBackgroundImagePath
         || m_backgroundImageLoaded != wantsBackgroundImage
         || wantsFrames != hasFramesLoaded
         || wantsVideo != isVideoLoaded;
@@ -2487,10 +2565,28 @@ void WiiUMenuApp::applyThemeResources(const ThemePreset& preset) {
             // paid before. Frames are resolved against the theme's own folder,
             // the same way its single image is.
             bool imageLoaded = false;
+            std::string posterPath = desiredBackgroundImagePath;
             if (wantsVideo) {
-                imageLoaded = m_background->loadVideo(backgroundVideoPath, true);
-                DebugLog::log("[theme-apply] background hardware video wallpaper: path=%s loaded=%d",
-                              safeLogPath(backgroundVideoPath), imageLoaded ? 1 : 0);
+                if (!posterPath.empty()) {
+                    imageLoaded = m_background->loadImage(gpu, ren, posterPath);
+                    DebugLog::log("[theme-apply] loaded poster/still background for video theme: %s (ok=%d)",
+                                  safeLogPath(posterPath), imageLoaded ? 1 : 0);
+                    if (imageLoaded) {
+                        m_backgroundImageLoaded = true;
+                        m_loadedBackgroundImagePath = posterPath;
+                    }
+                }
+
+                if (m_fastReturnRequested) {
+                    m_deferredVideoWallpaperPath = backgroundVideoPath;
+                    m_deferredVideoWallpaperFrames = 3;
+                    DebugLog::log("[theme-apply] fast-return: deferring video wallpaper: %s",
+                                  safeLogPath(backgroundVideoPath));
+                } else {
+                    imageLoaded = m_background->loadVideo(backgroundVideoPath, true);
+                    DebugLog::log("[theme-apply] background hardware video wallpaper: path=%s loaded=%d",
+                                  safeLogPath(backgroundVideoPath), imageLoaded ? 1 : 0);
+                }
             }
             if (!imageLoaded && !preset.background.imageFrames.empty()) {
                 std::vector<std::string> framePaths;
@@ -2514,15 +2610,18 @@ void WiiUMenuApp::applyThemeResources(const ThemePreset& preset) {
                           imageExists ? 1 : 0,
                           1,
                           imageLoaded ? 1 : 0);
-            if (!imageLoaded) {
+            if (!imageLoaded && !wantsVideo) {
                 if (m_backgroundImageLoaded)
                     m_background->clearImage();
                 m_backgroundImageLoaded = false;
                 m_loadedBackgroundImagePath.clear();
                 DebugLog::log("[theme-apply] background image cleared");
-            } else {
+            } else if (imageLoaded) {
                 m_backgroundImageLoaded = true;
-                m_loadedBackgroundImagePath = backgroundImagePath;
+                if (!posterPath.empty())
+                    m_loadedBackgroundImagePath = posterPath;
+                else
+                    m_loadedBackgroundImagePath = backgroundImagePath;
             }
         } else {
             DebugLog::log("[theme-apply] background image: path=%s exists=%d reloaded=%d loaded=%d",

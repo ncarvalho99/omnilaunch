@@ -1,5 +1,6 @@
 #pragma once
 #include <nxui/Theme.hpp>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -111,6 +112,8 @@ struct ThemePreset {
     static std::vector<ThemePreset> loadUserPresets();
 
     static std::vector<ThemePreset> loadInstalledPackages();
+
+    static std::optional<ThemePreset> loadSinglePackage(const std::string& packageId);
 
     static bool saveUserPresets(const std::vector<ThemePreset>& presets);
 

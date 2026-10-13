@@ -36,12 +36,12 @@ private:
 
     // Keep a short visual acknowledgement, but do not make Horizon wait on a
     // 1.45-second cosmetic sequence before it even receives the launch IPC.
-    static constexpr float kZoomDur   = 0.16f;
-    static constexpr float kHoldDur   = 0.02f;
-    static constexpr float kFadeDur   = 0.08f;
-    static constexpr float kBlackDur  = 0.06f;
-    static constexpr float kBlackHold = 0.02f;
-    static constexpr float kPostLaunchBlackHold = 0.00f;
+    static constexpr float kZoomDur   = 0.36f;
+    static constexpr float kHoldDur   = 0.18f;
+    static constexpr float kFadeDur   = 0.16f;
+    static constexpr float kBlackDur  = 0.18f;
+    static constexpr float kBlackHold = 0.06f;
+    static constexpr float kPostLaunchBlackHold = 0.08f;
     static constexpr float kTotalDur  = kZoomDur + kHoldDur + kFadeDur
                                       + kBlackDur + kBlackHold;
     static constexpr float kMusicFadeDur = kZoomDur + kHoldDur + kFadeDur + kBlackDur;

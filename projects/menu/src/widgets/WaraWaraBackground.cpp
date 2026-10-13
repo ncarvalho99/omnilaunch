@@ -544,9 +544,18 @@ void WaraWaraBackground::clearImage() {
 }
 
 bool WaraWaraBackground::loadVideo(const std::string& path, bool loop) {
-    clearImage();
-    if (path.empty())
+    stopFrameReader();
+    m_videoPlayer.close();
+    m_frameSequencePending = false;
+    m_frames.clear();
+    m_frameInterval = 0.f;
+    m_frameTimer = 0.f;
+    m_frameIndex = 0;
+    // Keep m_backgroundImage alive until video player produces its first valid texture
+    if (path.empty()) {
+        m_backgroundImage = nxui::Texture{};
         return false;
+    }
     return m_videoPlayer.open(path, loop, false);
 }
 
@@ -560,8 +569,12 @@ bool WaraWaraBackground::isVideoActive() const {
 const nxui::Texture* WaraWaraBackground::currentBackground() const {
     if (m_videoPlayer.isOpened()) {
         const nxui::Texture* vt = m_videoPlayer.texture();
-        if (vt && vt->valid())
+        if (vt && vt->valid()) {
+            if (m_backgroundImage.valid()) {
+                const_cast<WaraWaraBackground*>(this)->m_backgroundImage = nxui::Texture{};
+            }
             return vt;
+        }
     }
     if (!m_frames.empty())
         return &m_frames[(size_t)m_frameIndex];

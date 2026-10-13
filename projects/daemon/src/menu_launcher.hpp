@@ -123,7 +123,7 @@ inline Result startPrepared(smi::MenuStartMode mode, const smi::SystemStatus& st
                           status.suspended_app_id);
     LibAppletArgs la_args;
     libappletArgsCreate(&la_args, static_cast<u32>(mode));
-    libappletArgsSetPlayStartupSound(&la_args, true);
+    libappletArgsSetPlayStartupSound(&la_args, false);
     Result rc = libappletArgsPush(&la_args, &g_holder);
     if (R_FAILED(rc)) {
         switchu::FileLog::log("[menu_la] ArgsPush FAIL: 0x%X", rc);

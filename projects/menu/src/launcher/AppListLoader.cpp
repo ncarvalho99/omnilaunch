@@ -123,18 +123,17 @@ bool fetchDaemonCatalog(std::vector<PendingApp>& out, bool prefetchIcons) {
         if (prefetchIcons)
             a.iconData = std::move(ent.icon);
 
-        // A freshly rebuilt daemon catalog already carries these fields. Older
-        // on-disk catalogs can still contain the title-id fallback, so repair
-        // only those incomplete entries without putting every metadata file
-        // back on the fast HOME-return path.
-        switchu::control_cache::Meta meta{};
+        // A freshly rebuilt daemon catalog already carries these fields.
+        // On fast HOME return without icon prefetch, avoid reading individual .meta files
+        // for every title if the title name and user config are already known from the catalog.
         const bool needsMetadata = prefetchIcons || isTitleIdFallback(a.title, ent.titleId)
             || !a.startupUserKnown;
-        if (switchu::control_cache::readMeta(ent.titleId, meta)) {
-            a.englishTitle = meta.english_name;
-            if (needsMetadata && meta.name[0] != '\0')
-                a.title = meta.name;
-            if (needsMetadata) {
+        if (needsMetadata) {
+            switchu::control_cache::Meta meta{};
+            if (switchu::control_cache::readMeta(ent.titleId, meta)) {
+                a.englishTitle = meta.english_name;
+                if (meta.name[0] != '\0')
+                    a.title = meta.name;
                 a.startupUserKnown = true;
                 a.startupUserAccount = meta.startup_user_account;
                 a.startupUserAccountOption = meta.startup_user_account_option;

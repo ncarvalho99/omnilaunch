@@ -395,6 +395,7 @@ void WiiUMenuApp::setStartupConfig(const AppConfig& config) {
 void WiiUMenuApp::setStartupStatus(const switchu::smi::SystemStatus& status) {
     m_launcher.setStartupStatus(status.suspended_app_id, status.app_running);
     m_transitionOriginTick = status.transition_origin_tick;
+    m_transitionReason = status.transition_reason;
     m_safeModeRequested = (status.boot_flags & switchu::smi::kStatusFlagSafeMode) != 0;
     m_safeModeNotice = (status.boot_flags & switchu::smi::kStatusFlagSafeModeNotice) != 0;
 }
@@ -424,9 +425,19 @@ bool WiiUMenuApp::onCreate() {
         DebugLog::log("[safe-mode] active: built-in theme, no music, no video wallpaper");
     }
 #endif
-    const bool fastReturn = m_launcher.suspendedTitleId() != 0;
+#ifdef SWITCHU_MENU
+    const bool isColdBoot = (m_transitionReason == switchu::smi::MenuTransitionReason::StartupBoot ||
+                             m_transitionReason == switchu::smi::MenuTransitionReason::Unknown);
+    const bool fastReturn = !isColdBoot || (m_launcher.suspendedTitleId() != 0);
+#else
+    const bool fastReturn = false;
+#endif
     m_fastReturnRequested = fastReturn;
     m_fastReturnStartupTick = fastReturn ? activityCreateStartTick : 0;
+    DebugLog::log("[init] return mode: fastReturn=%d (reason=%u suspended=0x%016lX)",
+                  fastReturn ? 1 : 0,
+                  static_cast<unsigned>(m_transitionReason),
+                  m_launcher.suspendedTitleId());
     m_appLayoutMode = m_config.appLayoutMode;
     applyGlassSharpness(m_config.glassSharpness);
     loadMenuLayout();
@@ -441,8 +452,11 @@ bool WiiUMenuApp::onCreate() {
     normalizeWidgetPlacements();
     if (m_widgetStore.recentActivity().titleId != 0) {
         refreshRecentActivityDuration();
-        if (!m_widgetStore.save())
-            DebugLog::log("[widgets] recent activity duration could not be saved");
+        auto storeCopy = m_widgetStore;
+        m_threadPool.submit([storeCopy = std::move(storeCopy)]() {
+            if (!storeCopy.save())
+                DebugLog::log("[widgets] recent activity duration could not be saved");
+        });
     }
     m_appLoader.setPendingTransform([this](std::vector<PendingApp>& apps) {
         applyMenuLayoutToPending(apps);
@@ -715,7 +729,6 @@ void WiiUMenuApp::loadResources() {
     if (m_fontSmall.load(app().gpu(), app().renderer(), fontPath, 18))
         m_loadedSmallFontPath = fontPath;
     m_fontIcons.load(app().gpu(), app().renderer(), std::string(SD_ASSETS) + "/fonts/switch_icons.ttf", 24);
-    m_fontClock.load(app().gpu(), app().renderer(), fontPath, 72);
 
     // loadStaticTextures() also owns the gamecard badge. The 1.2 merge added it
     // with the page-arrow and battery-widget textures inside, but never called
@@ -729,6 +742,12 @@ void WiiUMenuApp::loadResources() {
     // Gallery lookup immediately afterwards so custom covers work after a
     // cold start too, not only after a sort or refresh rebuild.
     m_iconStreamer.setArtworkDataLoader(gallery::GameArtworkStore::loadCover);
+}
+
+void WiiUMenuApp::ensureClockFont() {
+    if (m_fontClock.valid()) return;
+    std::string fontPath = std::string(SD_ASSETS) + "/fonts/DejaVuSans.ttf";
+    m_fontClock.load(app().gpu(), app().renderer(), fontPath, 72);
 }
 
 #if 0 // Replaced by the 1.2.0 folder/widget-aware implementation below.
@@ -1458,9 +1477,15 @@ void WiiUMenuApp::loadStaticTextures() {
     m_batteryControllerTex.loadFromFile(app().gpu(), app().renderer(),
                                          std::string(SD_ASSETS) + "/icons/widget_battery_controller.png");
 
-    // Cross media bar artwork. Loaded once into persistent static textures
-    // so they are ALWAYS resident, never unloaded on fast return, and never
-    // depend on whether hidden sidebar buttons have loaded their textures.
+    if (m_appLayoutMode == AppLayoutMode::Xmb) {
+        ensureXmbTextures();
+    } else if (m_appLayoutMode == AppLayoutMode::Metro) {
+        ensureMetroTextures();
+    }
+}
+
+void WiiUMenuApp::ensureXmbTextures() {
+    if (m_xmbAlbumTex.valid()) return;
     const std::string iconsBase = std::string(SD_ASSETS) + "/icons/";
     m_xmbAlbumTex.loadFromFile(app().gpu(), app().renderer(), iconsBase + "album.png");
     m_xmbSettingsTex.loadFromFile(app().gpu(), app().renderer(), iconsBase + "settings.png");
@@ -1482,7 +1507,10 @@ void WiiUMenuApp::loadStaticTextures() {
                   m_xmbMediaCenterTex.valid() ? 1 : 0,
                   m_xmbNetworkTex.valid() ? 1 : 0,
                   m_xmbHomebrewTex.valid() ? 1 : 0);
+}
 
+void WiiUMenuApp::ensureMetroTextures() {
+    if (m_metroThemesTex.valid()) return;
     const std::string metroIconsBase = std::string(SD_ASSETS) + "/icons/metro/";
     m_metroThemesTex.loadFromFile(app().gpu(), app().renderer(), metroIconsBase + "theming.png");
     m_metroControllersTex.loadFromFile(app().gpu(), app().renderer(), metroIconsBase + "controllers.png");
@@ -1497,10 +1525,6 @@ void WiiUMenuApp::loadStaticTextures() {
                   m_metroMusicTex.valid() ? 1 : 0,
                   m_metroSettingsTex.valid() ? 1 : 0,
                   m_metroHomebrewTex.valid() ? 1 : 0);
-
-    m_miiAvatarManager.initialize(app().gpu(), app().renderer(), SD_ASSETS);
-    m_plazaDialogueEngine.initialize(SD_ASSETS);
-    m_animalesePlayer.initialize(std::string(SD_ASSETS) + "/sounds/animalese");
 }
 
 void WiiUMenuApp::buildUserAvatarBar(bool loadImmediately) {
@@ -2689,6 +2713,7 @@ void WiiUMenuApp::pumpIconStreamer() {
 
 void WiiUMenuApp::updateGridXmbContext() {
     if (!m_grid) return;
+    ensureXmbTextures();
     IconGrid::XmbContext ctx;
     ctx.fontNormal = &m_fontNormal;
     ctx.fontSmall = &m_fontSmall;
@@ -2840,6 +2865,7 @@ void WiiUMenuApp::applyMetroPowerButton(bool isMetro) {
 }
 void WiiUMenuApp::updateGridMetroContext() {
     if (!m_grid) return;
+    ensureMetroTextures();
     updateGridXmbContext();
     IconGrid::MetroContext ctx;
     ctx.fontNormal = &m_fontNormal;
@@ -5778,6 +5804,7 @@ void WiiUMenuApp::buildGrid() {
     }
 
     std::vector<std::shared_ptr<GlossyIcon>> icons;
+    icons.reserve(static_cast<size_t>(m_model.count()));
     for (int i = 0; i < m_model.count(); ++i)
         icons.push_back(makeIcon(m_model.at(i)));
 
@@ -5844,7 +5871,7 @@ void WiiUMenuApp::buildGrid() {
     m_battery->setForceLiquidGlass(true);
     m_battery->setBlurEnabled(false);
 
-    buildUserAvatarBar();
+    buildUserAvatarBar(!m_fastReturnRequested);
 
     m_titlePill = std::make_shared<TitlePillWidget>();
     const float initPillY = (m_appLayoutMode == AppLayoutMode::Deck) ? 275.f
@@ -5962,8 +5989,8 @@ void WiiUMenuApp::buildGrid() {
 
     const bool returningFromSuspendedApp = m_launcher.suspendedTitleId() != 0;
     if (returningFromSuspendedApp) {
-        m_deferredInitialAssetFrames = 1;
-        DebugLog::log("[init] return path: deferring initial icon/sidebar uploads");
+        m_deferredInitialAssetFrames = 3;
+        DebugLog::log("[init] return path: deferring initial icon/sidebar uploads (3 frames)");
     } else {
         // Load textures for the initial visible page/row.
         pumpIconStreamer();
@@ -5972,7 +5999,7 @@ void WiiUMenuApp::buildGrid() {
     if (returningFromSuspendedApp) {
         for (auto& icon : m_grid->allIcons())
             icon->forceVisible();
-        m_returnFadeTimer = kReturnFadeInDur;
+        m_returnFadeTimer = 0.f;
     } else {
         m_grid->startAppearAnimation();
     }
@@ -6079,25 +6106,28 @@ void WiiUMenuApp::buildGrid() {
                                resolveThemeAssetPath(m_effectivePreset, m_effectivePreset.icons.basePath));
     }
 
-    // Prefetch activity log data in background so opening it is instantaneous
-    m_threadPool.submit([this]() {
-        std::vector<std::pair<std::uint64_t, std::string>> installed;
-        if (!m_allApps.empty()) {
-            for (const auto& app : m_allApps) {
-                if (app.titleId != 0 && (app.isApplication() || m_config.isGamePort(app.titleId))) {
-                    installed.emplace_back(app.titleId, app.title);
+    // Prefetch activity log data in background so opening it is instantaneous.
+    // On fast return, defer further so pdm queries do not contend with daemon catalog sync.
+    if (!m_fastReturnRequested) {
+        m_threadPool.submit([this]() {
+            std::vector<std::pair<std::uint64_t, std::string>> installed;
+            if (!m_allApps.empty()) {
+                for (const auto& app : m_allApps) {
+                    if (app.titleId != 0 && (app.isApplication() || m_config.isGamePort(app.titleId))) {
+                        installed.emplace_back(app.titleId, app.title);
+                    }
+                }
+            } else {
+                for (int i = 0; i < m_model.count(); ++i) {
+                    const auto& entry = m_model.at(i);
+                    if (entry.titleId != 0 && (entry.isApplication() || m_config.isGamePort(entry.titleId))) {
+                        installed.emplace_back(entry.titleId, entry.title);
+                    }
                 }
             }
-        } else {
-            for (int i = 0; i < m_model.count(); ++i) {
-                const auto& entry = m_model.at(i);
-                if (entry.titleId != 0 && (entry.isApplication() || m_config.isGamePort(entry.titleId))) {
-                    installed.emplace_back(entry.titleId, entry.title);
-                }
-            }
-        }
-        m_activityLogManager.refresh(installed);
-    });
+            m_activityLogManager.refresh(installed);
+        });
+    }
 
     wireGlobalActions();
     applyTheme();
@@ -6425,7 +6455,7 @@ void WiiUMenuApp::buildGrid() {
         m_contextMenuReturnFocus = nullptr;
     });
     m_overlayLayer->addChild(m_contextMenu);
-    createWaraWaraPlaza();
+    // WaraWara Plaza is created on first open in openWaraWaraPlaza()
     // Miis are exclusively rendered in WaraWara Plaza, not on the home screen background.
     if (m_background) {
         m_background->setAmbientMiisEnabled(false);
@@ -7208,6 +7238,7 @@ void WiiUMenuApp::setupLockScreen() {
     });
 
     m_lockScreen.onLocked([this, &i18n]() {
+        ensureClockFont();
         // Whatever was open goes with it. Coming back to a half-open menu the
         // owner cannot remember opening is worse than coming back to the grid.
 #ifdef SWITCHU_PREFLIGHT_EDGE_TEST
@@ -7252,6 +7283,42 @@ void WiiUMenuApp::onUpdate(float dt) {
     syncWidgetIconContent();
     syncFolderPreviews();
     pollGameArtworkAssets();
+
+    // Harvest deferred account enumeration from fast return
+    if (m_deferredProfileListFuture.valid() &&
+        m_deferredProfileListFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        try {
+            m_deferredProfileListFuture.get();
+        } catch (...) {}
+        if (m_deferredProfileList && R_SUCCEEDED(m_deferredProfileList->result)) {
+            m_pendingProfileUids = std::move(m_deferredProfileList->uids);
+            m_pendingProfileIndex = 0;
+            m_deferredProfileFrames = 1;
+        }
+        m_deferredProfileList.reset();
+    }
+
+    // Load one deferred user avatar per frame to avoid frame drop
+    if (m_deferredProfileFrames > 0) {
+        --m_deferredProfileFrames;
+    } else if (m_pendingProfileIndex < m_pendingProfileUids.size()) {
+        loadNextUserAvatar();
+        if (m_pendingProfileIndex >= m_pendingProfileUids.size()) {
+            appendAddUserButton();
+        }
+    }
+
+    // Handle deferred video wallpaper playback on fast return
+    if (m_deferredVideoWallpaperFrames > 0) {
+        --m_deferredVideoWallpaperFrames;
+        if (m_deferredVideoWallpaperFrames == 0 && !m_deferredVideoWallpaperPath.empty()) {
+            if (m_background) {
+                bool loaded = m_background->loadVideo(m_deferredVideoWallpaperPath, true);
+                DebugLog::log("[video] deferred video wallpaper loaded: %d", loaded ? 1 : 0);
+            }
+            m_deferredVideoWallpaperPath.clear();
+        }
+    }
 
     // Update metadata failed cooldown timers
     {
@@ -7860,12 +7927,14 @@ void WiiUMenuApp::onUpdate(float dt) {
                 // Lock on the way under, so the console is already in the state
                 // the owner will come back to. Best effort: Horizon may suspend
                 // the applet before this runs, which is why WakeUp locks too.
+                ensureClockFont();
                 m_lockScreen.lockNow();
                 break;
             case switchu::smi::MenuMessage::WakeUp:
                 // The lock screen exists for this moment. Waking is the one
                 // thing that raises it, and it is not optional, the same way
                 // the stock home menu does not offer to skip it.
+                ensureClockFont();
                 m_lockScreen.lockNow();
                 m_lockScreen.showAfterSystemWake();
                 // Rendering is restored either way: the black frame belongs to

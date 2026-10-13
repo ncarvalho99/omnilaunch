@@ -916,6 +916,35 @@ std::vector<ThemePreset> ThemePreset::loadInstalledPackages() {
     return result;
 }
 
+std::optional<ThemePreset> ThemePreset::loadSinglePackage(const std::string& packageId) {
+    std::string dirName = packageId;
+    if (dirName.rfind("package:", 0) == 0) {
+        dirName = dirName.substr(8);
+    }
+    static constexpr const char* kDirs[] = {
+        "sdmc:/config/OmniLaunch/themes",
+        "sdmc:/switchu/themes",
+        "sdmc:/slaunch/themes"
+    };
+    for (const char* base : kDirs) {
+        std::string installDir = std::string(base) + "/" + dirName;
+        std::string manifestPath = installDir + "/theme.json";
+        std::error_code ec;
+        if (std::filesystem::exists(manifestPath, ec)) {
+            ThemePreset preset;
+            if (loadThemePresetFromManifest(manifestPath,
+                                            ThemePresetSource::InstalledPackage,
+                                            dirName,
+                                            nxui::ThemeMode::Dark,
+                                            installDir,
+                                            preset)) {
+                return preset;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
 bool ThemePreset::saveUserPresets(const std::vector<ThemePreset>& presets) {
     std::error_code ec;
     std::filesystem::create_directory("sdmc:/config", ec);

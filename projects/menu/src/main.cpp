@@ -71,8 +71,6 @@ namespace {
 // Nao ha custo em tentar: svcSetHeapSize devolve erro e o degrau seguinte entra.
 // Quanto o sistema concede de fato aparece no log como "heap concedido".
 constexpr size_t kHeapLadder[] = {
-    416u * 1024u * 1024u,
-    400u * 1024u * 1024u,
     384u * 1024u * 1024u,
     368u * 1024u * 1024u,
     352u * 1024u * 1024u,
@@ -170,43 +168,61 @@ extern "C" void __appInit(void) {
         rc = fsdevMountSdmc();
     }
 
-    // Seamless migration from legacy SwitchU to OmniLaunch directories
+    // Seamless migration from legacy SwitchU to OmniLaunch directories (once only)
     {
-        auto mergeDir = [](const std::filesystem::path& src, const std::filesystem::path& dst, auto& self) -> void {
-            std::error_code ec;
-            std::filesystem::create_directories(dst, ec);
-            for (const auto& item : std::filesystem::directory_iterator(src, ec)) {
-                const auto target = dst / item.path().filename();
-                if (item.is_directory()) {
-                    self(item.path(), target, self);
-                } else if (!std::filesystem::exists(target, ec)) {
-                    std::filesystem::rename(item.path(), target, ec);
+        static constexpr const char* kMigratedMarker = "sdmc:/config/OmniLaunch/.migrated";
+        std::error_code markerEc;
+        if (!std::filesystem::exists(kMigratedMarker, markerEc)) {
+            auto mergeDir = [](const std::filesystem::path& src, const std::filesystem::path& dst, auto& self) -> void {
+                std::error_code ec;
+                std::filesystem::create_directories(dst, ec);
+                for (const auto& item : std::filesystem::directory_iterator(src, ec)) {
+                    const auto target = dst / item.path().filename();
+                    if (item.is_directory()) {
+                        self(item.path(), target, self);
+                    } else if (!std::filesystem::exists(target, ec)) {
+                        std::filesystem::rename(item.path(), target, ec);
+                    }
+                }
+            };
+
+            std::error_code migEc;
+            if (std::filesystem::exists("sdmc:/config/SwitchU", migEc)) {
+                if (!std::filesystem::exists("sdmc:/config/OmniLaunch", migEc)) {
+                    std::filesystem::rename("sdmc:/config/SwitchU", "sdmc:/config/OmniLaunch", migEc);
+                } else {
+                    mergeDir("sdmc:/config/SwitchU", "sdmc:/config/OmniLaunch", mergeDir);
+                    std::filesystem::remove_all("sdmc:/config/SwitchU", migEc);
                 }
             }
-        };
+            migEc.clear();
+            if (std::filesystem::exists("sdmc:/switch/SwitchU", migEc)) {
+                if (!std::filesystem::exists("sdmc:/switch/OmniLaunch", migEc)) {
+                    std::filesystem::rename("sdmc:/switch/SwitchU", "sdmc:/switch/OmniLaunch", migEc);
+                } else {
+                    mergeDir("sdmc:/switch/SwitchU", "sdmc:/switch/OmniLaunch", mergeDir);
+                    std::filesystem::remove_all("sdmc:/switch/SwitchU", migEc);
+                }
+            }
+            migEc.clear();
+            if (std::filesystem::exists("sdmc:/switch/SwitchU-Manager", migEc)) {
+                if (std::filesystem::exists("sdmc:/switch/OmniLaunch-Manager/OmniLaunch-Manager.nro", migEc)) {
+                    std::filesystem::remove_all("sdmc:/switch/SwitchU-Manager", migEc);
+                }
+            }
 
-        std::error_code migEc;
-        if (std::filesystem::exists("sdmc:/config/SwitchU", migEc)) {
-            if (!std::filesystem::exists("sdmc:/config/OmniLaunch", migEc)) {
-                std::filesystem::rename("sdmc:/config/SwitchU", "sdmc:/config/OmniLaunch", migEc);
-            } else {
-                mergeDir("sdmc:/config/SwitchU", "sdmc:/config/OmniLaunch", mergeDir);
-                std::filesystem::remove_all("sdmc:/config/SwitchU", migEc);
-            }
-        }
-        migEc.clear();
-        if (std::filesystem::exists("sdmc:/switch/SwitchU", migEc)) {
-            if (!std::filesystem::exists("sdmc:/switch/OmniLaunch", migEc)) {
-                std::filesystem::rename("sdmc:/switch/SwitchU", "sdmc:/switch/OmniLaunch", migEc);
-            } else {
-                mergeDir("sdmc:/switch/SwitchU", "sdmc:/switch/OmniLaunch", mergeDir);
-                std::filesystem::remove_all("sdmc:/switch/SwitchU", migEc);
-            }
-        }
-        migEc.clear();
-        if (std::filesystem::exists("sdmc:/switch/SwitchU-Manager", migEc)) {
-            if (std::filesystem::exists("sdmc:/switch/OmniLaunch-Manager/OmniLaunch-Manager.nro", migEc)) {
-                std::filesystem::remove_all("sdmc:/switch/SwitchU-Manager", migEc);
+            // Only mark the migration done when no legacy folder is left. A
+            // partial failure (locked file, full card) must retry next boot
+            // instead of being frozen as "migrated".
+            std::error_code chkEc;
+            const bool legacyLeft =
+                std::filesystem::exists("sdmc:/config/SwitchU", chkEc) ||
+                std::filesystem::exists("sdmc:/switch/SwitchU", chkEc);
+            if (!legacyLeft) {
+                std::error_code dirEc;
+                std::filesystem::create_directories("sdmc:/config/OmniLaunch", dirEc);
+                FILE* fp = std::fopen(kMigratedMarker, "wb");
+                if (fp) std::fclose(fp);
             }
         }
     }

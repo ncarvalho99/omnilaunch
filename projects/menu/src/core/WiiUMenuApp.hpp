@@ -121,6 +121,10 @@ private:
 
     void loadResources();
     void loadStaticTextures();
+    void ensureWaraWaraServices();
+    void ensureXmbTextures();
+    void ensureMetroTextures();
+    void ensureClockFont();
     void setupLockScreen();
     GridLayoutMetrics computeGridLayoutMetrics() const;
     GridLayoutMetrics computeGridLayoutMetrics(int columns, int rows) const;
@@ -664,6 +668,7 @@ private:
     bool                 m_musicFadeActive = false;
 #ifdef SWITCHU_MENU
     uint64_t             m_transitionOriginTick = 0;
+    switchu::smi::MenuTransitionReason m_transitionReason = switchu::smi::MenuTransitionReason::Unknown;
     // Boot-guard safe mode, from the daemon's start status. The overrides are
     // applied to m_config in memory only (see AppConfig::enterSafeMode).
     bool                 m_safeModeRequested = false;
@@ -858,6 +863,9 @@ private:
     bool m_pendingNetConnect          = false;
     int  m_deferredBluetoothInitFrames = 0;
     int  m_deferredInitialAssetFrames = 0;
+    std::string m_deferredVideoWallpaperPath;
+    int  m_deferredVideoWallpaperFrames = 0;
+    bool m_mtpStarted = false;
     bool m_deferredStaticTextures = false;
     int m_deferredProfileFrames = 0;
     struct DeferredProfileList {

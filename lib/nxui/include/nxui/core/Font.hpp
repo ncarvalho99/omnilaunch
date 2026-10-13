@@ -38,6 +38,7 @@ public:
 
     int ptSize() const { return m_ptSize; }
     std::uint64_t revision() const { return m_revision; }
+    bool valid() const { return m_font != nullptr; }
 
 private:
     // Render full string to texture (cache by string)

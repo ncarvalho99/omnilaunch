@@ -649,13 +649,38 @@ static bool rebuildAppCatalog(const char* reason, bool* outChanged = nullptr) {
         g_lastViewFlags[i] = 0;
     }
 
-    const bool ok = writeAppCatalogFile();
-    switchu::FileLog::log("[catalog] rebuilt %d/%d apps reason=%s write=%d",
-                          (int)g_appCatalog.size(), (int)count, reason, ok ? 1 : 0);
+    std::error_code catEc;
+    const bool catExists = std::filesystem::exists(kAppCatalogPath, catEc);
+    // The title-ID list alone misses renamed titles, view-flag flips and
+    // startup-user changes, and never repairs a bad file. Fingerprint what
+    // actually lands in the file. The static starts at 0, so the first rebuild
+    // after every daemon boot always rewrites the catalog.
+    static uint64_t s_lastCatalogHash = 0;
+    uint64_t catHash = 1469598103934665603ULL;
+    auto mix = [&catHash](const void* p, size_t n) {
+        const unsigned char* b = static_cast<const unsigned char*>(p);
+        for (size_t k = 0; k < n; ++k) { catHash ^= b[k]; catHash *= 1099511628211ULL; }
+    };
+    for (const auto& ent : g_appCatalog) {
+        mix(&ent.titleId, sizeof(ent.titleId));
+        mix(ent.name.data(), ent.name.size());
+        mix(&ent.viewFlags, sizeof(ent.viewFlags));
+        mix(&ent.startupUserAccount, sizeof(ent.startupUserAccount));
+        mix(&ent.startupUserAccountOption, sizeof(ent.startupUserAccountOption));
+        const unsigned char known = ent.startupUserKnown ? 1 : 0;
+        mix(&known, 1);
+    }
+    const bool contentChanged = (catHash != s_lastCatalogHash);
+    const bool shouldWrite = (changed || contentChanged || !catExists);
+    const bool ok = shouldWrite ? writeAppCatalogFile() : true;
+    if (ok) s_lastCatalogHash = catHash;
+    switchu::FileLog::log("[catalog] rebuilt %d/%d apps reason=%s write=%d changed=%d",
+                          (int)g_appCatalog.size(), (int)count, reason,
+                          shouldWrite ? (ok ? 1 : 0) : 0, changed ? 1 : 0);
     g_appCatalog.clear();
     g_appCatalog.shrink_to_fit();
     if (outChanged)
-        *outChanged = changed;
+        *outChanged = changed || contentChanged;
     return ok;
 }
 
