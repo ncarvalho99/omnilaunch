@@ -231,36 +231,40 @@ UpdateClient::Snapshot UpdateClient::fetch(const std::string& currentVersion, st
     result.revision = revision;
 
     nlohmann::json feed;
-    bool usingOmniLauncher = false;
+    bool foundRelease = false;
+
+    // 1. Try configured or primary feed (defaulting to ncarvalho99/omnilaunch)
     try {
         feed = nlohmann::json::parse(
-            themeshop::http::getText(kOmniLaunchReleasesUrl, {"Accept: application/vnd.github+json"}));
-        if (feed.contains("tag_name") && feed["tag_name"].is_string()) {
-            usingOmniLauncher = true;
+            themeshop::http::getText(feedUrl(), {"Accept: application/vnd.github+json"}));
+        if (feed.is_object() && feed.contains("tag_name") && feed["tag_name"].is_string()) {
+            foundRelease = true;
         }
     } catch (...) {}
 
-    if (!usingOmniLauncher) {
+    // 2. Fall back to ncarvalho99/omnilauncher during the repository transition period
+    if (!foundRelease) {
         try {
             feed = nlohmann::json::parse(
                 themeshop::http::getText(kOmniLauncherReleasesUrl, {"Accept: application/vnd.github+json"}));
-            if (feed.contains("tag_name") && feed["tag_name"].is_string()) {
-                usingOmniLauncher = true;
+            if (feed.is_object() && feed.contains("tag_name") && feed["tag_name"].is_string()) {
+                foundRelease = true;
             }
-        } catch (...) {
-            // Fall back to SwitchU feed if omnilauncher repository has no releases yet
-        }
-    }
-
-    if (!usingOmniLauncher) {
-        try {
-            feed = nlohmann::json::parse(
-                themeshop::http::getText(feedUrl(), {"Accept: application/vnd.github+json"}));
         } catch (const std::exception& e) {
             result.phase = Phase::Failed;
             result.error = e.what();
             return result;
+        } catch (...) {
+            result.phase = Phase::Failed;
+            result.error = "failed to check release feed";
+            return result;
         }
+    }
+
+    if (!foundRelease) {
+        result.phase = Phase::Failed;
+        result.error = "release feed had no tag";
+        return result;
     }
 
     const auto tag = feed.find("tag_name");

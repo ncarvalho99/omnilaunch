@@ -22,12 +22,10 @@
 namespace switchu::manager {
 namespace {
 
-constexpr const char* kLatestReleaseUrl =
-    "https://api.github.com/repos/ncarvalho99/SwitchU/releases/latest";
-constexpr const char* kOmniLauncherReleaseUrl =
-    "https://api.github.com/repos/ncarvalho99/omnilauncher/releases/latest";
 constexpr const char* kOmniLaunchReleaseUrl =
     "https://api.github.com/repos/ncarvalho99/omnilaunch/releases/latest";
+constexpr const char* kOmniLauncherReleaseUrl =
+    "https://api.github.com/repos/ncarvalho99/omnilauncher/releases/latest";
 constexpr const char* kWorkRoot = "sdmc:/config/OmniLaunch/update";
 constexpr const char* kArchivePath = "sdmc:/config/OmniLaunch/update/OmniLaunch-update.zip";
 constexpr const char* kArchivePartPath = "sdmc:/config/OmniLaunch/update/OmniLaunch-update.zip.part";
@@ -505,30 +503,27 @@ void installFiles(const std::vector<std::string>& files,
 ReleaseInfo ReleaseUpdater::checkLatest() {
     std::lock_guard<std::mutex> lock(g_networkMutex);
     std::string response;
-    bool usingOmni = false;
+    bool foundRelease = false;
     try {
         response = getTextLocked(kOmniLaunchReleaseUrl);
         const auto checkJson = nlohmann::json::parse(response);
         if (checkJson.is_object() && !checkJson.value("draft", true) && !checkJson.value("prerelease", true) && checkJson.contains("tag_name")) {
-            usingOmni = true;
+            foundRelease = true;
         }
     } catch (...) {}
 
-    if (!usingOmni) {
+    if (!foundRelease) {
         try {
             response = getTextLocked(kOmniLauncherReleaseUrl);
             const auto checkJson = nlohmann::json::parse(response);
             if (checkJson.is_object() && !checkJson.value("draft", true) && !checkJson.value("prerelease", true) && checkJson.contains("tag_name")) {
-                usingOmni = true;
+                foundRelease = true;
             }
-        } catch (...) {
-            // Fall back to SwitchU repository
-        }
+        } catch (...) {}
     }
 
-    if (!usingOmni) {
-        response = getTextLocked(kLatestReleaseUrl);
-    }
+    if (!foundRelease)
+        throw std::runtime_error("GitHub did not return a stable release");
     const auto json = nlohmann::json::parse(response);
     if (!json.is_object() || json.value("draft", true) || json.value("prerelease", true))
         throw std::runtime_error("GitHub did not return a stable release");
