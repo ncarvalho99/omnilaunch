@@ -1,17 +1,43 @@
 
+Views & Navigation
+- Game-Case Look in Flow View: The 3D cases now look like physical Nintendo Switch game cases: a red spine on the left edge, a grey right edge, and a red tab with the Nintendo Switch logo in the top-left corner of the cover.
+- Full-Screen Selection Fixed: Pressing Down on the D-pad or on either analog stick in the single-row views no longer makes the selection frame cover the whole screen.
+
 Controls & Interface
-- Sort Shortcut Updated to Minus (-): Changing the game sort order (A-Z, Recent, Favorites, Most Played, Custom Order) on the home grid is now mapped to the Minus button (-) with updated on-screen legends.
-- Folder View Mode Lock: View mode switching remains disabled inside folders to keep the folder experience consistent.
-- SteamGridDB WiFi Trigger: Cover auto-checks trigger reliably upon network connection.
+- Sort on Minus (-), View Switch on R: Changing the game sort order (A-Z, Recent, Favorites, Most Played, Custom Order) is on the Minus button (-), and switching the view mode is on R, with updated on-screen legends.
+- Folders: Empty slots are shown again in every layout, and pressing Down on the header of an open folder focuses its first icon.
+
+Performance & Animations
+- Faster Return to HOME: Coming back to the menu after closing a game or an applet is faster. WaraWara Plaza assets, the large clock font, game metadata reads and user avatars now load on demand or progressively instead of all at startup.
+- Smoother Launch Animation: The zoom and fade shown when opening a game or homebrew is longer and smoother again (about one second).
+- Game Catalog Stays in Sync: The game catalog file is rewritten when a title is renamed or its view settings change, not only when titles are added or removed.
+- Silent Menu Start: The menu no longer plays the system applet start-up sound when it opens.
+
+Updates & Migration
+- Update Feed: The update check reads OmniLaunch releases from ncarvalho99/omnilaunch and falls back to ncarvalho99/omnilauncher. The legacy SwitchU feed is no longer used.
+- Migration Retry: The one-time SwitchU to OmniLaunch folder migration is only marked as done once the legacy folders are gone, so an interrupted migration is retried on the next boot.
 
 Feedback & Bug Reports
 - Contact Developer: Report issues and send crash logs on Telegram at https://t.me/ncarvalho99.
 --pt-BR--
 
+Visualizações e Navegação
+- Visual de Caixa de Jogo no Modo Flow: As capas 3D agora parecem caixas físicas de jogos do Nintendo Switch: lombada vermelha na borda esquerda, lateral direita cinza e uma aba vermelha com o logotipo Nintendo Switch no canto superior esquerdo da capa.
+- Seleção em Tela Cheia Corrigida: Pressionar para baixo no direcional ou em qualquer analógico nas visualizações de linha única não faz mais a moldura de seleção cobrir a tela inteira.
+
 Controles e Interface
-- Atalho de Ordenação Atualizado para Menos (-): A alteração da ordem dos jogos (A-Z, Recentes, Favoritos, Mais Jogados, Minha Ordem) na grade principal agora é acionada pelo botão Menos (-) com legendas atualizadas na tela.
-- Bloqueio de Modo de Visualização em Pastas: A troca de modo de visualização permanece desativada dentro de pastas.
-- Verificação do SteamGridDB via Wi-Fi: Verificação automática de capas ocorre assim que a conexão de rede é estabelecida.
+- Ordenação no Menos (-), Troca de Visualização no R: A alteração da ordem dos jogos (A-Z, Recentes, Favoritos, Mais Jogados, Minha Ordem) fica no botão Menos (-), e a troca do modo de visualização fica no R, com legendas atualizadas na tela.
+- Pastas: Os slots vazios voltam a aparecer em todos os layouts, e pressionar para baixo no cabeçalho de uma pasta aberta foca o primeiro ícone.
+
+Desempenho e Animações
+- Retorno ao HOME Mais Rápido: Voltar ao menu depois de fechar um jogo ou applet ficou mais rápido. Os recursos da Praça WaraWara, a fonte grande do relógio, a leitura de metadados dos jogos e os avatares dos usuários agora carregam sob demanda ou de forma progressiva, e não todos na inicialização.
+- Animação de Abertura Mais Suave: O zoom e o esmaecimento exibidos ao abrir um jogo ou homebrew voltaram a ser mais longos e suaves (cerca de um segundo).
+- Catálogo de Jogos Sempre Atualizado: O arquivo de catálogo de jogos é reescrito quando um título é renomeado ou suas configurações de visualização mudam, e não apenas quando títulos são adicionados ou removidos.
+- Menu Sem Som de Inicialização: O menu não toca mais o som de inicialização de applet do sistema ao abrir.
+
+Atualizações e Migração
+- Fonte de Atualização: A verificação de atualização lê as versões do OmniLaunch em ncarvalho99/omnilaunch e usa ncarvalho99/omnilauncher como alternativa. O feed antigo do SwitchU não é mais usado.
+- Migração com Nova Tentativa: A migração única das pastas do SwitchU para o OmniLaunch só é marcada como concluída quando as pastas antigas não existem mais, então uma migração interrompida é refeita na próxima inicialização.
 
 Relato de Bugs e Suporte
 - Contato com o Desenvolvedor: Envie logs e relate bugs diretamente no Telegram em https://t.me/ncarvalho99.
