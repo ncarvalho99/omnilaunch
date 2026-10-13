@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <ctime>
+#include <filesystem>
 #ifdef __SWITCH__
 #include <switch.h>
 #endif
@@ -55,28 +56,36 @@ std::string resolveFlowCoverPath(std::uint64_t titleId) {
     std::string found;
 
     for (const char* ext : exts) {
-        // 1. SwitchU covers root (SteamGridDB 600x900 covers or manual drops)
+        // 1. OmniLaunch config covers root (SteamGridDB 600x900 covers or manual drops)
         std::string p1 = std::string("sdmc:/config/OmniLaunch/covers/") + hexUpper + ext;
-        if (stat(p1.c_str(), &st) == 0 && S_ISREG(st.st_mode)) { found = std::move(p1); break; }
+        std::error_code ec;
+        if (std::filesystem::is_regular_file(p1, ec) || (stat(p1.c_str(), &st) == 0 && S_ISREG(st.st_mode))) { found = std::move(p1); break; }
         p1 = std::string("sdmc:/config/OmniLaunch/covers/") + hexLower + ext;
-        if (stat(p1.c_str(), &st) == 0 && S_ISREG(st.st_mode)) { found = std::move(p1); break; }
+        if (std::filesystem::is_regular_file(p1, ec) || (stat(p1.c_str(), &st) == 0 && S_ISREG(st.st_mode))) { found = std::move(p1); break; }
 
-        // 2. SwitchU game_art cover slot (custom covers applied from Dossier/Gallery)
-        std::string p2 = std::string("sdmc:/config/OmniLaunch/game_art/") + hexUpper + "/cover" + ext;
-        if (stat(p2.c_str(), &st) == 0 && S_ISREG(st.st_mode)) { found = std::move(p2); break; }
-        p2 = std::string("sdmc:/config/OmniLaunch/game_art/") + hexLower + "/cover" + ext;
-        if (stat(p2.c_str(), &st) == 0 && S_ISREG(st.st_mode)) { found = std::move(p2); break; }
+        // 2. OmniLaunch app covers root
+        std::string p2 = std::string("sdmc:/switch/OmniLaunch/covers/") + hexUpper + ext;
+        if (std::filesystem::is_regular_file(p2, ec) || (stat(p2.c_str(), &st) == 0 && S_ISREG(st.st_mode))) { found = std::move(p2); break; }
+        p2 = std::string("sdmc:/switch/OmniLaunch/covers/") + hexLower + ext;
+        if (std::filesystem::is_regular_file(p2, ec) || (stat(p2.c_str(), &st) == 0 && S_ISREG(st.st_mode))) { found = std::move(p2); break; }
 
-        // 3. sLaunch covers root (shared SD cover art)
-        std::string p3 = std::string("sdmc:/slaunch/covers/") + hexUpper + ext;
-        if (stat(p3.c_str(), &st) == 0 && S_ISREG(st.st_mode)) { found = std::move(p3); break; }
-        p3 = std::string("sdmc:/slaunch/covers/") + hexLower + ext;
-        if (stat(p3.c_str(), &st) == 0 && S_ISREG(st.st_mode)) { found = std::move(p3); break; }
+        // 3. SwitchU game_art cover slot (custom covers applied from Dossier/Gallery)
+        std::string p3 = std::string("sdmc:/config/OmniLaunch/game_art/") + hexUpper + "/cover" + ext;
+        if (std::filesystem::is_regular_file(p3, ec) || (stat(p3.c_str(), &st) == 0 && S_ISREG(st.st_mode))) { found = std::move(p3); break; }
+        p3 = std::string("sdmc:/config/OmniLaunch/game_art/") + hexLower + "/cover" + ext;
+        if (std::filesystem::is_regular_file(p3, ec) || (stat(p3.c_str(), &st) == 0 && S_ISREG(st.st_mode))) { found = std::move(p3); break; }
+
+        // 4. sLaunch covers root (shared SD cover art)
+        std::string p4 = std::string("sdmc:/slaunch/covers/") + hexUpper + ext;
+        if (std::filesystem::is_regular_file(p4, ec) || (stat(p4.c_str(), &st) == 0 && S_ISREG(st.st_mode))) { found = std::move(p4); break; }
+        p4 = std::string("sdmc:/slaunch/covers/") + hexLower + ext;
+        if (std::filesystem::is_regular_file(p4, ec) || (stat(p4.c_str(), &st) == 0 && S_ISREG(st.st_mode))) { found = std::move(p4); break; }
     }
 
     if (!found.empty()) {
         std::lock_guard<std::mutex> lock(s_coverPathMutex);
         s_coverPathCache[titleId] = found;
+        DebugLog::log("[cover] resolved title=%016llX -> %s", static_cast<unsigned long long>(titleId), found.c_str());
     }
     return found;
 }
@@ -135,6 +144,47 @@ float flowMidZ(const nxui::Vec3 q[4]) {
 }
 
 } // namespace
+
+// Point on a flow face: u runs TL->TR, v runs top->bottom, both 0..1. Used to
+// print the Switch-case tab as sub-quads of the real 3D front face, so it gets
+// the same perspective and subdivision as the artwork underneath it.
+static nxui::Vec3 flowFacePoint(const nxui::Vec3 q[4], float u, float v) {
+    auto lerp = [](const nxui::Vec3& a, const nxui::Vec3& b, float t) {
+        return nxui::Vec3{a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t};
+    };
+    return lerp(lerp(q[0], q[1], u), lerp(q[3], q[2], u), v);
+}
+
+// Red "Nintendo Switch" tab in the top-left corner of a game case, with a
+// drawn Joy-Con mark. Built from flat quads only: no imported artwork.
+static void drawFlowSwitchTab(nxui::Renderer& ren, const nxui::Vec3 face[4],
+                              const nxui::Texture* logo, float lit, float alpha) {
+    const nxui::Color red  {0.80f * lit, 0.03f * lit, 0.08f * lit, alpha};
+    const nxui::Color white{lit, lit, lit, alpha};
+    auto rect = [&](float u0, float v0, float u1, float v1, const nxui::Color& c) {
+        nxui::Vec3 q[4] = {
+            flowFacePoint(face, u0, v0), flowFacePoint(face, u1, v0),
+            flowFacePoint(face, u1, v1), flowFacePoint(face, u0, v1),
+        };
+        ren.drawQuad3D(nullptr, q, c, 1.f, 1.f, false, 1);
+    };
+    // sLaunch tab: ~0.22 x 0.13 of the face, flush with its top-left corner.
+    // Logo is a Switch mark (left Joy-Con hollow with a stick, right Joy-Con
+    // solid with a button) over a thin "NINTENDO SWITCH" caption line.
+    // Geometry measured from an sLaunch 1.5.2 screenshot: the tab is 0.227 of
+    // the face width by 0.131 of its height, flush with the top-left corner.
+    // The logo (emblem over the NINTENDO SWITCH wordmark, 96x102 PNG) covers
+    // 0.135 x 0.097 of the face, which is ~35x37 px on the centre card, so the
+    // PNG's 0.94 aspect is kept and the logo is not stretched.
+    rect(0.000f, 0.000f, 0.227f, 0.131f, red);
+    if (logo && logo->valid()) {
+        nxui::Vec3 q[4] = {
+            flowFacePoint(face, 0.0538f, 0.0157f), flowFacePoint(face, 0.1884f, 0.0157f),
+            flowFacePoint(face, 0.1884f, 0.1131f), flowFacePoint(face, 0.0538f, 0.1131f),
+        };
+        ren.drawQuad3D(logo, q, white, 1.f, 1.f, false, 4);
+    }
+}
 
 void IconGrid::flowPlace(float p, float& x, float& z, float& angle) {
     const float t = std::clamp(p, -1.f, 1.f);
@@ -207,6 +257,10 @@ void IconGrid::preloadFlowCoversAround(int centerIdx) {
                     if (!coverPath.empty()) {
                         decodeState->decoded = nxui::Texture::decodeFile(coverPath, 720);
                         decodeState->failed = !decodeState->decoded.valid();
+                        DebugLog::log("[cover] decoded title=%016llX: ok=%d (%dx%d)",
+                                      static_cast<unsigned long long>(tid),
+                                      !decodeState->failed.load(),
+                                      decodeState->decoded.width, decodeState->decoded.height);
                     } else {
                         decodeState->failed = true;
                     }
@@ -1212,8 +1266,8 @@ nxui::Rect IconGrid::projected3DIconRect(int index) const {
                 hasCover = true;
             }
         }
-        const float halfW = hasCover ? 0.44f : 0.5625f;
-        const float halfH = hasCover ? 0.66f : 0.5625f;
+        const float halfW = 0.44f;
+        const float halfH = 0.66f;
         coverCorners(x, y, z, halfW, halfH, quad);
     } else {
         return dynamicIconRect(index);
@@ -1842,10 +1896,14 @@ void IconGrid::renderFlow(nxui::Renderer& ren) {
         const nxui::Color artTint {lit, lit, lit, alpha};
         const nxui::Color blankCol{blankLit, blankLit, blankLit, alpha};
         const nxui::Color sideCol {sideLit, sideLit, sideLit, alpha};
-        const nxui::Color backCol {sideLit * 0.9f, sideLit * 0.9f, sideLit * 0.9f, alpha};
+        // In sLaunch only the spine (left edge of the case) is red; the right
+        // edge is grey plastic. Cases left of centre show the grey edge, cases
+        // right of centre show the red spine.
+        const nxui::Color spineCol{std::min(1.f, sideLit * 1.7f), sideLit * 0.08f, sideLit * 0.14f, alpha};
+        const nxui::Color backCol {std::min(1.f, sideLit * 1.35f), sideLit * 0.07f, sideLit * 0.12f, alpha};
 
         // Query 2:3 portrait cover art cache. If available, the cover spans the
-        // full front face. If absent or loading, 1:1 square icon is inset.
+        // full front face. If absent, icon art stretches across the front face.
         const std::uint64_t tid = icon->titleId();
         nxui::Texture* coverTex = nullptr;
         if (tid != 0) {
@@ -1861,6 +1919,10 @@ void IconGrid::renderFlow(nxui::Renderer& ren) {
                             if (!coverPath.empty()) {
                                 decodeState->decoded = nxui::Texture::decodeFile(coverPath, 720);
                                 decodeState->failed = !decodeState->decoded.valid();
+                                DebugLog::log("[cover] decoded title=%016llX: ok=%d (%dx%d)",
+                                              static_cast<unsigned long long>(tid),
+                                              !decodeState->failed.load(),
+                                              decodeState->decoded.width, decodeState->decoded.height);
                             } else {
                                 decodeState->failed = true;
                             }
@@ -1880,15 +1942,6 @@ void IconGrid::renderFlow(nxui::Renderer& ren) {
                 coverTex = &cov.texture;
             }
         }
-
-        // 1:1 square icon inset centered on the front and back faces, keeping exact square
-        // aspect ratio without vertical distortion.
-        const float iconHalf = halfW * 0.82f;
-        nxui::Vec3 iconQuad[4];
-        flowFace(fx, fz, fang, -iconHalf, 0.001f, iconHalf, 0.001f, iconHalf, iconQuad);
-
-        nxui::Vec3 iconBack[4];
-        flowFace(fx, fz, fang, iconHalf, 2.f * depth - 0.001f, -iconHalf, 2.f * depth - 0.001f, iconHalf, iconBack);
 
         // The four faces are sorted by their actual depth rather than by rules
         // read off the angle. The cases sit well off to either side, so
@@ -1921,10 +1974,10 @@ void IconGrid::renderFlow(nxui::Renderer& ren) {
                         if (coverTex) {
                             ren.drawQuad3D(coverTex, front, artTint, 1.f, 1.f, false, kFlowStripsFront);
                         } else if (isFolder) {
-                            drawFolderQuad3D(ren, iconQuad, icon->folderPreview(), icon->folderPreviewCount(),
+                            drawFolderQuad3D(ren, front, icon->folderPreview(), icon->folderPreviewCount(),
                                              icon->folderColorIndex(), artTint, 1.f, 1.f, false, kFlowStripsFront);
                         } else if (art && art->valid()) {
-                            ren.drawQuad3D(art, iconQuad, artTint, 1.f, 1.f, false, kFlowStripsFront);
+                            ren.drawQuad3D(art, front, artTint, 1.f, 1.f, false, kFlowStripsFront);
                         }
                     }
                     break;
@@ -1934,16 +1987,31 @@ void IconGrid::renderFlow(nxui::Renderer& ren) {
                         if (coverTex) {
                             ren.drawQuad3D(coverTex, back, artTint, 1.f, 1.f, false, kFlowStripsFront);
                         } else if (isFolder) {
-                            drawFolderQuad3D(ren, iconBack, icon->folderPreview(), icon->folderPreviewCount(),
+                            drawFolderQuad3D(ren, back, icon->folderPreview(), icon->folderPreviewCount(),
                                              icon->folderColorIndex(), artTint, 1.f, 1.f, false, kFlowStripsFront);
                         } else if (art && art->valid()) {
-                            ren.drawQuad3D(art, iconBack, artTint, 1.f, 1.f, false, kFlowStripsFront);
+                            ren.drawQuad3D(art, back, artTint, 1.f, 1.f, false, kFlowStripsFront);
                         }
                     }
                     break;
-                case 2: ren.drawQuad3D(nullptr, faceL, sideCol, 1.f, 1.f, false, kFlowStripsSide); break;
+                case 2: ren.drawQuad3D(nullptr, faceL, spineCol, 1.f, 1.f, false, kFlowStripsSide); break;
                 case 3: ren.drawQuad3D(nullptr, faceR, sideCol, 1.f, 1.f, false, kFlowStripsSide); break;
             }
+        }
+
+        // Switch case tab, printed over the cover on the front face only.
+        if (showingFront) {
+            if (!m_flowLogoTried) {
+                m_flowLogoTried = true;
+#ifdef SWITCHU_HOMEBREW
+                const char* logoPath = "romfs:/icons/switch_logo_white.png";
+#else
+                const char* logoPath = "sdmc:/switch/OmniLaunch/icons/switch_logo_white.png";
+#endif
+                if (!m_flowLogoTex.loadFromFile(ren.gpu(), ren, logoPath, 128))
+                    DebugLog::log("[flow] case logo not loaded: %s", logoPath);
+            }
+            drawFlowSwitchTab(ren, front, m_flowLogoTex.valid() ? &m_flowLogoTex : nullptr, lit, alpha);
         }
 
         // Reflection. Mirrored about the case's OWN bottom edge rather than a
@@ -1970,34 +2038,28 @@ void IconGrid::renderFlow(nxui::Renderer& ren) {
                                    : f.which == 1 ? back
                                    : f.which == 2 ? faceL : faceR;
             const nxui::Color col = f.which == 0 ? blankCol
-                                   : f.which == 1 ? backCol : sideCol;
+                                   : f.which == 1 ? backCol
+                                   : f.which == 2 ? spineCol : sideCol;
             mirror(src, m);
             ren.drawQuad3D(nullptr, m, col, reflTop, 0.f, true, kFlowStripsRefl);
+
             if (f.which == 0 && showingFront) {
                 if (coverTex) {
                     ren.drawQuad3D(coverTex, m, artTint, reflTop, 0.f, true, kFlowStripsRefl);
                 } else if (isFolder) {
-                    nxui::Vec3 mIcon[4];
-                    mirror(iconQuad, mIcon);
-                    drawFolderQuad3D(ren, mIcon, icon->folderPreview(), icon->folderPreviewCount(),
+                    drawFolderQuad3D(ren, m, icon->folderPreview(), icon->folderPreviewCount(),
                                      icon->folderColorIndex(), artTint, reflTop, 0.f, true, kFlowStripsRefl);
                 } else if (art && art->valid()) {
-                    nxui::Vec3 mIcon[4];
-                    mirror(iconQuad, mIcon);
-                    ren.drawQuad3D(art, mIcon, artTint, reflTop, 0.f, true, kFlowStripsRefl);
+                    ren.drawQuad3D(art, m, artTint, reflTop, 0.f, true, kFlowStripsRefl);
                 }
             } else if (f.which == 1 && showingBack) {
                 if (coverTex) {
                     ren.drawQuad3D(coverTex, m, artTint, reflTop, 0.f, true, kFlowStripsRefl);
                 } else if (isFolder) {
-                    nxui::Vec3 mIcon[4];
-                    mirror(iconBack, mIcon);
-                    drawFolderQuad3D(ren, mIcon, icon->folderPreview(), icon->folderPreviewCount(),
+                    drawFolderQuad3D(ren, m, icon->folderPreview(), icon->folderPreviewCount(),
                                      icon->folderColorIndex(), artTint, reflTop, 0.f, true, kFlowStripsRefl);
                 } else if (art && art->valid()) {
-                    nxui::Vec3 mIcon[4];
-                    mirror(iconBack, mIcon);
-                    ren.drawQuad3D(art, mIcon, artTint, reflTop, 0.f, true, kFlowStripsRefl);
+                    ren.drawQuad3D(art, m, artTint, reflTop, 0.f, true, kFlowStripsRefl);
                 }
             }
         }
@@ -2455,20 +2517,10 @@ void IconGrid::renderDeck(nxui::Renderer& ren) {
             // Full 2:3 vertical cover art
             ren.drawQuad3D(coverTex, quad, artTint);
         } else if (isFolder) {
-            const float iconHalf = halfW * 0.78f;
-            nxui::Vec3 iconQuad[4];
-            deckCorners(x, y + 0.06f, z - 0.004f, ang, iconHalf, iconHalf, iconQuad);
-            drawFolderQuad3D(ren, iconQuad, icon->folderPreview(), icon->folderPreviewCount(),
+            drawFolderQuad3D(ren, quad, icon->folderPreview(), icon->folderPreviewCount(),
                              icon->folderColorIndex(), artTint, 1.f, 1.f, false, 8);
-        } else {
-            // 1:1 square icon cleanly inset inside 2:3 card frame without vertical distortion
-            const float iconHalf = halfW * 0.78f;
-            nxui::Vec3 iconQuad[4];
-            // Positioned neatly in upper-center of the card
-            deckCorners(x, y + 0.06f, z - 0.004f, ang, iconHalf, iconHalf, iconQuad);
-            if (icon->texture()) {
-                ren.drawQuad3D(icon->texture(), iconQuad, artTint);
-            }
+        } else if (icon->texture()) {
+            ren.drawQuad3D(icon->texture(), quad, artTint);
         }
     }
 
@@ -2521,8 +2573,8 @@ int IconGrid::hitTestCover(float screenX, float screenY) const {
                 hasCover = true;
             }
         }
-        const float halfW = hasCover ? 0.44f : 0.5625f;
-        const float halfH = hasCover ? 0.66f : 0.5625f;
+        const float halfW = 0.44f;
+        const float halfH = 0.66f;
 
         nxui::Vec3 quad[4];
         coverCorners(x, y, z, halfW, halfH, quad);
@@ -2657,8 +2709,8 @@ void IconGrid::renderCover(nxui::Renderer& ren) {
             }
         }
 
-        const float halfW = hasCover ? 0.44f : 0.5625f;
-        const float halfH = hasCover ? 0.66f : 0.5625f;
+        const float halfW = 0.44f;
+        const float halfH = 0.66f;
 
         nxui::Vec3 quad[4];
         coverCorners(x, y, z, halfW, halfH, quad);

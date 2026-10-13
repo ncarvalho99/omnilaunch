@@ -377,6 +377,12 @@ private:
         bool loading = false;
     };
     std::unordered_map<std::uint64_t, FlowCoverEntry> m_flowCovers;
+
+    // White Nintendo Switch logo printed on the case tab in Flow view
+    // (icons/switch_logo_white.png). Loaded once, lazily; absent file means the
+    // tab is drawn as plain red.
+    nxui::Texture m_flowLogoTex;
+    bool m_flowLogoTried = false;
     nxui::ThreadPool* m_threadPool = nullptr;
     struct CoverDecodeState {
         nxui::DecodedImage decoded;

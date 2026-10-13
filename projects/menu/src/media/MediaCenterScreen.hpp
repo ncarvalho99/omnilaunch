@@ -25,6 +25,12 @@ public:
     void hide();
     bool isActive() const { return m_active; }
 
+    // This widget covers the whole 1280x720 surface and lives in the overlay
+    // layer for the app's whole life. While closed it must not take part in
+    // focus search: a spatial DOWN from a carousel card would land on it and the
+    // global selection ring would then frame the entire screen.
+    bool isFocusable() const override { return m_active && nxui::GlassWidget::isFocusable(); }
+
     void setPlaybackState(bool playing, bool paused, bool shuffle,
                           int currentTrackIndex, const std::string& currentTitle,
                           const std::vector<TrackInfo>& tracks,
