@@ -1,4 +1,5 @@
 #include "AudioManager.hpp"
+#include "core/DebugLog.hpp"
 #include <SDL2/SDL.h>
 #include <algorithm>
 #include <cstdio>
@@ -117,6 +118,7 @@ void AudioManager::playCurrentTrackLocked() {
     const auto& track = m_tracks[m_current];
     m_activeMusic = Mix_LoadMUS(track.path.c_str());
     if (!m_activeMusic) {
+        DebugLog::log("[audio] Failed to load %s: %s", track.path.c_str(), Mix_GetError());
         std::fprintf(stderr, "[Audio] Failed to load %s: %s\n", track.path.c_str(), Mix_GetError());
         m_playing.store(false);
         return;
@@ -126,9 +128,14 @@ void AudioManager::playCurrentTrackLocked() {
     Mix_HookMusicFinished(onTrackFinished);
     applyMusicVolume();
 
+    const int loops = (m_tracks.size() == 1) ? -1 : 1;
+    DebugLog::log("[audio] playing track %d/%zu: '%s' (loops=%d vol=%d)",
+                  m_current, m_tracks.size(), track.path.c_str(), loops,
+                  (int)(m_volume * m_musicFade * MIX_MAX_VOLUME));
+
     // 250ms fade-in for smooth acoustic transition
-    if (Mix_FadeInMusic(m_activeMusic, 1, 250) < 0) {
-        Mix_PlayMusic(m_activeMusic, 1);
+    if (Mix_FadeInMusic(m_activeMusic, loops, 250) < 0) {
+        Mix_PlayMusic(m_activeMusic, loops);
     }
     m_playing.store(true);
     m_paused.store(false);

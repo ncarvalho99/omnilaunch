@@ -7862,6 +7862,10 @@ void WiiUMenuApp::onUpdate(float dt) {
         if (m_config.musicEnabled && !m_lockScreen.isLocked()) m_audio.play();
         m_loadedSoundPreset = resolveSoundPresetId(m_config.soundPreset);
         m_audioStarted = true;
+        if (m_presetChangePending) {
+            m_pendingSoundPreset.clear();
+            m_presetChangePending = false;
+        }
         DebugLog::log("[init] Audio ready (deferred)");
     }
 
