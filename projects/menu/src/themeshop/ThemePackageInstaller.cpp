@@ -934,12 +934,30 @@ ThemePackageInstaller::Result ThemePackageInstaller::run(const std::string& cata
             manifest["theme"]["background"]["opacity"] = 0.0;
             manifest["theme"]["background"]["imageOpacity"] = 1.0;
             manifest["theme"]["audio"]["preset"] = "wiiu";
+            if (!entry.music.empty()) {
+                manifest["theme"]["audio"]["music"] = entry.music;
+            }
 
             std::ofstream mOut(stagingPath + "/theme.json");
             mOut << manifest.dump(2);
             mOut.close();
             if (!mOut)
                 failInstall("cannot write theme.json");
+
+            if (!entry.music.empty()) {
+                ensureDirectoryRecursive(stagingPath + "/media/music");
+                for (const auto& mRel : entry.music) {
+                    try {
+                        const std::string mDest = stagingPath + "/" + trimSlashes(mRel);
+                        ensureDirectoryRecursive(parentDirectory(mDest));
+                        const std::string mUrl = joinUrl(catalogUrl, "themes/" + entry.id + "/" + trimSlashes(mRel));
+                        themeshop::http::getToFile(mUrl, mDest);
+                        DebugLog::log("[themeshop] fetched video theme audio: %s", mUrl.c_str());
+                    } catch (const std::exception& e) {
+                        DebugLog::log("[themeshop] optional audio fetch failed: %s", e.what());
+                    }
+                }
+            }
 
             if (!entry.cover.empty()) {
                 ensureDirectoryRecursive(stagingPath + "/media/screenshots");

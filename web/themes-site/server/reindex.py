@@ -32,6 +32,9 @@ VECTEEZY_MAP = {
     'miles-morales-falling-upside-down-spiderman-into-the-spidervers': 'miles-morales-falling-upside-down-spiderman-into-the-spiderverse-moewalls-com.mp4',
 }
 
+# Themes pinned to appear first in the catalog for OmniLaunch
+FEATURED_THEMES = ['belisarius', 'gethsemane', 'golgotha', 'the-innocent']
+
 # Console playback limits. Mirror VideoPlayer.cpp wallpaperStreamRejection():
 # H.264, 8-bit 4:2:0, at most 1920x1080 and 60 fps. A file outside them is
 # refused by the menu at apply time (or, for VP9, used to abort deko3d at boot),
@@ -243,6 +246,8 @@ def main():
                 entry['thumbFps'] = round(20.0 / window, 2) if window > 0.2 else 8.0
             cover = pick_cover(manifest, theme_dir, rel_dir)
             if cover: entry['cover'] = cover
+            music = (manifest.get('theme', {}).get('audio', {}) or {}).get('music') or []
+            if music: entry['music'] = music
 
             # Standard entry (used for index.json for SwitchU 2.6.5)
             if not os.path.isfile(os.path.join(theme_dir, '.omnilaunch-only')):
@@ -264,6 +269,21 @@ def main():
                 extra['packageVideoBytes'] = entry['packageVideoBytes']
                 extra['installedVideoBytes'] = entry['installedVideoBytes']
             review.append(extra)
+
+    def sort_featured(item_list):
+        featured = []
+        others = []
+        by_id = {x.get('id'): x for x in item_list}
+        for fid in FEATURED_THEMES:
+            if fid in by_id:
+                featured.append(by_id[fid])
+        for x in item_list:
+            if x.get('id') not in FEATURED_THEMES:
+                others.append(x)
+        return featured + others
+
+    omni_entries = sort_featured(omni_entries)
+    review = sort_featured(review)
 
     for filename, payload in [
         ('index.json', {'schemaVersion': 1, 'themes': entries}),

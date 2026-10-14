@@ -411,7 +411,9 @@ ThemeCatalogClient::Snapshot ThemeCatalogClient::loadCatalog(const std::string& 
         if (entry.thumbCols < 1 || entry.thumbRows < 1)
             entry.thumbSheet.clear();
         readStringArrayOpt(item, "screenshots", entry.screenshots);
+        readStringArrayOpt(item, "music", entry.music);
         entry.catalogUrl = url;
+        entry.catalogOrder = snapshot.entries.size();
 
         std::string screenshot;
         readStringOpt(item, "screenshot", screenshot);
@@ -466,11 +468,15 @@ ThemeCatalogClient::Snapshot ThemeCatalogClient::loadCatalog(const std::string& 
         snapshot.entries.push_back(std::move(entry));
     }
 
-    std::sort(snapshot.entries.begin(), snapshot.entries.end(), [](const Entry& lhs, const Entry& rhs) {
-        if (lhs.name != rhs.name)
-            return lhs.name < rhs.name;
-        return lhs.id < rhs.id;
-    });
+    // For the official OmniLaunch catalog (kDefaultCatalogUrl), preserve the server-provided
+    // curation order (featured themes at top). For other catalogs, sort alphabetically.
+    if (url != kDefaultCatalogUrl) {
+        std::sort(snapshot.entries.begin(), snapshot.entries.end(), [](const Entry& lhs, const Entry& rhs) {
+            if (lhs.name != rhs.name)
+                return lhs.name < rhs.name;
+            return lhs.id < rhs.id;
+        });
+    }
 
     if (snapshot.entries.empty())
         snapshot.loading.succeed("Catalog is empty.");

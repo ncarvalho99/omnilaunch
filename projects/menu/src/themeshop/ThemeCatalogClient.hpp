@@ -43,6 +43,8 @@ public:
         int thumbRows = 0;
         float thumbFps = 10.f;
         std::vector<std::string> screenshots;
+        std::vector<std::string> music;
+        std::size_t catalogOrder = 0;
         // Which index this came from. Entries carry relative paths, so once two
         // catalogues are merged the resolving base can no longer be a single
         // property of the client.
