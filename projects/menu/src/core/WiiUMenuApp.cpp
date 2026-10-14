@@ -584,6 +584,7 @@ bool WiiUMenuApp::onCreate() {
     switchu::menu::smi_cmd::menuReady(ready);
 
     app().setFirstFrameCallback([this](uint64_t firstInputTick, uint64_t firstFrameTick) {
+        m_fastReturnRequested = false;
         switchu::smi::MenuFirstFrameArgs first{};
         first.transition_origin_tick = m_transitionOriginTick;
         first.first_input_tick = firstInputTick;
@@ -2771,11 +2772,16 @@ void WiiUMenuApp::updateGridXmbContext() {
     };
     ctx.onOpenThemeShop = [this]() {
         m_audio.playSfx(Sfx::ModalShow);
+        m_fastReturnRequested = false;
         createThemeShop();
         if (m_themeShop) {
             m_themeShopReturnFocus = focusManager().current();
             m_navigator.navigate(switchu::navigation::Route::ThemeShop);
             if (m_settings && m_settings->isActive()) m_settings->hide();
+            m_themeShop->beginStateRefreshBatch();
+            publishUpdateState();
+            refreshThemeShopState();
+            m_themeShop->endStateRefreshBatch();
             m_themeShop->setLayoutModeState(m_appLayoutMode);
             m_themeShop->show();
             focusManager().setFocus(m_themeShop.get());
@@ -6081,6 +6087,7 @@ void WiiUMenuApp::buildGrid() {
     m_showPowerDialog = sidebarActions.onSleep;
     sidebarActions.onMiiverse = [this]() {
         m_audio.playSfx(Sfx::ModalShow);
+        m_fastReturnRequested = false;
         createThemeShop();
         if (!m_themeShop) return;
         m_themeShopReturnFocus = m_sidebar.themeShopButton();
@@ -9470,6 +9477,7 @@ void WiiUMenuApp::onRender(nxui::Renderer& ren) {
             1'000'000ULL);
         DebugLog::log("[first-frame] fast HOME return rendered in %lums", elapsedMs);
         m_fastReturnStartupTick = 0;
+        m_fastReturnRequested = false;
     }
     if (m_returnFadeTimer > 0.f) {
         float alpha = m_returnFadeTimer / kReturnFadeInDur;

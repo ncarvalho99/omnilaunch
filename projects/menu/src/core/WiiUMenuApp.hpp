@@ -450,7 +450,7 @@ private:
     void toggleMediaCenter();
     void syncMediaCenterState();
     void refreshPlazaCommunities();
-    void reloadThemePresets();
+    void reloadThemePresets(bool forceFullScan = false);
     void refreshThemeShopState();
     std::vector<ThemeShopScreen::ThemeShopEntry> buildThemeShopEntries();
     void startThemePackageTransfer(const ThemeCatalogClient::Entry& entry, bool installMode);

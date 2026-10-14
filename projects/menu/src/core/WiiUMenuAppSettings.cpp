@@ -1904,7 +1904,7 @@ void WiiUMenuApp::createGameDetails() {
     });
 }
 
-void WiiUMenuApp::reloadThemePresets() {
+void WiiUMenuApp::reloadThemePresets(bool forceFullScan) {
     m_allPresets = ThemePreset::builtInPresets();
     if (m_config.safeMode()) {
         // Boot-guard safe mode: only the two shipped defaults. A user or package
@@ -1917,7 +1917,8 @@ void WiiUMenuApp::reloadThemePresets() {
         return;
     }
 
-    if (m_fastReturnRequested) {
+    const bool inThemeShop = (m_themeShop && m_themeShop->isActive());
+    if (m_fastReturnRequested && !forceFullScan && !inThemeShop) {
         const bool isBuiltIn = (m_config.themePreset == "Default Dark" ||
                                 m_config.themePreset == "Default Light" ||
                                 m_config.themePreset.rfind("builtin:", 0) == 0);
@@ -2099,7 +2100,7 @@ void WiiUMenuApp::syncThemePackageTransfer() {
                       installMode ? 1 : 0,
                       safeLogPath(destinationPath));
 
-        reloadThemePresets();
+        reloadThemePresets(true);
         DebugLog::log("[theme-apply] presets reloaded after transfer: count=%zu", m_allPresets.size());
 
         auto& i18n = nxui::I18n::instance();
@@ -2186,7 +2187,7 @@ std::vector<ThemeShopScreen::ThemeShopEntry> WiiUMenuApp::buildThemeShopEntries(
 void WiiUMenuApp::refreshThemeShopState() {
     if (!m_themeShop) return;
 
-    reloadThemePresets();
+    reloadThemePresets(true);
 
     ThemePreset* activePreset = findPresetPtr(m_activePresetName);
     std::string activeId = activePreset ? (activePreset->id.empty() ? activePreset->name : activePreset->id)

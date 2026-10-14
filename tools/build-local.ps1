@@ -187,14 +187,19 @@ if (& $docker ps -q --filter "ancestor=$buildImage") {
     throw 'Ja existe um build SwitchU rodando. Espere ele terminar antes de iniciar outro.'
 }
 
-if ([string]::IsNullOrWhiteSpace($env:SWITCHU_CLIENT_KEY)) {
-    $clientKeyFile = Join-Path $env:USERPROFILE '.switchu\client-key'
-    if (Test-Path $clientKeyFile) {
-        $env:SWITCHU_CLIENT_KEY = (Get-Content -Path $clientKeyFile -Raw).Trim()
+if ([string]::IsNullOrWhiteSpace($env:OMNILAUNCH_AUTH_SECRET)) {
+    $authSecretFile = Join-Path $env:USERPROFILE '.omnilaunch\auth-secret'
+    if (Test-Path $authSecretFile) {
+        $env:OMNILAUNCH_AUTH_SECRET = (Get-Content -Path $authSecretFile -Raw).Trim()
+    } else {
+        $legacyKeyFile = Join-Path $env:USERPROFILE '.switchu\client-key'
+        if (Test-Path $legacyKeyFile) {
+            $env:OMNILAUNCH_AUTH_SECRET = (Get-Content -Path $legacyKeyFile -Raw).Trim()
+        }
     }
 }
-if ([string]::IsNullOrWhiteSpace($env:SWITCHU_CLIENT_KEY)) {
-    throw 'Official client key is missing! Set SWITCHU_CLIENT_KEY environment variable or create %USERPROFILE%\.switchu\client-key.'
+if ([string]::IsNullOrWhiteSpace($env:OMNILAUNCH_AUTH_SECRET)) {
+    throw 'Request-signing secret is missing! Set OMNILAUNCH_AUTH_SECRET (64 hex, optionally kid:hex) or create %USERPROFILE%\.omnilaunch\auth-secret.'
 }
 
 Write-Host "build $Mode/$Variant -> $log" -ForegroundColor Cyan
@@ -204,7 +209,7 @@ $started = Get-Date
 # its project cache survives on the bind mount, so discarding package state at
 # every --rm run would make later builds incorrectly think dependencies exist.
 $ErrorActionPreference = 'Continue'
-& $docker run --rm -v "${repo}:/src" -v switchu-xmake:/root/.xmake -e SWITCHU_CLIENT_KEY `
+& $docker run --rm -v "${repo}:/src" -v switchu-xmake:/root/.xmake -e OMNILAUNCH_AUTH_SECRET -e OMNILAUNCH_AUTH_KID `
     $buildImage bash /src/tools/build-inside.sh $Mode $Variant $terminationQueueTestMode $preflightMatrixTestMode $preflightEdgeTestMode $resumeFailureTestMode $bootGuardTestMode |
     Tee-Object -FilePath $log
 $rc = $LASTEXITCODE
