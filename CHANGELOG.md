@@ -1,3 +1,31 @@
+# OmniLaunch 1.1.1
+
+Hotfix release for OmniLaunch: fixes theme preset scanning and auto-apply after fast return from games, preserves curated catalog ordering in Theme Shop, adds automatic background audio download and playback for video themes, and expands the animated theme store with soundtracks and new content.
+
+If you encounter any bugs, please report them directly to the developer on Telegram at https://t.me/ncarvalho99 with your console logs (`/config/OmniLaunch/menu.log`).
+
+## English
+
+### Theme Shop & Audio
+- **Theme Preset Scanning & Auto-Apply**: Fixed an issue where returning from suspended games or applets prevented downloaded themes from auto-applying or appearing in the Installed tab.
+- **Curated Catalog Ordering**: Preserved official curated store ordering so featured themes appear at the top of the Theme Shop catalog.
+- **Video Themes Audio Support**: Video themes now automatically download and play their accompanying background soundtrack (`media/music/theme.mp3`) alongside video wallpapers.
+- **Store Updates**: All 44 animated video themes with sound in the official store now feature extracted high-quality MP3 soundtracks, and the new featured animated theme **The Leper King** is now available.
+
+### Feedback & Bug Reports
+- **Contact Developer**: Report issues and send crash logs on Telegram at https://t.me/ncarvalho99.
+
+## Português
+
+### Loja de Temas e Áudio
+- **Varredura de Predefinições e Aplicação Automática**: Corrigido um problema em que o retorno rápido de jogos ou applets suspensos impedia a aplicação automática de novos temas ou sua exibição na aba Instalados.
+- **Ordem Curada do Catálogo**: A ordem curada da loja oficial agora é mantida, garantindo que os temas em destaque apareçam no topo do catálogo da Loja de Temas.
+- **Suporte a Áudio em Temas de Vídeo**: Temas animados em vídeo agora baixam e reproduzem automaticamente sua trilha sonora de fundo (`media/music/theme.mp3`) junto ao papel de parede em vídeo.
+- **Atualizações da Loja**: Todos os 44 temas em vídeo com som na loja oficial agora contam com áudio MP3 de alta qualidade, e o novo tema animado em destaque **The Leper King** já está disponível.
+
+### Relato de Bugs e Suporte
+- **Contato com o Desenvolvedor**: Envie logs e relate bugs diretamente no Telegram em https://t.me/ncarvalho99.
+
 # OmniLaunch 1.1.0
 
 Feature and maintenance update for OmniLaunch: Flow view gets the look of a physical Nintendo Switch game case, returning to HOME is faster, the launch animation is smoother again, and the update check now follows the OmniLaunch repository. Version 1.0.1 was never published, so its changes are included here.

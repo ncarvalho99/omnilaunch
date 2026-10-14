@@ -309,7 +309,7 @@ xmake -j$(nproc)
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\build-image.ps1 -PullBase
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\build-local.ps1 -Mode release -Variant sysmodule -SkipConsoleDeploy
 ```
-The compiled output package will be placed under `artifacts/OmniLaunch-1.1.0.zip`.
+The compiled output package will be placed under `artifacts/OmniLaunch-1.1.1.zip`.
 
 ---
 
