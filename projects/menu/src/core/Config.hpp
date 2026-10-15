@@ -10,6 +10,7 @@
 
 struct AppConfig {
     bool  musicEnabled = true;
+    bool  themeMusicEnabled = true;
     bool  customBgmEnabled = false;
     bool  customBgmShuffle = true;
     std::string audioSourcePreference = "custom_first";

@@ -6647,6 +6647,8 @@ void WiiUMenuApp::reloadMusicTracks() {
     m_customBgmTracks = scanCustomBgmTracks();
     bool loaded = false;
 
+    const bool themeMusicAllowed = m_config.themeMusicEnabled;
+
     if (pref == "custom_only") {
         if (!m_customBgmTracks.empty()) {
             for (const auto& track : m_customBgmTracks)
@@ -6655,7 +6657,7 @@ void WiiUMenuApp::reloadMusicTracks() {
             DebugLog::log("[audio] Custom Only: Loaded %zu custom track(s)", m_customBgmTracks.size());
         }
     } else if (pref == "theme_first") {
-        if (!m_themeMusicTracks.empty()) {
+        if (themeMusicAllowed && !m_themeMusicTracks.empty()) {
             for (const auto& track : m_themeMusicTracks)
                 m_audio.loadTrack(track);
             loaded = true;
@@ -6667,7 +6669,7 @@ void WiiUMenuApp::reloadMusicTracks() {
             DebugLog::log("[audio] Theme First (fallback): Loaded %zu custom track(s)", m_customBgmTracks.size());
         }
     } else if (pref == "theme_only") {
-        if (!m_themeMusicTracks.empty()) {
+        if (themeMusicAllowed && !m_themeMusicTracks.empty()) {
             for (const auto& track : m_themeMusicTracks)
                 m_audio.loadTrack(track);
             loaded = true;
@@ -6679,7 +6681,7 @@ void WiiUMenuApp::reloadMusicTracks() {
                 m_audio.loadTrack(track.path, track.title);
             loaded = true;
             DebugLog::log("[audio] Custom First: Loaded %zu custom track(s)", m_customBgmTracks.size());
-        } else if (!m_themeMusicTracks.empty()) {
+        } else if (themeMusicAllowed && !m_themeMusicTracks.empty()) {
             for (const auto& track : m_themeMusicTracks)
                 m_audio.loadTrack(track);
             loaded = true;

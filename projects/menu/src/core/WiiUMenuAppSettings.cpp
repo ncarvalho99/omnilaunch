@@ -1254,7 +1254,7 @@ void WiiUMenuApp::createThemeShop() {
     m_themeShop->setThreadPool(&m_threadPool);
     m_themeShop->setRenderContext(&app().gpu(), &app().renderer());
     m_themeShop->youTubeClient().setBackendUrl(m_config.ytdlBackendUrl);
-    m_themeShop->setMusicState(m_audio.isPlaying(), m_audio.volume(), m_audio.sfxVolume());
+    m_themeShop->setMusicState(m_audio.isPlaying(), m_audio.volume(), m_audio.sfxVolume(), m_config.themeMusicEnabled);
     m_themeShop->setGridLayoutState(m_config.gridColumns, m_config.gridRows);
     m_themeShop->setDynamicPagesState(m_config.dynamicPages);
     m_themeShop->setAppearanceState(m_config.glassSharpness,
@@ -1270,6 +1270,12 @@ void WiiUMenuApp::createThemeShop() {
     m_themeShop->onMusicEnabledChange([this](bool enabled) {
         if (enabled) m_audio.play(); else m_audio.stop();
         m_config.musicEnabled = enabled;
+    });
+    m_themeShop->onThemeMusicEnabledChange([this](bool enabled) {
+        m_config.themeMusicEnabled = enabled;
+        m_config.save();
+        reloadMusicTracks();
+        syncMediaCenterState();
     });
     m_themeShop->onMusicVolumeChange([this](float v) {
         m_audio.setVolume(v);
@@ -2194,7 +2200,7 @@ void WiiUMenuApp::refreshThemeShopState() {
                                         : m_activePresetName;
 
     m_themeShop->setTheme(&m_theme);
-    m_themeShop->setMusicState(m_audio.isPlaying(), m_audio.volume(), m_audio.sfxVolume());
+    m_themeShop->setMusicState(m_audio.isPlaying(), m_audio.volume(), m_audio.sfxVolume(), m_config.themeMusicEnabled);
     m_themeShop->setThemeShopState(buildThemeShopEntries(), activeId);
     m_themeShop->refreshState();
 }

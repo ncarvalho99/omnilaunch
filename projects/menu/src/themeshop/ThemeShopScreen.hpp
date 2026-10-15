@@ -52,6 +52,7 @@ public:
     ~ThemeShopScreen() override = default;
 
     void onMusicEnabledChange(BoolCb cb) { m_musicEnabledCb = std::move(cb); }
+    void onThemeMusicEnabledChange(BoolCb cb) { m_themeMusicEnabledCb = std::move(cb); }
     void onUpdateCheck(std::function<void()> cb)   { m_updateCheckCb = std::move(cb); }
     void onUpdateInstall(std::function<void()> cb) { m_updateInstallCb = std::move(cb); }
     void onUpdateRestart(std::function<void()> cb) { m_updateRestartCb = std::move(cb); }
@@ -128,8 +129,9 @@ public:
     void onReloadCatalog(VoidCb cb)      { m_reloadCatalogCb = std::move(cb); }
     void onRebuildControlCache(VoidCb cb) { m_rebuildControlCacheCb = std::move(cb); }
 
-    void setMusicState(bool enabled, float musicVol, float sfxVol) {
+    void setMusicState(bool enabled, float musicVol, float sfxVol, bool themeMusicEnabled = true) {
         m_musicEnabled = enabled;
+        m_themeMusicEnabled = themeMusicEnabled;
         m_musicVolume = musicVol;
         m_sfxVolume = sfxVol;
     }
@@ -368,6 +370,8 @@ private:
     VoidCb m_netConnectCb;
 
     bool m_musicEnabled = true;
+    bool m_themeMusicEnabled = true;
+    BoolCb m_themeMusicEnabledCb;
     // What the Update tab shows. The app owns the check itself and pushes the
     // outcome here, so the tab stays a view rather than a second client.
     std::string m_updateInstalledVersion;

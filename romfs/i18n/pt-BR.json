@@ -491,6 +491,8 @@
     "music": {
       "sound_preset": "Predefinição de Som",
       "menu_music": "Música do Menu",
+      "theme_video_audio": "Áudio dos Temas em Vídeo",
+      "theme_video_audio_desc": "Tocar a trilha sonora que acompanha os temas animados em vídeo.",
       "music_volume": "Volume da Música",
       "sfx_volume": "Volume de SFX",
       "next_track": "Próxima Faixa",

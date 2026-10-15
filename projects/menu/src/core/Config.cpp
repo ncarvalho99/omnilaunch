@@ -57,6 +57,7 @@ bool AppConfig::load() {
     if (!parsed) return false;
 
     readJsonOpt(j, "musicEnabled", musicEnabled);
+    readJsonOpt(j, "themeMusicEnabled", themeMusicEnabled);
     readJsonOpt(j, "customBgmEnabled", customBgmEnabled);
     readJsonOpt(j, "customBgmShuffle", customBgmShuffle);
     readJsonOpt(j, "audioSourcePreference", audioSourcePreference);
@@ -227,6 +228,7 @@ bool AppConfig::save() const {
         if (themePreset != kSafeTheme) m_touchedTheme = true;
     }
     j["musicEnabled"] = (m_safe && !m_touchedMusic) ? m_savedMusic : musicEnabled;
+    j["themeMusicEnabled"] = themeMusicEnabled;
     j["customBgmEnabled"] = (m_safe && !m_touchedBgm) ? m_savedCustomBgm : customBgmEnabled;
     j["customBgmShuffle"] = customBgmShuffle;
     j["audioSourcePreference"] = audioSourcePreference;

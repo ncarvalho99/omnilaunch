@@ -491,6 +491,8 @@
     "music": {
       "sound_preset": "Sound Preset",
       "menu_music": "Menu Music",
+      "theme_video_audio": "Theme Video Audio",
+      "theme_video_audio_desc": "Play soundtrack accompanying animated video themes.",
       "music_volume": "Music Volume",
       "sfx_volume": "SFX Volume",
       "next_track": "Next Track",

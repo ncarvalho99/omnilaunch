@@ -28,6 +28,21 @@ ThemeShopScreen::Tab themeshop::tabs::OptionsTab::build(ThemeShopScreen& screen)
 
     {
         SettingItem it;
+        it.label = i18n.tr("settings.music.theme_video_audio", "Theme Video Audio");
+        it.description = i18n.tr("settings.music.theme_video_audio_desc",
+                                 "Play soundtrack accompanying animated video themes.");
+        it.type = ItemType::Toggle;
+        it.boolVal = screen.m_themeMusicEnabled;
+        it.anim01 = it.boolVal ? 1.f : 0.f;
+        it.onChange = [&screen](SettingItem& self) {
+            screen.m_themeMusicEnabled = self.boolVal;
+            if (screen.m_themeMusicEnabledCb) screen.m_themeMusicEnabledCb(self.boolVal);
+        };
+        t.items.push_back(std::move(it));
+    }
+
+    {
+        SettingItem it;
         it.label = i18n.tr("settings.music.music_volume", "Music Volume");
         it.type = ItemType::Slider;
         it.floatVal = std::clamp(screen.m_musicVolume, 0.f, 1.f);
