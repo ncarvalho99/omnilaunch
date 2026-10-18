@@ -727,6 +727,64 @@ struct ScopedService {
     }
 };
 
+// The performance configuration apm is applying right now, which is what the
+// GPU clock follows. appletGetPerformanceMode() only says docked or handheld;
+// a CPU boost left on shows up here and nowhere else, as one of the four
+// 0x92220009..0x9222000C configurations that run the GPU at 76.8 MHz against
+// the 307.2 MHz of a normal handheld session.
+static bool isBoostPerformanceConfiguration(u32 config) {
+    return config >= 0x92220009 && config <= 0x9222000C;
+}
+
+static Result readPerformanceConfiguration(Service& apmSys, u32& out) {
+    // apm:sys GetCurrentPerformanceConfiguration
+    return serviceDispatchOut(&apmSys, 7, out);
+}
+
+static void logPerformanceConfiguration(const char* stage) {
+    if (hosversionBefore(7, 0, 0))
+        return;
+
+    ScopedService apmSys;
+    Result rc = smGetService(&apmSys.value, "apm:sys");
+    u32 config = 0;
+    if (R_SUCCEEDED(rc))
+        rc = readPerformanceConfiguration(apmSys.value, config);
+    switchu::FileLog::log(
+        "[perf-config] %s config=0x%08X boost=%d operation=%u performance=%u rc=0x%X",
+        stage, config, isBoostPerformanceConfiguration(config) ? 1 : 0,
+        (unsigned)appletGetOperationMode(), (unsigned)appletGetPerformanceMode(), rc);
+}
+
+// The menu came back from a long DBI session drawing at a third of its
+// speed, the shape of a CPU boost that outlived the title that asked for it.
+// Reset the boost mode on application exit and log the apm configuration
+// before and after, and again whenever the menu reports ready.
+static void restoreNormalPerformance(const char* source) {
+    if (hosversionBefore(7, 0, 0))
+        return;
+
+    ScopedService apmSys;
+    const Result openRc = smGetService(&apmSys.value, "apm:sys");
+    if (R_FAILED(openRc)) {
+        switchu::FileLog::log("[perf-config] %s open apm:sys FAIL: 0x%X", source, openRc);
+        return;
+    }
+
+    u32 before = 0;
+    const Result beforeRc = readPerformanceConfiguration(apmSys.value, before);
+    // apm:sys SetCpuBoostMode
+    const u32 mode = ApmCpuBoostMode_Normal;
+    const Result setRc = serviceDispatchIn(&apmSys.value, 6, mode);
+    u32 after = 0;
+    const Result afterRc = readPerformanceConfiguration(apmSys.value, after);
+
+    switchu::FileLog::log(
+        "[perf-config] %s boost reset before=0x%08X(boost=%d rc=0x%X) set=0x%X after=0x%08X(boost=%d rc=0x%X)",
+        source, before, isBoostPerformanceConfiguration(before) ? 1 : 0, beforeRc,
+        setRc, after, isBoostPerformanceConfiguration(after) ? 1 : 0, afterRc);
+}
+
 static Result openTimeAdminService(ScopedService& out) {
     const Result rc = smGetService(&out.value, "time:a");
     switchu::FileLog::log(
@@ -1110,6 +1168,23 @@ static void openMenuFromHome(const char* source) {
         if (!takeForegroundFromRunningApp(source)) {
             switchu::FileLog::log("[%s] HOME aborted: foreground request failed", source);
             return;
+        }
+        // A forwarder (homebrew wrapped as an application, title id outside the
+        // retail 0x01... range) left suspended can keep the menu applet from
+        // coming up, freezing the console on its last frame (PoloNX #161). Close
+        // it instead of suspending it; forwarders often ignore RequestExit, so the
+        // graceful wait is short. The cold menu comes up from the exit path.
+        const uint64_t runningId = daemon::app::suspendedTitleId();
+        const uint8_t idClass = static_cast<uint8_t>(runningId >> 56);
+        if (runningId != 0 && idClass != 0x01 && idClass != 0x04) {
+            switchu::FileLog::log("[%s] HOME over forwarder 0x%016lX: closing it instead of suspending",
+                                  source, runningId);
+            const Result closeRc = daemon::app::beginTerminateWithin(2'000'000'000ULL);
+            switchu::FileLog::log("[%s] forwarder close rc=0x%X", source, closeRc);
+            if (R_SUCCEEDED(closeRc)) {
+                logHomeState(source, "after");
+                return;
+            }
         }
         const auto status = buildSystemStatus(smi::MenuTransitionReason::HomeRequest,
                                               homeTick);
@@ -1952,6 +2027,7 @@ static void handleMenuCommand() {
         const auto args = reader.pop<smi::MenuReadyArgs>();
         switchu::FileLog::log("[smi] menu ready");
         logMenuReadyTrace(args, commandReceiveTick);
+        logPerformanceConfiguration("menu-ready");
         // MenuReady only says the activity object exists. The observed crash
         // loop reached it every time and died ~3 s after the first frame, so
         // clearing the guard here let every crash slip past it. Health is
@@ -2218,6 +2294,7 @@ static void waitForMainWork() {
 
 static void routeFinishedApplication(const char* source) {
     switchu::FileLog::log("[main] app exited source=%s", source);
+    restoreNormalPerformance("app-exit");
     if (daemon::menu_la::isActive()) {
         pushNotification(smi::MenuMessage::ApplicationExited);
     } else if (!g_actionQueue.empty()) {
@@ -2479,7 +2556,10 @@ static void mainLoop() {
                              (uint32_t)g_eventGcMountRc.load());
         }
     }
-    if (g_batteryRefreshPending.exchange(false)) {
+    // Keep the request until a menu is actually there to receive it: consuming
+    // it earlier left a freshly started menu showing 0 % with no charge icon.
+    if (g_batteryRefreshPending.load() && daemon::menu_la::isActive()) {
+        g_batteryRefreshPending.store(false);
         pushBatteryStatusNotification(true);
         g_batteryPollCountdown = 50;
     } else if (daemon::menu_la::isActive()) {
@@ -2757,6 +2837,30 @@ static void controlCacheThreadFunc(void* arg) {
                 cached ? 1 : 0);
             if (named)
                 break;
+        }
+
+        // Switch 2 Edition titles can leave the legacy control slot without a
+        // name; theirs sits in ACD slots 1..3, reachable only through
+        // ControlData2 (19.0.0+). From PoloNX/SwitchU#111 by tomvita. The
+        // legacy result stays if no slot has a name either.
+        if (!named && hosversionAtLeast(19, 0, 0)) {
+            for (u8 acdIndex = 1; acdIndex <= 3 && !named; ++acdIndex) {
+                u64 alternateSize = 0;
+                u32 unk = 0;
+                const Result alternateRc = nsGetApplicationControlData2(
+                    NsApplicationControlSource_Storage, titleId, controlData,
+                    sizeof(*controlData), 0, acdIndex, &alternateSize, &unk);
+                if (R_FAILED(alternateRc) || alternateSize < sizeof(NacpStruct))
+                    continue;
+                const auto outcome = switchu::control_cache::writeFromControlData(
+                    titleId, *controlData, static_cast<size_t>(alternateSize));
+                if (outcome == switchu::control_cache::CacheOutcome::Named) {
+                    named = true;
+                    cached = true;
+                    switchu::FileLog::log("[control-cache] 0x%016lX name from acd slot %u",
+                                          titleId, static_cast<unsigned>(acdIndex));
+                }
+            }
         }
 
         if (cached) {

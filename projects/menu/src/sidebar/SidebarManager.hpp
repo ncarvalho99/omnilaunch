@@ -35,6 +35,10 @@ public:
     // The dynamic-line HOME layout turns the two side columns into one
     // horizontal control strip between the profile bar and the applications.
     void setDynamicLineLayout(bool enabled);
+    // Where the left group of that strip ends and the right one begins: the
+    // span the top HUD has for the profiles and whatever sits beside them.
+    static float dynamicLineGapLeft();
+    static float dynamicLineGapRight();
     void setDynamicLineDownAction(std::function<void()> action);
     void setDynamicLineUpTarget(nxui::Widget* target);
     void setDynamicLineProfileTargets(nxui::Widget* firstProfile,

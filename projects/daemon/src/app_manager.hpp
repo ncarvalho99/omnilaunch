@@ -44,6 +44,8 @@ static TerminatePhase g_terminatePhase = TerminatePhase::Idle;
 static TerminateTiming g_terminateTiming{};
 static uint64_t g_terminateDeadlineTick = 0;
 static constexpr uint64_t kTerminateGraceNs = 15'000'000'000ULL;
+// Set by beginTerminateWithin() for the next terminate only; 0 = the usual grace.
+static uint64_t g_terminateGraceOverrideNs = 0;
 #ifdef SWITCHU_TERMINATION_QUEUE_TEST
 enum class TerminateDiagnosticMode : uint8_t {
     None,
@@ -841,9 +843,11 @@ inline Result beginTerminate(
 
     g_terminateTiming.requestRc = appletApplicationRequestExit(&g_app);
     g_terminateTiming.requestEndTick = armGetSystemTick();
-    g_terminateDeadlineTick = g_terminateTiming.requestEndTick + armNsToTicks(kTerminateGraceNs);
-    switchu::FileLog::log("[app] terminate RequestExit rc=0x%X; polling for up to 15s",
-                          g_terminateTiming.requestRc);
+    const uint64_t graceNs = g_terminateGraceOverrideNs ? g_terminateGraceOverrideNs : kTerminateGraceNs;
+    g_terminateGraceOverrideNs = 0;
+    g_terminateDeadlineTick = g_terminateTiming.requestEndTick + armNsToTicks(graceNs);
+    switchu::FileLog::log("[app] terminate RequestExit rc=0x%X; polling for up to %llums",
+                          g_terminateTiming.requestRc, (unsigned long long)(graceNs / 1'000'000ULL));
 #ifdef SWITCHU_TERMINATION_QUEUE_TEST
     if (g_terminateDiagnosticMode == TerminateDiagnosticMode::HoldForSleepWake) {
         switchu::FileLog::log("[diagnostic] terminate mode=sleep-wake hold_ms=%llu",
@@ -854,6 +858,17 @@ inline Result beginTerminate(
     }
 #endif
     return 0;
+}
+
+// Same as beginTerminate(), but gives up on a graceful exit after graceNs. For
+// titles known to ignore RequestExit, where the usual 15 s is only a wait.
+inline Result beginTerminateWithin(uint64_t graceNs) {
+    if (!g_running || isTerminating())
+        return beginTerminate();
+    g_terminateGraceOverrideNs = graceNs;
+    const Result rc = beginTerminate();
+    g_terminateGraceOverrideNs = 0;
+    return rc;
 }
 
 static inline uint64_t terminateTickDeltaUs(uint64_t start, uint64_t end) {

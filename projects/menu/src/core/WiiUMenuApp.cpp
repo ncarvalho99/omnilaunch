@@ -1604,13 +1604,77 @@ void WiiUMenuApp::appendAddUserButton() {
     m_userAvatarButtons.push_back(add);
     m_userAvatarBar->addChild(add);
 
-    const float countF = static_cast<float>(m_userAvatarButtons.size());
-    m_userAvatarBar->setSize(countF * 56.f + (countF - 1.f) * 10.f, 56.f);
     wireUserAvatarNavigation();
-    if (m_topHud && m_appLayoutMode != AppLayoutMode::Metro)
-        m_topHud->layout();
+    layoutTopHud();
     DebugLog::log("[profiles] add-user tile appended count=%d",
                   static_cast<int>(m_pendingProfileUids.size()));
+}
+
+void WiiUMenuApp::layoutTopHud() {
+    if (!m_topHud || m_appLayoutMode == AppLayoutMode::Metro)
+        return;
+
+    constexpr float kAvatarSize = 56.f;
+    constexpr float kAvatarGap = 10.f;
+    constexpr float kAvatarTop = 17.f;
+    constexpr float kTightAvatarGap = 8.f;
+    constexpr float kMinAvatarSize = 32.f;
+    constexpr float kSpanInset = 14.f;
+    constexpr float kClusterGap = 14.f;
+
+    const bool line = isCarouselLayout();
+    const float count = static_cast<float>(m_userAvatarButtons.size());
+    const bool clusterShown = m_topCenterCluster && m_topCenterCluster->isVisible();
+    const float clusterWidth = clusterShown ? m_topCenterCluster->rect().width : 0.f;
+    const float spanX = SidebarManager::dynamicLineGapLeft() + kSpanInset;
+    const float spanWidth = SidebarManager::dynamicLineGapRight() - kSpanInset - spanX;
+
+    float size = kAvatarSize;
+    float gap = kAvatarGap;
+    if (line && count > 0.f) {
+        const float room = spanWidth - (clusterShown ? clusterWidth + kClusterGap : 0.f);
+        if (count * size + (count - 1.f) * gap > room) {
+            gap = kTightAvatarGap;
+            size = std::clamp(std::floor((room - (count - 1.f) * gap) / count),
+                              kMinAvatarSize, kAvatarSize);
+        }
+    }
+
+    for (const auto& avatar : m_userAvatarButtons) {
+        avatar->setSize(size, size);
+        avatar->setMinWidth(size);
+        avatar->setMinHeight(size);
+        avatar->setCornerRadius(size * 0.5f);
+    }
+    const float barWidth = count > 0.f ? count * size + (count - 1.f) * gap : 0.f;
+    if (m_userAvatarBar) {
+        m_userAvatarBar->setGap(gap);
+        // Smaller avatars stay on the centre line of the strip beside them.
+        m_userAvatarBar->setMarginTop(kAvatarTop + (kAvatarSize - size) * 0.5f);
+        m_userAvatarBar->setSize(barWidth, size);
+    }
+
+    m_topHud->layout();
+    if (!line)
+        return;
+
+    const bool barShown = m_userAvatarBar && count > 0.f;
+    const float total = barWidth + clusterWidth +
+                        (barShown && clusterShown ? kClusterGap : 0.f);
+    float x = spanX + (spanWidth - total) * 0.5f;
+    if (barShown) {
+        nxui::Rect rect = m_userAvatarBar->rect();
+        rect.x = x;
+        m_userAvatarBar->setRect(rect);
+        m_userAvatarBar->layout();
+        x += barWidth + kClusterGap;
+    }
+    if (clusterShown) {
+        nxui::Rect rect = m_topCenterCluster->rect();
+        rect.x = x;
+        m_topCenterCluster->setRect(rect);
+        m_topCenterCluster->layout();
+    }
 }
 
 void WiiUMenuApp::wireUserAvatarNavigation() {
@@ -1775,14 +1839,10 @@ void WiiUMenuApp::loadNextUserAvatar() {
     m_userAvatarButtons.push_back(avatar);
     m_userAvatarBar->addChild(avatar);
 
-    if (!m_userAvatarButtons.empty()) {
-        const float countF = static_cast<float>(m_userAvatarButtons.size());
-        m_userAvatarBar->setSize(countF * 56.f + (countF - 1.f) * 10.f, 56.f);
+    if (!m_userAvatarButtons.empty())
         wireUserAvatarNavigation();
-    }
 
-    if (m_topHud && m_appLayoutMode != AppLayoutMode::Metro)
-        m_topHud->layout();
+    layoutTopHud();
 
     if (m_pendingProfileIndex >= m_pendingProfileUids.size())
         appendAddUserButton();
@@ -2865,7 +2925,7 @@ void WiiUMenuApp::applyMetroPowerButton(bool isMetro) {
         } else {
             m_topCenterCluster->setSize(120.f, 48.f);
             m_topCenterCluster->layout();
-            if (m_topHud) m_topHud->layout();
+            if (m_topHud) layoutTopHud();
         }
     }
 }
@@ -4745,6 +4805,7 @@ void WiiUMenuApp::configureDynamicLineNavigation() {
     // UP/DOWN escape targets.
     const bool dynamicLine = isCarouselLayout();
     m_sidebar.setDynamicLineLayout(dynamicLine);
+    layoutTopHud();
 
     if (m_grid) {
         std::vector<nxui::Widget*> leftTargets;
@@ -6246,7 +6307,7 @@ void WiiUMenuApp::buildGrid() {
     m_topHud->addChild(m_topCenterCluster);
 
     m_topHud->addChild(m_battery);
-    m_topHud->layout();
+    layoutTopHud();
 
     m_leftSidebar = std::make_shared<nxui::Box>(nxui::Axis::COLUMN);
     m_leftSidebar->setTag("leftSidebar");

@@ -1,5 +1,6 @@
 #include "WiiUMenuApp.hpp"
 
+#include <switchu/control_cache.hpp>
 #include <switchu/title_footprint.hpp>
 #include "themeshop/ThemePackageInstaller.hpp"
 #include "themeshop/ThemeHttp.hpp"
@@ -2182,6 +2183,10 @@ void WiiUMenuApp::syncSoftwareDeletion() {
         std::replace(m_layoutSlots.begin(), m_layoutSlots.end(),
                      m_softwareDeleteTitleId, std::uint64_t{0});
         m_layoutDirty = true;
+        // Drop its cached name and icon now (PoloNX #118), so a reinstall with a
+        // different icon is not stuck on the old one. The daemon forgets titles
+        // that leave the catalogue too, but only from its next rebuild.
+        switchu::control_cache::forget(m_softwareDeleteTitleId);
         if (m_config.hasCustomTitle(m_softwareDeleteTitleId)) {
             m_config.setCustomTitle(m_softwareDeleteTitleId, "");
             m_config.save();

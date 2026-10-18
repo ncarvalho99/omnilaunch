@@ -179,6 +179,7 @@ private:
     void loadNextUserAvatar();
     void appendAddUserButton();
     void wireUserAvatarNavigation();
+    void layoutTopHud();
     void composeRootPending(std::vector<PendingApp>& apps);
     GridModel buildRootFolderModel();
     GridModel buildOpenFolderModel(std::uint32_t folderId) const;

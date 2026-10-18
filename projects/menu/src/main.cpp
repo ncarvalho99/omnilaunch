@@ -48,6 +48,9 @@ extern "C" {
 
     void __nx_win_init(void);
     void __nx_win_exit(void);
+
+    // Weak in libnx (0): __nx_win_init opens this layer instead of creating one.
+    extern u64 __nx_vi_layer_id;
 #endif
 }
 
@@ -235,8 +238,28 @@ extern "C" void __appInit(void) {
     DebugLog::openFileLog();
     DebugLog::log("[menu] __appInit complete (sd mount: 0x%X)", rc);
 
+    // A library applet's managed layer is left at 1280x720 by libnx, so docked
+    // the UI sat unscaled in the middle of the 1080p output. Open the layer
+    // ourselves (its id is needed) and size it to the full output: the
+    // 1280x720 framebuffer is then scaled to it (FitToLayer).
+    u64 managedLayerId = 0;
+#ifndef SWITCHU_HOMEBREW
+    if (R_SUCCEEDED(appletCreateManagedDisplayLayer(&managedLayerId)))
+        __nx_vi_layer_id = managedLayerId;
+#endif
+
     __nx_win_init();
     DebugLog::log("[menu] __nx_win_init done");
+
+#ifndef SWITCHU_HOMEBREW
+    if (managedLayerId) {
+        ViLayer layer{};
+        layer.initialized = true;
+        layer.layer_id = managedLayerId;
+        const Result layerRc = viSetLayerSize(&layer, 1920, 1080);
+        DebugLog::log("[menu] layer %llu size 1920x1080 rc=0x%X", (unsigned long long)managedLayerId, layerRc);
+    }
+#endif
 
     svcOutputDebugString("[SwitchU-menu] __appInit done", 29);
 }
