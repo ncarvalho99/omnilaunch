@@ -1709,6 +1709,15 @@ void WiiUMenuApp::handleTouch() {
         float dy = input.touchDeltaY();
         if (std::abs(dx) > kSwipeThreshold && std::abs(dx) > std::abs(dy) * 1.5f) {
             flipPage(dx < 0 ? 1 : -1);
+        } else if (m_openFolderId != 0
+                   && m_touchHitIndex < 0
+                   && std::abs(dx) < 20.f && std::abs(dy) < 20.f
+                   && m_grid
+                   && m_grid->hitTest(input.touchX(), input.touchY()) < 0) {
+            // Tap anywhere that isn't an icon (dimmed margins left/right/above/below,
+            // and empty gaps) to leave — mirrors B, including edit-mode keep-move.
+            // From PoloNX/SwitchU#108.
+            closeFolder(m_editMode);
         } else if (m_touchHitIndex >= 0 && !m_editMode &&
                    std::abs(dx) < 20.f && std::abs(dy) < 20.f && input.touchDuration() <= 0.40f) {
             if (m_touchOnFocused) {
@@ -1731,6 +1740,22 @@ void WiiUMenuApp::handleTouch() {
 #if 1 // Upstream 1.2 HOME refreshes folder/widget activity state.
 void WiiUMenuApp::handleSystemAction(SysAction a) {
     switch (a) {
+        case SysAction::HomeDismiss: {
+            // Like the stock HOME menu: with nothing left to dismiss, HOME goes
+            // back to the suspended game instead of doing nothing (PoloNX #150).
+            // A first HOME still closes folders and overlays below.
+            const std::uint64_t suspendedId = m_launcher.suspendedTitleId();
+            if (suspendedId != 0 && m_openFolderId == 0 && !m_editMode &&
+                m_navigator.route() == switchu::navigation::Route::Home &&
+                focusRoot() == &rootBox()) {
+                const AppEntry* suspended = m_model.findByTitleId(suspendedId);
+                DebugLog::log("[pump] HomeDismiss -> resume suspended title 0x%016lX",
+                              static_cast<unsigned long>(suspendedId));
+                resumeSuspendedApplication(suspendedId, suspended ? suspended->title : std::string());
+                break;
+            }
+            [[fallthrough]];
+        }
         case SysAction::HomeButton: {
             // HOME is delivered by the daemon. While locked it is a system
             // unlock request, not ordinary HOME navigation.

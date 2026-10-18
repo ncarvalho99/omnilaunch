@@ -475,6 +475,20 @@ void TutorialActivity::onUpdate(float dt) {
     if (m_steps.empty())
         return;
 
+    // The typewriter caches one text texture per character; nothing else trims
+    // these fonts, so once full the body text silently stops drawing. Trim
+    // here, before the next frame is recorded, like WiiUMenuApp does.
+    nxui::Font* fonts[] = {&m_fontTitle, &m_fontBody, &m_fontSmall};
+    bool trimRequested = false;
+    for (auto* font : fonts)
+        trimRequested = trimRequested || font->maintenanceRequested();
+    if (trimRequested) {
+        app().gpu().waitIdle();
+        for (auto* font : fonts)
+            font->trimCache(font->cacheEntryCount() / 2, font->cacheBytes() / 2);
+        app().renderer().reclaimReleasedTextureSlotsAfterIdle();
+    }
+
     if (m_finishing) {
         m_finishTimer += dt;
         m_transitionAlpha = std::clamp(m_finishTimer / 0.28f, 0.f, 1.f);
@@ -739,8 +753,8 @@ void TutorialActivity::drawNavigationGrid(nxui::Renderer& ren) {
     if (m_navCursor && m_navCursor->isVisible())
         m_navCursor->render(ren);
 
-    drawCheckRow(ren, "Gauche / droite", m_navLeftRight, objective.x + 34.f, objective.y + 232.f, 1.f);
-    drawCheckRow(ren, "Haut / bas", m_navUpDown, objective.x + 34.f, objective.y + 266.f, 1.f);
+    drawCheckRow(ren, nxui::I18n::instance().tr("tutorial.navigation.left_right", "Left / right"), m_navLeftRight, objective.x + 34.f, objective.y + 232.f, 1.f);
+    drawCheckRow(ren, nxui::I18n::instance().tr("tutorial.navigation.up_down", "Up / down"), m_navUpDown, objective.x + 34.f, objective.y + 266.f, 1.f);
 }
 
 void TutorialActivity::drawMainPanelContent(nxui::Renderer& ren,
@@ -780,7 +794,7 @@ void TutorialActivity::drawObjectivePanelContent(nxui::Renderer& ren, const Step
 
     nxui::Rect objective = m_objectivePanel->rect();
     ren.pushClipRect(objective.shrunk(16.f));
-    ren.drawText("Test", {objective.x + 24.f, objective.y + 24.f}, &m_fontSmall,
+    ren.drawText(nxui::I18n::instance().tr("tutorial.test_label", "Test"), {objective.x + 24.f, objective.y + 24.f}, &m_fontSmall,
                  m_theme.textSecondary.withAlpha(0.80f), 0.78f);
 
     auto objectiveLines = wrapText(step.objective, m_fontSmall, objective.width - 48.f, 0.70f);
@@ -795,7 +809,7 @@ void TutorialActivity::drawObjectivePanelContent(nxui::Renderer& ren, const Step
     if (step.kind == StepKind::NavigationTest) {
         drawNavigationGrid(ren);
     } else if (step.kind == StepKind::ConfirmTest) {
-        drawCheckRow(ren, "Bouton A detecte", step.complete, objective.x + 24.f, cy, 1.f);
+        drawCheckRow(ren, nxui::I18n::instance().tr("tutorial.confirm.detected", "A button detected"), step.complete, objective.x + 24.f, cy, 1.f);
     }
     ren.popClipRect();
 }

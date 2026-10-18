@@ -145,6 +145,10 @@ void AudioManager::playCurrentTrackLocked() {
 void AudioManager::play() {
     std::lock_guard<std::mutex> lk(m_trackMutex);
     if (m_tracks.empty()) return;
+    // Unlock and settings paths call play() defensively; restarting a track
+    // that is already playing made an audible skip (PoloNX #133).
+    if (m_playing.load() && Mix_PlayingMusic())
+        return;
     if (m_current < 0 || m_current >= static_cast<int>(m_tracks.size())) {
         if (m_shuffle && !m_shuffleOrder.empty()) {
             m_shufflePos = 0;

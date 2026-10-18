@@ -8,6 +8,7 @@
 #ifdef SWITCHU_MENU
 enum class SysAction {
     HomeButton,
+    HomeDismiss,   // physical HOME while the menu is already in front
     Sleep,
     Shutdown,
     Reboot,

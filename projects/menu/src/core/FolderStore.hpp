@@ -20,6 +20,18 @@ struct Folder {
 
 inline constexpr int kMaxFolderPages = 8;
 
+inline constexpr std::size_t folderSlotsPerPage(int sizeIndex) {
+    switch (sizeIndex) {
+        case 0: return 4u * 2u;
+        case 2: return 6u * 4u;
+        default: return 5u * 3u;
+    }
+}
+
+inline constexpr std::size_t maxFolderSlots(int sizeIndex) {
+    return folderSlotsPerPage(sizeIndex) * static_cast<std::size_t>(kMaxFolderPages);
+}
+
 class FolderStore final {
 public:
     static constexpr const char* kPath = "sdmc:/config/OmniLaunch/folders.json";

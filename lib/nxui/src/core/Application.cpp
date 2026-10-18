@@ -127,6 +127,8 @@ void Application::dispatchInput() {
     constexpr int kRepeatSlow       = 8;   // ~130 ms for the first few
     constexpr int kRepeatFast       = 4;   // ~65 ms once it is clearly held
     constexpr int kFramesUntilFast  = 30;  // half a second of repeating
+    constexpr int kStickRepeatSlow  = 13;
+    constexpr int kStickRepeatFast  = 7;
 
     const bool anyDirHeld =
         m_input.isHeld(Button::DLeft)   || m_input.isHeld(Button::DRight)  ||
@@ -142,17 +144,27 @@ void Application::dispatchInput() {
         ++m_navHoldFrames;
     }
 
+    // Circling the analog stick changes the held direction every few frames,
+    // and a held stick is easier to overshoot with than the D-pad, so the stick
+    // alone waits longer between steps and repeats about 1.6x slower
+    // (PoloNX #158). The D-pad keeps its timing.
+    const bool stickOnly = anyDirHeld &&
+        !m_input.isHeld(Button::DLeft) && !m_input.isHeld(Button::DRight) &&
+        !m_input.isHeld(Button::DUp)   && !m_input.isHeld(Button::DDown);
+
     bool repeating = false;
     if (m_navHoldFrames > kHoldBeforeRepeat) {
         const int since = m_navHoldFrames - kHoldBeforeRepeat;
-        const int step  = since > kFramesUntilFast ? kRepeatFast : kRepeatSlow;
+        const int step  = since > kFramesUntilFast
+            ? (stickOnly ? kStickRepeatFast : kRepeatFast)
+            : (stickOnly ? kStickRepeatSlow : kRepeatSlow);
         repeating = (since % step) == 0;
     }
 
     if (m_navDebounce > 0) {
         --m_navDebounce;
     } else if (anyDpad || repeating) {
-        m_navDebounce = 6;  // ~100 ms at 60 fps
+        m_navDebounce = stickOnly ? 10 : 6;  // ~170 / ~100 ms at 60 fps
 
         Widget* cur = fm.current();
         auto tryDir = [&](Button dpad, Button leftStick, Button rightStick, FocusDirection dir) {

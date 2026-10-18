@@ -2579,17 +2579,42 @@ GridModel WiiUMenuApp::buildRootFolderModel() {
             return labelA.size() < labelB.size();
         });
 
-        std::size_t next = 0;
-        for (std::size_t index = 0; index < projected.size() && next < apps.size();
-             ++index) {
-            if (reserved[index])
-                continue;
-            projected[index] = apps[next++];
+        // First fit: each application takes the first spot where its whole tile
+        // fits inside one page (PoloNX #151). Filling cells in sequence dropped a
+        // larger tile where its other cells were taken or ran off the page, and
+        // the fit check below then shrank it to 1x1. Pages are appended when the
+        // saved layout is shorter than the catalogue, rather than apps vanishing.
+        const int gridRows = std::clamp(m_config.gridRows, 2, 5);
+        auto fitsAt = [&](std::size_t index, int spanColumns, int spanRows) {
+            const int local = static_cast<int>(index % static_cast<std::size_t>(perPage));
+            if (local % columns + spanColumns > columns ||
+                local / columns + spanRows > gridRows)
+                return false;
+            for (int dy = 0; dy < spanRows; ++dy)
+                for (int dx = 0; dx < spanColumns; ++dx) {
+                    const std::size_t cell =
+                        index + static_cast<std::size_t>(dy * columns + dx);
+                    if (cell >= reserved.size() || reserved[cell]) return false;
+                }
+            return true;
+        };
+        for (const std::uint64_t id : apps) {
+            const auto& entry = entries.at(id);
+            const int spanColumns = std::clamp(entry.widgetColumns, 1, columns);
+            const int spanRows = std::clamp(entry.widgetRows, 1, gridRows);
+            for (std::size_t index = 0;; ++index) {
+                if (index >= projected.size()) {
+                    projected.resize(projected.size() + static_cast<std::size_t>(perPage), 0);
+                    reserved.resize(projected.size(), false);
+                }
+                if (!fitsAt(index, spanColumns, spanRows)) continue;
+                projected[index] = id;
+                for (int dy = 0; dy < spanRows; ++dy)
+                    for (int dx = 0; dx < spanColumns; ++dx)
+                        reserved[index + static_cast<std::size_t>(dy * columns + dx)] = true;
+                break;
+            }
         }
-        // More applications than free cells only happens if the saved layout is
-        // shorter than the catalogue; they go on the end rather than vanish.
-        for (; next < apps.size(); ++next)
-            projected.push_back(apps[next]);
         DebugLog::log("[grid] sort=%d projected=%zu apps=%zu", mode,
                       projected.size(), apps.size());
     }
@@ -5191,7 +5216,19 @@ void WiiUMenuApp::openCapturedFolder() {
     }
     m_grid->setRect({kGridRectX, 148.f, kGridRectW, 470.f});
     if (m_titlePill) m_titlePill->setTargetY(620.f, true);
-    applyDisplayModel(buildOpenFolderModel(m_openFolderId), m_folderOpenFocusTitleId, false);
+    // FocusManager::setGrid preserves the previous row/col, so opening a folder
+    // without an explicit title would land on whatever cell matched the folder
+    // tile's home placement. Default to the first title (PoloNX #133).
+    std::uint64_t openFocus = m_folderOpenFocusTitleId;
+    if (openFocus == 0) {
+        for (std::uint64_t titleId : folder->titleIds) {
+            if (titleId != 0) {
+                openFocus = titleId;
+                break;
+            }
+        }
+    }
+    applyDisplayModel(buildOpenFolderModel(m_openFolderId), openFocus, false);
     m_folderOpenFocusTitleId = 0;
     syncPageIndicator();
     if (m_editMode) {
@@ -5308,6 +5345,27 @@ void WiiUMenuApp::commitLaunchRecency(std::uint64_t titleId, const std::string& 
                       static_cast<unsigned long>(titleId));
 }
 
+#ifdef SWITCHU_MENU
+void WiiUMenuApp::resumeSuspendedApplication(std::uint64_t titleId,
+                                             const std::string& launchTitle) {
+    // PoloNX #105: a suspended title comes back with a short fade instead of
+    // the cold-launch zoom.
+    if (titleId == 0 || !m_launchAnim)
+        return;
+    switchu::smi::LaunchTransitionTrace transitionTrace{};
+    transitionTrace.activation_tick = armGetSystemTick();
+    transitionTrace.user_selected_tick = transitionTrace.activation_tick;
+    commitLaunchRecency(titleId, launchTitle);
+    m_audio.playSfx(Sfx::LaunchGame);
+    m_launchAnim->startResume([this, transitionTrace]() mutable {
+        transitionTrace.animation_complete_tick = armGetSystemTick();
+        transitionTrace.recency_commit_complete_tick =
+            transitionTrace.animation_complete_tick;
+        m_launcher.resumeApplication(transitionTrace);
+    });
+}
+#endif
+
 void WiiUMenuApp::activateApplication(GlossyIcon* source, AppEntry* entry,
                                       std::uint64_t titleId,
                                       const std::string& launchTitle) {
@@ -5321,23 +5379,7 @@ void WiiUMenuApp::activateApplication(GlossyIcon* source, AppEntry* entry,
         }
     }
     if (m_launcher.isAppSuspended(titleId)) {
-        switchu::smi::LaunchTransitionTrace transitionTrace{};
-        transitionTrace.activation_tick = armGetSystemTick();
-        transitionTrace.user_selected_tick = transitionTrace.activation_tick;
-        m_audio.playSfx(Sfx::LaunchGame);
-        commitLaunchRecency(titleId, launchTitle);
-        const nxui::Rect focusR = source ? source->focusRect() : nxui::Rect{640.0f - 64.0f, 360.0f - 64.0f, 128.0f, 128.0f};
-        const nxui::Texture* tex = source ? source->texture() : nullptr;
-        const float r = source ? source->cornerRadius() : 18.0f;
-        m_launchAnim->start(focusR, tex,
-            r, m_theme.panelBase, m_theme.panelBorder,
-            0, {}, nullptr,
-            [this, transitionTrace]() mutable {
-                transitionTrace.animation_complete_tick = armGetSystemTick();
-                transitionTrace.recency_commit_complete_tick =
-                    transitionTrace.animation_complete_tick;
-                m_launcher.resumeApplication(transitionTrace);
-            });
+        resumeSuspendedApplication(titleId, launchTitle);
         return;
     }
 
@@ -5651,25 +5693,10 @@ std::shared_ptr<GlossyIcon> WiiUMenuApp::makeIcon(const AppEntry& entry) {
         transitionTrace.activation_tick = armGetSystemTick();
         uint64_t tid = raw->titleId();
         if (m_launcher.isAppSuspended(tid)) {
-            nxui::Rect   fr   = raw->focusRect();
-            const nxui::Texture* tex = raw->texture();
-            float  cr   = raw->cornerRadius();
-            nxui::Color  base = m_theme.panelBase;
-            nxui::Color  bord = m_theme.panelBorder;
             transitionTrace.user_selected_tick = transitionTrace.activation_tick;
             const std::string resumeTitle = raw->title();
-            auto continueResume = [this, fr, tex, cr, base, bord, tid,
-                                   resumeTitle, transitionTrace]() mutable {
-                commitLaunchRecency(tid, resumeTitle);
-                m_audio.playSfx(Sfx::LaunchGame);
-                m_launchAnim->start(fr, tex, cr, base, bord, 0, {},
-                    nullptr,
-                    [this, transitionTrace]() mutable {
-                        transitionTrace.animation_complete_tick = armGetSystemTick();
-                        transitionTrace.recency_commit_complete_tick =
-                            transitionTrace.animation_complete_tick;
-                        m_launcher.resumeApplication(transitionTrace);
-                    });
+            auto continueResume = [this, tid, resumeTitle]() {
+                resumeSuspendedApplication(tid, resumeTitle);
             };
 #ifdef SWITCHU_RESUME_FAILURE_TEST
             m_audio.playSfx(Sfx::ModalShow);
@@ -8068,7 +8095,7 @@ void WiiUMenuApp::onUpdate(float dt) {
 
             switch (notif.msg) {
             case switchu::smi::MenuMessage::HomeRequest:
-                m_sysMsg.pushAction(SysAction::HomeButton);
+                m_sysMsg.pushAction(SysAction::HomeDismiss);
                 break;
             case switchu::smi::MenuMessage::ApplicationExited:
                 m_launcher.setAppRunning(false);
@@ -8194,7 +8221,7 @@ void WiiUMenuApp::onUpdate(float dt) {
     pollAutoNtpSync(dt);
 #endif
 
-    if (!app().input().isDown(nxui::Button::Plus) || !app().input().isDown(nxui::Button::Minus))
+    if (!app().input().isHeld(nxui::Button::Plus) || !app().input().isHeld(nxui::Button::Minus))
         m_accessibilityToggleComboHeld = false;
 
 #ifdef SWITCHU_MENU

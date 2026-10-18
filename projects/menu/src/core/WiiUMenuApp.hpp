@@ -286,6 +286,8 @@ private:
     void activateApplication(GlossyIcon* source, AppEntry* entry,
                              std::uint64_t titleId,
                              const std::string& launchTitle);
+    void resumeSuspendedApplication(std::uint64_t titleId,
+                                    const std::string& launchTitle);
 #endif
     void renameFolder(std::uint32_t folderId);
     void showFolderContextMenu(std::uint32_t folderId);

@@ -557,7 +557,7 @@ void GlossyIcon::onContentUpdate(float dt) {
             m_appearOpacity.set(1.f, 0.3f, nxui::Easing::outExpo);
         }
     }
-    m_suspendPulse += dt * 2.2f;
+    m_suspendPulse += dt * 2.8f;
     if (m_entryKind == GridEntryKind::Widget && m_widgetAnimation.hasFrames())
         m_widgetAnimation.update(dt, true);
 #ifdef SWITCHU_MENU
@@ -784,26 +784,35 @@ void GlossyIcon::onRender(nxui::Renderer& ren) {
     }
 
     if (m_suspended && s > 0.5f) {
-        float pulse = 0.5f + 0.5f * std::sin(m_suspendPulse);
-        float glowAlpha = 0.35f + 0.25f * pulse;
+        // Soft breathe so an open title reads clearly without looking like focus.
+        const float pulse = 0.5f + 0.5f * std::sin(m_suspendPulse);
+        const float outerAlpha = (0.28f + 0.42f * pulse) * a;
+        const float innerAlpha = (0.55f + 0.35f * pulse) * a;
+        const nxui::Color glow(0.20f, 0.92f, 0.50f, 1.f);
 
-        nxui::Color glow(0.18f, 0.85f, 0.45f, glowAlpha * a);
-        ren.drawRoundedRectOutline(r.expanded(2.f), glow, rad + 2.f, 2.5f);
+        ren.drawRoundedRectOutline(r.expanded(5.f * s),
+                                   glow.withAlpha(outerAlpha * 0.55f),
+                                   rad + 5.f * s, 4.5f * s);
+        ren.drawRoundedRectOutline(r.expanded(2.f * s),
+                                   glow.withAlpha(innerAlpha),
+                                   rad + 2.f * s, 3.2f * s);
 
-        float badgeSize = 26.f * s;
+        float badgeSize = 28.f * s;
         float badgeX = r.x + r.width  - badgeSize - 4.f * s;
         float badgeY = r.y + r.height - badgeSize - 4.f * s;
 
         nxui::Vec2 badgeCenter = { badgeX + badgeSize * 0.5f, badgeY + badgeSize * 0.5f };
+        ren.drawCircle(badgeCenter, badgeSize * 0.58f,
+                       glow.withAlpha((0.20f + 0.25f * pulse) * a), 20);
         ren.drawCircle(badgeCenter, badgeSize * 0.5f,
-                       nxui::Color(0.1f, 0.1f, 0.1f, 0.85f * a), 16);
+                       nxui::Color(0.06f, 0.10f, 0.08f, 0.90f * a), 16);
 
         float triH = badgeSize * 0.45f;
         float triW = triH * 0.85f;
         nxui::Vec2 p1 = { badgeCenter.x - triW * 0.35f, badgeCenter.y - triH * 0.5f };
         nxui::Vec2 p2 = { badgeCenter.x - triW * 0.35f, badgeCenter.y + triH * 0.5f };
         nxui::Vec2 p3 = { badgeCenter.x + triW * 0.65f, badgeCenter.y };
-        ren.drawTriangle(p1, p2, p3, nxui::Color(0.18f, 0.85f, 0.45f, 0.95f * a));
+        ren.drawTriangle(p1, p2, p3, glow.withAlpha(0.98f * a));
     }
 
     // Bottom-left, opposite the suspended badge, so a suspended game that is

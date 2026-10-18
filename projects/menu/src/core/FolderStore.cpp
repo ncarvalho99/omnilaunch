@@ -280,9 +280,12 @@ bool FolderStore::addTitle(std::uint32_t folderId, std::uint64_t titleId) {
     const std::uint32_t previous = folderForTitle(titleId);
     if (previous == folderId)
         return true;
+    const auto hole = std::find(folder->titleIds.begin(), folder->titleIds.end(), 0ULL);
+    if (hole == folder->titleIds.end() &&
+        folder->titleIds.size() >= maxFolderSlots(folder->sizeIndex))
+        return false;
     if (previous != 0)
         removeTitle(previous, titleId);
-    auto hole = std::find(folder->titleIds.begin(), folder->titleIds.end(), 0ULL);
     if (hole != folder->titleIds.end())
         *hole = titleId;
     else
@@ -299,12 +302,46 @@ bool FolderStore::placeTitle(std::uint32_t folderId, std::uint64_t titleId,
         return false;
 
     const std::uint32_t previous = folderForTitle(titleId);
+    const std::size_t maximum = maxFolderSlots(target->sizeIndex);
+    if (index >= maximum)
+        return false;
+
+    // Reordering inside the same folder must swap (or relocate into a hole),
+    // matching the HOME menu. Zeroing the source and inserting at the target
+    // left a blank tile and shifted everything after it.
+    if (previous == folderId) {
+        auto it = std::find(target->titleIds.begin(), target->titleIds.end(), titleId);
+        if (it == target->titleIds.end())
+            return false;
+        const std::size_t sourceIndex =
+            static_cast<std::size_t>(it - target->titleIds.begin());
+        if (index == sourceIndex)
+            return true;
+        if (index >= target->titleIds.size())
+            target->titleIds.resize(index + 1, 0);
+        std::swap(target->titleIds[sourceIndex], target->titleIds[index]);
+        trimTrailingHoles(target->titleIds);
+        return true;
+    }
+
+    // Inbound drops (HOME or another folder) must not insert-shift like the
+    // old same-folder path: that pushed every later tile and felt like a blank
+    // was created. Place at the target index; if occupied, relocate the
+    // displaced title into the first hole or append.
+    const bool targetOccupied = index < target->titleIds.size() &&
+                                target->titleIds[index] != 0;
+    const auto existingHole = std::find(target->titleIds.begin(),
+                                        target->titleIds.end(), 0ULL);
+    if (targetOccupied && existingHole == target->titleIds.end() &&
+        target->titleIds.size() >= maximum)
+        return false;
+
     if (previous != 0) {
         Folder* source = find(previous);
         if (source) {
             auto it = std::find(source->titleIds.begin(), source->titleIds.end(), titleId);
             if (it != source->titleIds.end()) {
-                *it = 0;  
+                *it = 0;
                 trimTrailingHoles(source->titleIds);
             }
         }
@@ -316,11 +353,21 @@ bool FolderStore::placeTitle(std::uint32_t folderId, std::uint64_t titleId,
 
     if (index >= target->titleIds.size())
         target->titleIds.resize(index + 1, 0);
-    if (target->titleIds[index] == 0)
-        target->titleIds[index] = titleId;
-    else
-        target->titleIds.insert(target->titleIds.begin() + static_cast<std::ptrdiff_t>(index),
-                                titleId);
+
+    const std::uint64_t displaced = target->titleIds[index];
+    target->titleIds[index] = titleId;
+    if (displaced != 0) {
+        auto hole = std::find(target->titleIds.begin(), target->titleIds.end(), 0ULL);
+        if (hole != target->titleIds.end()) {
+            *hole = displaced;
+        } else if (target->titleIds.size() < maximum) {
+            target->titleIds.push_back(displaced);
+        } else {
+            target->titleIds[index] = displaced;
+            return false;
+        }
+    }
+    trimTrailingHoles(target->titleIds);
     return true;
 }
 
@@ -350,7 +397,10 @@ bool FolderStore::setSizeIndex(std::uint32_t folderId, int sizeIndex) {
     Folder* folder = find(folderId);
     if (!folder)
         return false;
-    folder->sizeIndex = std::clamp(sizeIndex, 0, 2);
+    const int clamped = std::clamp(sizeIndex, 0, 2);
+    if (folder->titleIds.size() > maxFolderSlots(clamped))
+        return false;
+    folder->sizeIndex = clamped;
     return true;
 }
 

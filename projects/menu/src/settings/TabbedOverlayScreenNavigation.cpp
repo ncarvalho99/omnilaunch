@@ -459,15 +459,10 @@ void TabbedOverlayScreen::onNavRight() {
         if (item.onChange) item.onChange(item);
         if (m_sliderSfxCb) m_sliderSfxCb(true);
         announceCurrentValue();
-    } else if (item.type == ItemType::Selector) {
-        openDropdown(rawIdx);
-        if (m_activateSfxCb) m_activateSfxCb();
-        announceCurrentFocus();
-    } else if (item.type == ItemType::Action) {
-        if (item.onChange) item.onChange(item);
-        if (m_activateSfxCb) m_activateSfxCb();
-        announceCurrentFocus();
     }
+    // Opening a selector or running an action is A's job: doing it on Right
+    // made a held stick open and close dropdowns (or fire the action) over
+    // and over.
 }
 
 void TabbedOverlayScreen::scrollToFocused() {

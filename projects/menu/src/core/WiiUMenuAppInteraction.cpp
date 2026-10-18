@@ -953,10 +953,14 @@ bool WiiUMenuApp::handleAccessibilityToggleCombo() {
     if (m_navigator.route() == switchu::navigation::Route::ControllerTest)
         return false;
     auto& input = app().input();
-    if (!input.isDown(nxui::Button::Plus) || !input.isDown(nxui::Button::Minus))
+    // isDown() is true only on the frame a button is pressed, so requiring
+    // both would demand a same-frame press. Accept both held with one fresh press.
+    if (!input.isHeld(nxui::Button::Plus) || !input.isHeld(nxui::Button::Minus))
         return false;
     if (m_accessibilityToggleComboHeld)
         return true;
+    if (!input.isDown(nxui::Button::Plus) && !input.isDown(nxui::Button::Minus))
+        return false;
     m_accessibilityToggleComboHeld = true;
     m_plusExitPending = false;
     m_plusExitPendingTimer = 0.f;

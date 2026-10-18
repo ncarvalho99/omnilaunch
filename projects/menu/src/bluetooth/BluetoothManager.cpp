@@ -4,8 +4,13 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <chrono>
+#include <condition_variable>
 #include <cstring>
+#include <deque>
+#include <functional>
 #include <mutex>
+#include <thread>
 
 namespace bluetooth {
 
@@ -32,6 +37,7 @@ std::recursive_mutex g_discoveredLock;
 std::atomic_bool g_discoveredChanged = false;
 
 std::atomic_bool g_threadRunning = false;
+std::atomic_int g_pendingOps = 0;
 std::atomic_bool g_discovering = false;
 std::atomic_bool g_initialized = false;
 std::atomic_uint g_discoveryPollCount = 0;
@@ -118,6 +124,75 @@ s32 ReloadDiscovered() {
     if (UpdateList(g_discoveredDevices, list, g_discoveredChanged))
         DebugLog::log("[bt] Discovered devices changed (%d)", count);
     return count;
+}
+
+// btm connect/disconnect/unpair calls can block for seconds (or never return
+// while the headset is out of range), so they run on one persistent worker
+// instead of the UI thread. The worker is joined, never detached: detach()
+// throws when the thread already finished, and that aborted the whole menu.
+struct BtOp {
+    const char* what;
+    std::function<Result()> run;
+};
+std::thread* g_opThread = nullptr;
+std::mutex g_opMutex;
+std::condition_variable g_opCv;
+std::deque<BtOp> g_ops;
+bool g_opStop = false;
+
+void OpWorker() {
+    for (;;) {
+        BtOp op;
+        {
+            std::unique_lock<std::mutex> lk(g_opMutex);
+            g_opCv.wait(lk, [] { return g_opStop || !g_ops.empty(); });
+            if (g_ops.empty())
+                return; // stop requested and nothing left to run
+            op = std::move(g_ops.front());
+            g_ops.pop_front();
+        }
+        const auto start = std::chrono::steady_clock::now();
+        const Result rc = op.run();
+        const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start).count();
+        DebugLog::log("[bt] %s finished rc=0x%x in %lld ms", op.what, rc, static_cast<long long>(ms));
+        g_connectedChanged = true;
+        g_discoveredChanged = true;
+        g_pairedChanged = true;
+        g_pendingOps--;
+    }
+}
+
+void RunAsync(const char* what, std::function<Result()> op) {
+    std::lock_guard<std::mutex> lk(g_opMutex);
+    if (!g_opThread)
+        g_opThread = new std::thread(OpWorker);
+    g_pendingOps++;
+    g_ops.push_back({what, std::move(op)});
+    g_opCv.notify_one();
+}
+
+void StopOpWorker() {
+    std::thread* worker = nullptr;
+    {
+        std::lock_guard<std::mutex> lk(g_opMutex);
+        g_opStop = true;
+        g_opCv.notify_all();
+        worker = g_opThread;
+    }
+    if (!worker)
+        return;
+    // A connect that never returns must not hang shutdown: wait briefly, and
+    // if the worker is still busy leave it to die with the process.
+    for (int i = 0; i < 60 && g_pendingOps > 0; ++i)
+        svcSleepThread(50'000'000);
+    if (g_pendingOps == 0) {
+        worker->join();
+        delete worker;
+        std::lock_guard<std::mutex> lk(g_opMutex);
+        g_opThread = nullptr;
+        g_opStop = false;
+    }
 }
 
 void ThreadFunc(void*) {
@@ -211,6 +286,7 @@ void Finalize() {
 
     if (g_discovering) StopDiscovery();
 
+    StopOpWorker();
     g_threadRunning = false;
     // UEvent is user-mode only, so it does not consume the kernel handle that
     // made the original stop Event fail with ResultLimitReached. waitMulti
@@ -287,7 +363,9 @@ Result ConnectAudioDevice(const BtmAudioDevice& device) {
     g_connectedChanged = true;
     g_discoveredChanged = true;
     g_pairedChanged = true;
-    return btmsysConnectAudioDevice(device.addr);
+    const BtdrvAddress addr = device.addr;
+    RunAsync("connect", [addr]() { return btmsysConnectAudioDevice(addr); });
+    return 0;
 }
 
 Result DisconnectAudioDevice(const BtmAudioDevice& device) {
@@ -296,13 +374,17 @@ Result DisconnectAudioDevice(const BtmAudioDevice& device) {
         g_connectedDevice = {};
     }
     g_connectedChanged = true;
-    return btmsysDisconnectAudioDevice(device.addr);
+    const BtdrvAddress addr = device.addr;
+    RunAsync("disconnect", [addr]() { return btmsysDisconnectAudioDevice(addr); });
+    return 0;
 }
 
 Result UnpairAudioDevice(const BtmAudioDevice& device) {
     g_pairedChanged = true;
     g_discoveredChanged = true;
-    return btmsysRemoveAudioDevicePairing(device.addr);
+    const BtdrvAddress addr = device.addr;
+    RunAsync("unpair", [addr]() { return btmsysRemoveAudioDevicePairing(addr); });
+    return 0;
 }
 
 std::string DeviceName(const BtmAudioDevice& device) {
