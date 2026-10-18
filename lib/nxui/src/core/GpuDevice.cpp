@@ -280,11 +280,8 @@ int GpuDevice::beginFrame() {
     // Most texture work happens in Activity::onUpdate, before beginFrame. Send
     // that batch now so it can execute while acquireImage waits for display.
     // A second batch submission in endFrame covers glyphs created while rendering.
-    const bool submittedUploads = m_uploadBatchOpen &&
-        m_uploadCopyCount[m_uploadSlot] > 0;
+    // submitUploadBatch() already flushes the queue when work is submitted.
     submitUploadBatch();
-    if (submittedUploads)
-        m_queue.flush();
 
     // These two waits mean different things and have to be told apart.
     //

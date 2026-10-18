@@ -97,7 +97,12 @@ Texture* Font::getOrRender(GpuDevice& gpu, Renderer& ren, const std::string& tex
         victim.key = text;
         victim.w = w;
         victim.h = h;
-        victim.tex.loadFromSurface(gpu, ren, pixels, w, h, pitch);
+        if (!victim.tex.loadFromSurface(gpu, ren, pixels, w, h, pitch)) {
+            m_maintenanceRequested = true;
+            SDL_UnlockSurface(rgba);
+            SDL_FreeSurface(rgba);
+            return nullptr;
+        }
 
         // Move recycled entry to front
         m_lruList.splice(m_lruList.begin(), m_lruList, std::prev(m_lruList.end()));
@@ -108,22 +113,15 @@ Texture* Font::getOrRender(GpuDevice& gpu, Renderer& ren, const std::string& tex
         entry.key = text;
         entry.w = w;
         entry.h = h;
-        entry.tex.loadFromSurface(gpu, ren, pixels, w, h, pitch);
+        if (!entry.tex.loadFromSurface(gpu, ren, pixels, w, h, pitch)) {
+            m_lruList.pop_front();
+            m_maintenanceRequested = true;
+            SDL_UnlockSurface(rgba);
+            SDL_FreeSurface(rgba);
+            return nullptr;
+        }
+        m_cacheBytes += entry.tex.allocationSize();
     }
-
-    m_lruList.emplace_front();
-    auto& entry = m_lruList.front();
-    entry.key = text;
-    entry.w = w;
-    entry.h = h;
-    if (!entry.tex.loadFromSurface(gpu, ren, pixels, w, h, pitch)) {
-        m_lruList.pop_front();
-        m_maintenanceRequested = true;
-        SDL_UnlockSurface(rgba);
-        SDL_FreeSurface(rgba);
-        return nullptr;
-    }
-    m_cacheBytes += entry.tex.allocationSize();
 
     SDL_UnlockSurface(rgba);
     SDL_FreeSurface(rgba);
