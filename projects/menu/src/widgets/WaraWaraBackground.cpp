@@ -467,7 +467,8 @@ void WaraWaraBackground::pumpImageSequence(nxui::GpuDevice& gpu, nxui::Renderer&
         }
 
         nxui::Texture tex;
-        if (!tex.loadBc1Memory(gpu, ren, bytes.data(), bytes.size())) {
+        m_arenaGpu = &gpu;
+        if (!tex.loadBc1Memory(gpu, ren, bytes.data(), bytes.size(), &m_frameArena)) {
             // Stopping here rather than carrying on: a sequence missing a frame
             // in the middle stutters at that point every loop, which looks like
             // a fault rather than a shorter animation.
@@ -538,6 +539,10 @@ void WaraWaraBackground::clearImage() {
     m_frameSequencePending = false;
     m_backgroundImage = nxui::Texture{};
     m_frames.clear();
+    // Their memory lives in the arena, chunked 8 MB at a time (issue #2
+    // item 4); one release gives it all back.
+    if (m_arenaGpu)
+        m_arenaGpu->releaseImageArena(m_frameArena);
     m_frameInterval = 0.f;
     m_frameTimer = 0.f;
     m_frameIndex = 0;
@@ -548,6 +553,8 @@ bool WaraWaraBackground::loadVideo(const std::string& path, bool loop) {
     m_videoPlayer.close();
     m_frameSequencePending = false;
     m_frames.clear();
+    if (m_arenaGpu)
+        m_arenaGpu->releaseImageArena(m_frameArena);
     m_frameInterval = 0.f;
     m_frameTimer = 0.f;
     m_frameIndex = 0;

@@ -61,7 +61,8 @@ bool Texture::loadFromPixels(GpuDevice& gpu, Renderer& ren,
 // images would be a second copy of that bug waiting to be reintroduced.
 bool Texture::loadImageData(GpuDevice& gpu, Renderer& ren,
                             const uint8_t* data, uint64_t dataSize,
-                            int w, int h, uint32_t format)
+                            int w, int h, uint32_t format,
+                            GpuDevice::ImageArena* arena)
 {
     m_gpu = &gpu;
     m_ren = &ren;
@@ -106,6 +107,47 @@ bool Texture::loadImageData(GpuDevice& gpu, Renderer& ren,
         .initialize(layout);
 
     uint32_t needed = layout.getSize();
+
+    // Arena path (issue #2 item 4): the sequence owns the memory; this object
+    // only views it. No per-texture MemBlock, nothing to free in the dtor.
+    if (arena) {
+        if (m_mem && oldAllocSize > 0) {
+            gpu.freeImageMemory(oldAllocSize);
+            m_mem = {};
+        }
+        auto alloc = gpu.allocFromArena(*arena, needed, (uint32_t)layout.getAlignment());
+        if (!alloc.valid()) {
+            if (oldSlot >= 0)
+                ren.releaseTextureSlot(oldSlot);
+            m_valid = false;
+            m_slot = -1;
+            m_allocSize = 0;
+            return false;
+        }
+        m_allocSize = 0;
+        m_image.initialize(layout, alloc.block, alloc.offset);
+        if (!gpu.uploadTexture(m_image, data, (uint32_t)dataSize, w, h, dataSize)) {
+            std::printf("[Texture] uploadTexture FAILED (%dx%d)\n", w, h);
+            if (oldSlot >= 0) ren.releaseTextureSlot(oldSlot);
+            m_valid = false;
+            return false;
+        }
+        dk::ImageView view{m_image};
+        if (oldSlot >= 0) {
+            ren.updateTexture(oldSlot, view);
+            m_slot = oldSlot;
+        } else {
+            m_slot = ren.registerTexture(view);
+            if (m_slot < 0) {
+                std::printf("[Texture] registerTexture FAILED (%dx%d)\n", w, h);
+                m_valid = false;
+                return false;
+            }
+        }
+        m_valid = true;
+        return true;
+    }
+
     uint32_t alignedNeeded = (needed + kGpuAlign - 1) & ~(kGpuAlign - 1);
     uint32_t alignedOld    = (oldAllocSize + kGpuAlign - 1) & ~(kGpuAlign - 1);
 
@@ -248,7 +290,8 @@ bool Texture::loadBc1File(GpuDevice& gpu, Renderer& ren, const std::string& path
     return loadBc1Memory(gpu, ren, file.data(), file.size());
 }
 
-bool Texture::loadBc1Memory(GpuDevice& gpu, Renderer& ren, const uint8_t* head, size_t size) {
+bool Texture::loadBc1Memory(GpuDevice& gpu, Renderer& ren, const uint8_t* head, size_t size,
+                            GpuDevice::ImageArena* arena) {
     if (!head || size <= 128) return false;
 
     auto u32 = [&](int off) {
@@ -304,7 +347,7 @@ bool Texture::loadBc1Memory(GpuDevice& gpu, Renderer& ren, const uint8_t* head, 
         return false;
     }
 
-    return loadImageData(gpu, ren, head + offset, blocks, ww, hh, format);
+    return loadImageData(gpu, ren, head + offset, blocks, ww, hh, format, arena);
 }
 
 // Reading and decoding, with no GPU object touched anywhere in here. That is

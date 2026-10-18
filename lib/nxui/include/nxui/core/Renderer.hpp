@@ -282,6 +282,8 @@ public:
     // Post-processing
     void captureToOffscreen(bool reuseIfValid = false);
     void captureToOffscreenSharp();
+    // Creates the overlay offscreen group on first use (issue #2 item 6).
+    void ensureOverlayTargets();
     void copyOffscreen(int srcTarget, int dstTarget);
     void drawOffscreen(int target, const Rect& dest, const Color& tint = Color::white());
     void drawOffscreenRounded(int target, const Rect& dest, float radius,

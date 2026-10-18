@@ -202,6 +202,9 @@ private:
 
     std::thread m_frameReader;
     std::mutex  m_frameQueueMutex;
+    // Frame memory, 8 MB chunks shared by the whole sequence (issue #2 item 4).
+    nxui::GpuDevice::ImageArena m_frameArena;
+    nxui::GpuDevice* m_arenaGpu = nullptr;
     std::deque<std::vector<std::uint8_t>> m_frameQueue;
     std::atomic<bool> m_frameReaderStop{false};
     std::atomic<bool> m_frameReaderDone{false};

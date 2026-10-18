@@ -27,7 +27,9 @@ struct EcsServerOptions {
 
 using EcsServerManager = ::ams::sf::hipc::ServerManager<0, EcsServerOptions, 8>;
 
-constexpr size_t kAmsHeapSize = 2 * 1024 * 1024;
+// 2 MB -> 1 MB (issue #2 item 3, conservador ate vir o log de marca-d'agua):
+// o servidor ecs atende um punhado de sessoes curtas; 1 MB segue folgado.
+constexpr size_t kAmsHeapSize = 1 * 1024 * 1024;
 constexpr size_t kManagerThreadStackSize = 0x8000;
 constexpr s32 kManagerThreadPriority = 10;
 

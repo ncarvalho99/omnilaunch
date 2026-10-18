@@ -118,7 +118,8 @@ public:
     // different things -- reading a frame sequence off the card is tens of
     // megabytes of I/O, uploading it is microseconds -- and only the upload has
     // to happen on the render thread. Split so the reading can go elsewhere.
-    bool loadBc1Memory(GpuDevice& gpu, Renderer& ren, const uint8_t* data, size_t size);
+    bool loadBc1Memory(GpuDevice& gpu, Renderer& ren, const uint8_t* data, size_t size,
+                       GpuDevice::ImageArena* arena = nullptr);
 #endif
 
     // Load from SDL_Surface-style data (RGBA8, row pitch may differ)
@@ -170,7 +171,8 @@ private:
     // registration live here once.
     bool loadImageData(GpuDevice& gpu, Renderer& ren,
                        const uint8_t* data, uint64_t dataSize,
-                       int w, int h, uint32_t format);
+                       int w, int h, uint32_t format,
+                       GpuDevice::ImageArena* arena = nullptr);
 #endif
 #ifdef NXUI_BACKEND_DEKO3D
     dk::Image          m_image;

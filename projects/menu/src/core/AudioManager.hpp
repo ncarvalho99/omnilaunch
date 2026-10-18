@@ -99,5 +99,9 @@ private:
     std::unordered_map<int, Mix_Chunk*> m_sfx;
     std::unordered_map<std::string, Mix_Chunk*> m_namedSfx;
     std::unordered_map<std::string, float> m_namedSfxVolumeScales;
+    // Effects decode on first play instead of all at start-up (issue #2
+    // item 8): these keep the registered path until that moment.
+    std::unordered_map<int, std::string> m_sfxPaths;
+    std::unordered_map<std::string, std::string> m_namedSfxPaths;
     float m_sfxVolume = 0.7f;
 };

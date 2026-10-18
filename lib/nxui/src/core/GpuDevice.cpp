@@ -201,9 +201,28 @@ void GpuDevice::createDepthStencil() {
     m_dsImage.initialize(dsLayout, m_dsPool.block, 0);
 }
 
+// The scene pair (OFF_SCENE + OFF_BG_BLUR, half res) feeds the per-frame
+// glass pipeline, so it exists from boot. The five full-res overlay targets
+// (dialog/settings caches, the sharp blur pair, the frozen scene) are only
+// written when an overlay opens; creating them on that first use keeps
+// ~18 MB out of every session that never opens one (issue #2 item 6).
 void GpuDevice::createOffscreenTargets() {
+    createOffscreenGroup(/*overlay=*/false, m_offPool);
+    m_offscreenReady = true;
+}
+
+void GpuDevice::ensureOverlayOffscreenTargets() {
+    if (m_overlayOffscreenReady)
+        return;
+    createOffscreenGroup(/*overlay=*/true, m_overlayOffPool);
+    m_overlayOffscreenReady = true;
+}
+
+void GpuDevice::createOffscreenGroup(bool overlay, GpuPool& pool) {
     dk::ImageLayout layouts[NUM_OFFSCREEN];
     for (int i = 0; i < NUM_OFFSCREEN; ++i) {
+        if (offscreenIsOverlay(i) != overlay)
+            continue;
         dk::ImageLayoutMaker{m_dev}
             .setFlags(DkImageFlags_UsageRender | DkImageFlags_Usage2DEngine)
             .setFormat(DkImageFormat_RGBA8_Unorm)
@@ -213,18 +232,22 @@ void GpuDevice::createOffscreenTargets() {
 
     uint32_t totalOff = 0;
     for (int i = 0; i < NUM_OFFSCREEN; ++i) {
+        if (offscreenIsOverlay(i) != overlay)
+            continue;
         const uint64_t a = layouts[i].getAlignment();
         totalOff = (totalOff + a - 1) & ~(a - 1);
         totalOff += layouts[i].getSize();
     }
-    traceAlloc("offscreen-pool", totalOff);
-    m_offPool.create(m_dev, totalOff, DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image);
+    traceAlloc(overlay ? "offscreen-overlay-pool" : "offscreen-pool", totalOff);
+    pool.create(m_dev, totalOff, DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image);
 
     uint32_t off = 0;
     for (int i = 0; i < NUM_OFFSCREEN; ++i) {
+        if (offscreenIsOverlay(i) != overlay)
+            continue;
         const uint64_t a = layouts[i].getAlignment();
         off = (off + a - 1) & ~(a - 1);
-        m_offImages[i].initialize(layouts[i], m_offPool.block, off);
+        m_offImages[i].initialize(layouts[i], pool.block, off);
         off += layouts[i].getSize();
     }
 
@@ -232,17 +255,14 @@ void GpuDevice::createOffscreenTargets() {
     // targets are sampled by descriptor slot, and not every consumer writes one
     // before reading it in the same frame: FolderBackdrop draws OFF_SETTINGS
     // gated only on its own fade alpha, so before the first folder capture ever
-    // runs it samples uninitialised memory. That is the boot-time-only garbage —
-    // once a capture has written a target the stale contents are gone, which is
-    // why the artifacts were never reproducible after the first interaction and
-    // why two previous fixes aimed at shape geometry could not land.
-    //
-    // Zero them once, here, before m_offscreenReady lets anything sample them.
-    // This is init-time and runs exactly once, so it costs nothing per frame.
+    // runs it samples uninitialised memory. Zero each group once, before its
+    // ready flag lets anything sample it.
     auto& cmd = m_cmdbuf[0];
     cmd.clear();
     cmd.addMemory(m_cmdPool[0].block, 0, CMD_BUF_SIZE);
     for (int i = 0; i < NUM_OFFSCREEN; ++i) {
+        if (offscreenIsOverlay(i) != overlay)
+            continue;
         const uint32_t w = (uint32_t)offscreenWidth(i);
         const uint32_t h = (uint32_t)offscreenHeight(i);
         dk::ImageView target{m_offImages[i]};
@@ -254,8 +274,6 @@ void GpuDevice::createOffscreenTargets() {
     cmd.barrier(DkBarrier_Full, DkInvalidateFlags_Image);
     m_queue.submitCommands(cmd.finishList());
     m_queue.waitIdle();
-
-    m_offscreenReady = true;
 }
 
 int GpuDevice::beginFrame() {
@@ -675,7 +693,9 @@ void GpuDevice::shutdown() {
     m_fbPool      = {};
     m_dsPool      = {};
     m_offPool     = {};
+    m_overlayOffPool = {};
     m_offscreenReady = false;
+    m_overlayOffscreenReady = false;
     for (int i = 0; i < NUM_FB; ++i)
         m_cmdPool[i] = {};
     for (int i = 0; i < UPLOAD_SLOT_COUNT; ++i) {
@@ -692,6 +712,60 @@ void GpuDevice::shutdown() {
     m_bulkTeardown = false;
     m_uploadBatchOpen = false;
     m_uploadSlot = 0;
+}
+
+GpuDevice::ImageAlloc GpuDevice::allocFromArena(ImageArena& arena, uint32_t size, uint32_t alignment) {
+    if (alignment < kGpuAlign) alignment = kGpuAlign;
+    size = (size + kGpuAlign - 1) & ~(kGpuAlign - 1);
+    if (m_imageMemUsed + size > s_imageBudget) {
+        std::fprintf(stderr, "[GpuDevice] arena budget exceeded (%llu + %u > %llu)\n",
+                     (unsigned long long)m_imageMemUsed, size,
+                     (unsigned long long)s_imageBudget);
+        return {};
+    }
+    if (!arena.chunks.empty()) {
+        auto& chunk = arena.chunks.back();
+        const uint32_t aligned = (arena.lastUsed + alignment - 1) & ~(alignment - 1);
+        if (aligned + size <= chunk.size) {
+            arena.lastUsed = aligned + size;
+            arena.totalBytes += size;
+            m_imageMemUsed += size;
+            return {chunk.block, aligned};
+        }
+    }
+    uint32_t chunkSize = std::max(kArenaChunkSize, size);
+    chunkSize = (chunkSize + kGpuAlign - 1) & ~(kGpuAlign - 1);
+    traceAlloc("arena-chunk", chunkSize, m_imageMemUsed, s_imageBudget, arena.chunks.size());
+    GpuPool pool;
+    pool.create(m_dev, chunkSize, DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image);
+    if (!pool.block) {
+        std::fprintf(stderr, "[GpuDevice] arena chunk allocation failed (%u bytes)\n", chunkSize);
+        return {};
+    }
+    arena.chunks.push_back(std::move(pool));
+    arena.lastUsed = size;
+    arena.totalBytes += size;
+    m_imageMemUsed += size;
+    return {arena.chunks.back().block, 0};
+}
+
+void GpuDevice::releaseImageArena(ImageArena& arena) {
+    if (arena.chunks.empty()) {
+        arena.lastUsed = 0;
+        arena.totalBytes = 0;
+        return;
+    }
+    // The frame in flight may still sample these images; the caller releases at
+    // the same moments it was already allowed to destroy the Textures that view
+    // them, and the wait covers the queue exactly as the Texture path does.
+    waitIdle();
+    arena.chunks.clear();
+    if (arena.totalBytes <= m_imageMemUsed)
+        m_imageMemUsed -= arena.totalBytes;
+    else
+        m_imageMemUsed = 0;
+    arena.lastUsed = 0;
+    arena.totalBytes = 0;
 }
 
 } // namespace nxui

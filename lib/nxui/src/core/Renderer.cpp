@@ -228,6 +228,8 @@ void Renderer::resetTextureSlots() {
 
     if (m_gpu.offscreenReady()) {
         for (int i = 0; i < GpuDevice::NUM_OFFSCREEN; ++i) {
+            if (GpuDevice::offscreenIsOverlay(i) && !m_gpu.overlayOffscreenReady())
+                continue;
             dk::ImageView view{m_gpu.offscreenImage(i)};
             dk::ImageDescriptor d;
             d.initialize(view);
@@ -577,6 +579,8 @@ void Renderer::flush() {
 // Render target switching
 
 void Renderer::bindRenderTarget(int offscreenIdx, float logicalW, float logicalH) {
+    if (GpuDevice::offscreenIsOverlay(offscreenIdx))
+        ensureOverlayTargets();
     flush();
     auto cmd = m_gpu.cmdBuf();
     dk::ImageView colorTarget{m_gpu.offscreenImage(offscreenIdx)};
@@ -637,6 +641,23 @@ void Renderer::restoreRenderTarget() {
     updateProjection();
 }
 
+// First overlay use: create the five full-res targets and point their reserved
+// descriptor slots at them (issue #2 item 6). Idempotent and cheap after that.
+void Renderer::ensureOverlayTargets() {
+    if (m_gpu.overlayOffscreenReady())
+        return;
+    m_gpu.ensureOverlayOffscreenTargets();
+    auto* base = static_cast<dk::ImageDescriptor*>(m_gpu.imgDescCpuAddr());
+    for (int i = 0; i < GpuDevice::NUM_OFFSCREEN; ++i) {
+        if (!GpuDevice::offscreenIsOverlay(i))
+            continue;
+        dk::ImageView view{m_gpu.offscreenImage(i)};
+        dk::ImageDescriptor d;
+        d.initialize(view);
+        base[m_offDescSlot[i]] = d;
+    }
+}
+
 void Renderer::captureToOffscreen(bool reuseIfValid) {
     if (reuseIfValid && m_reusableOffscreenCaptureValid) {
         return;
@@ -682,6 +703,7 @@ void Renderer::captureToOffscreen(bool reuseIfValid) {
 // targets the per-frame scene capture never touches. They pay for it once per
 // open; the scene capture pays every frame and stays half res.
 void Renderer::captureToOffscreenSharp() {
+    ensureOverlayTargets();
     flush();
     ++m_frameCaptures;
     auto cmd = m_gpu.cmdBuf();
@@ -702,6 +724,8 @@ void Renderer::captureToOffscreenSharp() {
 }
 
 void Renderer::copyOffscreen(int srcTarget, int dstTarget) {
+    if (GpuDevice::offscreenIsOverlay(srcTarget) || GpuDevice::offscreenIsOverlay(dstTarget))
+        ensureOverlayTargets();
     if (!m_gpu.offscreenReady()) return;
     if (srcTarget < 0 || srcTarget >= GpuDevice::NUM_OFFSCREEN) return;
     if (dstTarget < 0 || dstTarget >= GpuDevice::NUM_OFFSCREEN) return;
@@ -727,6 +751,8 @@ void Renderer::copyOffscreen(int srcTarget, int dstTarget) {
 }
 
 void Renderer::drawOffscreen(int target, const Rect& dest, const Color& tint) {
+    if (GpuDevice::offscreenIsOverlay(target) && !m_gpu.overlayOffscreenReady())
+        return;
     useShader(ShaderProgram::Backdrop);
     bindTexture(m_offDescSlot[target]);
     addQuad(dest.x, dest.y, dest.right(), dest.bottom(), 0, 0, 1, 1, tint);
@@ -735,6 +761,8 @@ void Renderer::drawOffscreen(int target, const Rect& dest, const Color& tint) {
 }
 
 void Renderer::drawOffscreenRounded(int target, const Rect& dest, float radius, const Color& tint) {
+    if (GpuDevice::offscreenIsOverlay(target) && !m_gpu.overlayOffscreenReady())
+        return;
     if (target < 0 || target >= GpuDevice::NUM_OFFSCREEN) return;
     useShader(ShaderProgram::Backdrop);
 
@@ -759,6 +787,8 @@ void Renderer::drawOffscreenRounded(int target, const Rect& dest, float radius, 
 void Renderer::drawLiquidGlass(int target, const Rect& panelRect, float radius,
                                const Color& tint, float opacity, float shade) {
     if (opacity <= 0.01f || target < 0 || target >= GpuDevice::NUM_OFFSCREEN) return;
+    if (GpuDevice::offscreenIsOverlay(target) && !m_gpu.overlayOffscreenReady())
+        return;
     if (!m_gpu.offscreenReady()) {
         drawRoundedRect(panelRect, tint.withAlpha(tint.a * opacity), radius);
         return;
@@ -846,6 +876,8 @@ void Renderer::applyBlur(float radius, int passes) {
 // the full-resolution one would cost four times the pixels for something drawn
 // every frame rather than once per panel.
 void Renderer::applyBlurBetween(int a, int b, float radius, int passes) {
+    if (GpuDevice::offscreenIsOverlay(a) || GpuDevice::offscreenIsOverlay(b))
+        ensureOverlayTargets();
     if (!m_gpu.offscreenReady()) return;
     if (a < 0 || b < 0 || a >= GpuDevice::NUM_OFFSCREEN || b >= GpuDevice::NUM_OFFSCREEN) return;
 

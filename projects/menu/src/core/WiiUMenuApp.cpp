@@ -462,6 +462,8 @@ bool WiiUMenuApp::onCreate() {
         applyMenuLayoutToPending(apps);
     });
     m_appLoader.setPrefetchIcons(!fastReturn);
+    if (fastReturn)
+        m_iconStreamer.startBurst(1.5f);
     // Catalog I/O is independent of font/GPU setup. Start it now so SD reads
     // and metadata parsing overlap with i18n, audio, and resource creation.
     m_appLoader.startAsync(m_threadPool);
@@ -3636,9 +3638,17 @@ void WiiUMenuApp::refreshRecentActivityDuration() {
     m_widgetStore.updateRecentDuration(
         static_cast<std::int64_t>(std::time(nullptr)));
 #ifdef SWITCHU_MENU
-    if (const auto total = switchu::menu::playtime::query(
-            m_widgetStore.recentActivity().titleId))
-        m_widgetStore.setTotalSeconds(*total / 1000000000ULL);
+    // Read from the play time cache rather than from pdm. This runs while the
+    // menu is being created -- the moment the player is waiting through after
+    // pressing HOME -- and a pdm query costs about a quarter of a second there,
+    // for a total that is stored but never drawn. The cache is filled by the
+    // batch that already runs for the most-played view, so the figure arrives
+    // on its own; until it does, the wall-clock estimate stands.
+    constexpr std::uint64_t kNanosecondsPerSecond = 1000000000ULL;
+    const std::uint64_t cached =
+        m_config.playtimeOf(m_widgetStore.recentActivity().titleId);
+    if (cached != 0)
+        m_widgetStore.setTotalSeconds(cached / kNanosecondsPerSecond);
 #endif
 }
 
@@ -3870,16 +3880,23 @@ void WiiUMenuApp::pollGameArtworkAssets() {
         return;
 
     auto& decoded = *m_gameArtworkReady;
+    constexpr std::uint64_t kTextImageReserve = 4u * 1024u * 1024u;
     if (m_gameArtworkUploadStage == 0) {
         auto texture = std::make_unique<nxui::Texture>();
-        if (!decoded.hero.rgba.empty() && texture->loadFromPixels(
+        if (!decoded.hero.rgba.empty() &&
+            app().gpu().imageMemoryAvailable() >
+                kTextImageReserve + decoded.hero.rgba.size() &&
+            texture->loadFromPixels(
                 app().gpu(), app().renderer(), decoded.hero.rgba.data(),
                 decoded.hero.width, decoded.hero.height))
             m_gameArtworkUploadTextures.hero = std::move(texture);
         decoded.hero.rgba.clear();
     } else {
         auto texture = std::make_unique<nxui::Texture>();
-        if (!decoded.logo.rgba.empty() && texture->loadFromPixels(
+        if (!decoded.logo.rgba.empty() &&
+            app().gpu().imageMemoryAvailable() >
+                kTextImageReserve + decoded.logo.rgba.size() &&
+            texture->loadFromPixels(
                 app().gpu(), app().renderer(), decoded.logo.rgba.data(),
                 decoded.logo.width, decoded.logo.height))
             m_gameArtworkUploadTextures.logo = std::move(texture);
@@ -4392,6 +4409,80 @@ void WiiUMenuApp::syncWidgetPageAssets() {
         // changes therefore never decode a GIF in the middle of the slide.
         markPage(page - 1, false);
         markPage(page + 1, false);
+    }
+
+    // Each wide game card owns a 640x360 hero and a 384x192 logo. Loading
+    // those textures while constructing the complete grid made their lifetime
+    // global and exhausted the 32 MiB Deko image budget. Keep only the page
+    // being rendered (plus the outgoing page during a slide) resident.
+    std::unordered_set<std::uint64_t> currentGameArtwork;
+    std::unordered_set<std::uint64_t> retainedGameArtwork;
+    for (std::size_t i = 0; i < icons.size(); ++i) {
+        const auto* icon = icons[i].get();
+        if (!icon || icon->entryKind() != GridEntryKind::Application ||
+            (icon->gridSpanColumns() <= 1 && icon->gridSpanRows() <= 1))
+            continue;
+        if (current[i]) {
+            currentGameArtwork.insert(icon->titleId());
+            retainedGameArtwork.insert(icon->titleId());
+        } else if (sliding && keep[i]) {
+            retainedGameArtwork.insert(icon->titleId());
+        }
+        if (icon == m_editSourceIcon)
+            retainedGameArtwork.insert(icon->titleId());
+    }
+
+    m_gameArtworkDecodeQueue.erase(
+        std::remove_if(m_gameArtworkDecodeQueue.begin(), m_gameArtworkDecodeQueue.end(),
+            [&currentGameArtwork](std::uint64_t titleId) {
+                return !currentGameArtwork.count(titleId);
+            }),
+        m_gameArtworkDecodeQueue.end());
+    if (m_gameArtworkDecode &&
+        !currentGameArtwork.count(m_gameArtworkDecode->titleId))
+        m_gameArtworkDecode->cancelled.store(true);
+    if (m_gameArtworkReady &&
+        !currentGameArtwork.count(m_gameArtworkReady->titleId)) {
+        m_gameArtworkReady.reset();
+        m_gameArtworkUploadTextures = {};
+        m_gameArtworkUploadStage = 0;
+    }
+
+    std::vector<std::uint64_t> releaseGameArtwork;
+    for (const auto& entry : m_gameArtwork) {
+        if (!retainedGameArtwork.count(entry.first))
+            releaseGameArtwork.push_back(entry.first);
+    }
+    if (!releaseGameArtwork.empty()) {
+        for (const auto& icon : icons) {
+            if (icon && std::find(releaseGameArtwork.begin(),
+                                  releaseGameArtwork.end(), icon->titleId()) !=
+                            releaseGameArtwork.end())
+                icon->setWideGameTextures(nullptr, nullptr);
+        }
+        app().gpu().waitIdle();
+        for (const std::uint64_t titleId : releaseGameArtwork)
+            m_gameArtwork.erase(titleId);
+#ifdef NXUI_BACKEND_DEKO3D
+        app().renderer().reclaimReleasedTextureSlotsAfterIdle();
+#endif
+        DebugLog::log("[game-artwork] released=%zu page=%d gpu=%llu/%llu",
+                      releaseGameArtwork.size(), page,
+                      static_cast<unsigned long long>(app().gpu().imageMemoryUsed()),
+                      static_cast<unsigned long long>(app().gpu().imageMemoryBudget()));
+    }
+    for (std::size_t i = 0; i < icons.size(); ++i) {
+        auto* icon = icons[i].get();
+        if (!icon || !current[i] ||
+            icon->entryKind() != GridEntryKind::Application ||
+            (icon->gridSpanColumns() <= 1 && icon->gridSpanRows() <= 1))
+            continue;
+        const auto artwork = m_gameArtwork.find(icon->titleId());
+        if (artwork != m_gameArtwork.end())
+            icon->setWideGameTextures(artwork->second.hero.get(),
+                                      artwork->second.logo.get());
+        else
+            ensureGameArtwork(icon->titleId());
     }
 
     if (pageChanged || transitionEnded) {
@@ -5543,7 +5634,6 @@ std::shared_ptr<GlossyIcon> WiiUMenuApp::makeIcon(const AppEntry& entry) {
         }
     }
     if (isWideOrLarge) {
-        ensureGameArtwork(entry.titleId);
         const auto artwork = m_gameArtwork.find(entry.titleId);
         if (artwork != m_gameArtwork.end())
             icon->setWideGameTextures(artwork->second.hero.get(),

@@ -219,6 +219,22 @@ public:
     };
 
     ImageAlloc allocImageFromPool(uint32_t size, uint32_t alignment = 0);
+
+    struct ImageArena {
+        std::vector<GpuPool> chunks;
+        uint32_t lastUsed = 0;      // bump offset inside chunks.back()
+        uint64_t totalBytes = 0;    // budget accounting for releaseImageArena
+        bool empty() const { return chunks.empty(); }
+    };
+    // Frame sequences: hundreds of same-lifetime images. One MemBlock per
+    // frame is what the GPU driver could not take (issue #2 item 4); an arena
+    // packs them into 8 MB chunks, bump-allocated, freed together when the
+    // sequence goes away. Budget-checked like every other image allocation.
+    ImageAlloc allocFromArena(ImageArena& arena, uint32_t size, uint32_t alignment = 0);
+    // Frees every chunk at once. Call only when nothing in flight references
+    // the arena's images (same contract as destroying a Texture).
+    void releaseImageArena(ImageArena& arena);
+    static constexpr uint32_t kArenaChunkSize = 8u * 1024u * 1024u;
     void resetImagePool();
     dk::UniqueMemBlock allocImageMemory(uint32_t size);
     void freeImageMemory(uint32_t size);
@@ -307,12 +323,19 @@ public:
     static constexpr bool offscreenIsFullRes(int i) {
         return i != OFF_SCENE && i != OFF_BG_BLUR;
     }
+    // The overlay group is created on first use (issue #2 item 6); the scene
+    // pair exists from boot for the per-frame glass.
+    static constexpr bool offscreenIsOverlay(int i) {
+        return i != OFF_SCENE && i != OFF_BG_BLUR;
+    }
     static constexpr int  offscreenWidth(int i)  { return offscreenIsFullRes(i) ? FB_WIDTH  : FB_WIDTH  / 2; }
     static constexpr int  offscreenHeight(int i) { return offscreenIsFullRes(i) ? FB_HEIGHT : FB_HEIGHT / 2; }
 
     dk::Image&       offscreenImage(int i)       { return m_offImages[i]; }
     const dk::Image& offscreenImage(int i) const { return m_offImages[i]; }
     bool offscreenReady() const { return m_offscreenReady; }
+    bool overlayOffscreenReady() const { return m_overlayOffscreenReady; }
+    void ensureOverlayOffscreenTargets();
 
     dk::Image&       fbImage(int i)       { return m_fbImages[i]; }
     const dk::Image& fbImage(int i) const { return m_fbImages[i]; }
@@ -326,8 +349,12 @@ public:
 
     // Stubs for pool-based allocation (SDL2 uses SDL_CreateTexture directly)
     void resetImagePool() {}
+    struct ImageArena {};
+    void releaseImageArena(ImageArena&) {}
     static constexpr int NUM_OFFSCREEN = 7;
     bool offscreenReady() const { return false; }
+    bool overlayOffscreenReady() const { return false; }
+    void ensureOverlayOffscreenTargets() {}
     uint64_t imageMemoryUsed() const { return 0; }
     uint64_t imageMemoryBudget() const { return UINT64_MAX; }
     uint64_t imageMemoryAvailable() const { return UINT64_MAX; }
@@ -343,6 +370,7 @@ private:
     void createFramebuffers();
     void createDepthStencil();
     void createOffscreenTargets();
+    void createOffscreenGroup(bool overlay, GpuPool& pool);
     void beginUploadBatch();
     void submitUploadBatch();
     void retireSubmittedUploads();
@@ -376,7 +404,9 @@ private:
     dk::Image  m_dsImage;
     dk::Image  m_offImages[NUM_OFFSCREEN];
     GpuPool    m_offPool;
+    GpuPool    m_overlayOffPool;
     bool       m_offscreenReady = false;
+    bool       m_overlayOffscreenReady = false;
 
     // Per-slot fences: signalled in endFrame, waited in beginFrame, so that
     // the CPU never overwrites command/vertex memory the GPU is still reading.
