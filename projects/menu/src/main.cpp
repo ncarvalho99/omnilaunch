@@ -68,16 +68,14 @@ extern "C" {
 // nao abrir. Descendo degrau a degrau, o pior caso e exatamente o que se tinha
 // antes.
 namespace {
-// Degraus acima de 352 acrescentados depois de medir no console: o processo
-// relata 457,9 MB no total e o teto anterior da escada, 352, era concedido na
-// primeira tentativa -- ou seja, ela parava de pedir antes de o sistema recusar.
-// Nao ha custo em tentar: svcSetHeapSize devolve erro e o degrau seguinte entra.
-// Quanto o sistema concede de fato aparece no log como "heap concedido".
+// O processo tem 457.9 MB no total concedido pelo sistema.
+// Toda memoria solicitada aqui via svcSetHeapSize e reservada para o heap de malloc,
+// reduzindo diretamente a memoria fisica livre para o nvMap (Deko3D, staging buffers,
+// texturas de imagem e framebuffers). Com 384 MB de heap, sobravam apenas 14 MB para
+// a GPU, provocando esgotamento de memoria e GPU MMU fault (0x367 / DkResult_Fail).
+// Com 288 MB de heap, o malloc dispoe de 288 MB (a UI consome < 40 MB) e restam
+// ~162 MB livres para a GPU e VRAM allocations.
 constexpr size_t kHeapLadder[] = {
-    384u * 1024u * 1024u,
-    368u * 1024u * 1024u,
-    352u * 1024u * 1024u,
-    320u * 1024u * 1024u,
     288u * 1024u * 1024u,
     256u * 1024u * 1024u,
     kMenuAppletHeapSize,
