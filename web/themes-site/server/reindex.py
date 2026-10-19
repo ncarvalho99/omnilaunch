@@ -33,7 +33,7 @@ VECTEEZY_MAP = {
 }
 
 # Themes pinned to appear first in the catalog for OmniLaunch
-FEATURED_THEMES = ['belisarius', 'gethsemane', 'golgotha', 'the-innocent', 'the-leper-king']
+FEATURED_THEMES = ['saving-peter', 'belisarius', 'gethsemane', 'golgotha', 'the-innocent', 'the-leper-king']
 
 # Console playback limits. Mirror VideoPlayer.cpp wallpaperStreamRejection():
 # H.264, 8-bit 4:2:0, at most 1920x1080 and 60 fps. A file outside them is
