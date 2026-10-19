@@ -19,6 +19,36 @@ extern "C" {
     void __libnx_init_time(void);
     void __nx_win_init(void);
     void __nx_win_exit(void);
+
+    // Dynamic heap initialization with progressive ladder.
+    // In Album (applet) mode, libnx's default calculation clamps or overflows
+    // and selects 512 MB (0x20000000), which exceeds the 450 MB available pool,
+    // immediately triggering diagAbortWithResult(0x1F59) during CRT0 (__libnx_init)
+    // before __appInit, userAppInit, or main can ever run.
+    void __libnx_initheap(void) {
+        extern char* fake_heap_start;
+        extern char* fake_heap_end;
+
+        static constexpr size_t kManagerHeapLadder[] = {
+            128u * 1024u * 1024u,
+            64u  * 1024u * 1024u,
+            32u  * 1024u * 1024u,
+            16u  * 1024u * 1024u,
+            8u   * 1024u * 1024u,
+        };
+
+        void*  addr = nullptr;
+        size_t size = 0;
+        for (size_t want : kManagerHeapLadder) {
+            if (R_SUCCEEDED(svcSetHeapSize(&addr, want))) {
+                size = want;
+                break;
+            }
+        }
+
+        fake_heap_start = static_cast<char*>(addr);
+        fake_heap_end   = static_cast<char*>(addr) + size;
+    }
 }
 
 static void rawDiag(const char* fmt, ...) {
