@@ -1,5 +1,7 @@
 #include "GlossyIcon.hpp"
 #include "FolderPalette.hpp"
+#include "FolderStyleDraw.hpp"
+#include "core/FolderStore.hpp"
 #include "BatteryDrawing.hpp"
 #include "core/DebugLog.hpp"
 #include <nxui/core/Renderer.hpp>
@@ -493,6 +495,14 @@ void GlossyIcon::setWidgetGameTextures(std::uint64_t titleId,
 
 void GlossyIcon::copyWidgetPresentationFrom(GlossyIcon& source) {
     m_entryKind = source.m_entryKind;
+    m_folderPreviewCount = source.m_folderPreviewCount;
+    m_folderVisualSeed = source.m_folderVisualSeed;
+    m_folderColorIndex = source.m_folderColorIndex;
+    m_folderStyleIndex = source.m_folderStyleIndex;
+    m_folderShowCover = source.m_folderShowCover;
+    m_folderCover = source.m_folderCover;
+    m_folderCoverTitleId = source.m_folderCoverTitleId;
+    m_themeMode = source.m_themeMode;
     m_widgetType = source.m_widgetType;
     m_widgetColumns = source.m_widgetColumns;
     m_widgetRows = source.m_widgetRows;
@@ -1086,114 +1096,140 @@ void GlossyIcon::onContentRender(nxui::Renderer& ren) {
     }
 
     if (m_entryKind == GridEntryKind::Folder) {
-        nxui::Color accent = switchu::folders::colorForIndex(m_folderColorIndex);
+        // PoloNX #100's folder styles. Classic stays this fork's glass folder,
+        // so nobody's folders change look on update; the other six silhouettes
+        // are drawn by FolderStyleDraw.
+        if (m_folderStyleIndex != switchu::folders::kFolderStyleClassic) {
+            const int style = m_folderStyleIndex;
+            const bool mosaic = style == switchu::folders::kFolderStyleClassic;
+            const float inset = (mosaic ? 10.f : 8.f) * s;
+            switchu::folders::FolderStyleDrawArgs args;
+            args.renderer = &ren;
+            args.bounds = r.shrunk(inset);
+            args.radius = std::max(12.f, rad - 2.f);
+            args.scale = s;
+            args.opacity = m_opacity;
+            args.styleIndex = style;
+            args.accent = switchu::folders::colorForIndex(m_folderColorIndex);
+            args.themeMode = m_themeMode;
+            args.font = m_font;
+            args.title = &m_title;
+            args.cover = m_folderCover;
+            args.showCover = m_folderShowCover;
+            args.focused = m_focused;
+            args.drawName = true;
+            switchu::folders::drawFolderStyle(args);
+        } else {
+            nxui::Color accent = switchu::folders::colorForIndex(m_folderColorIndex);
 
-        // Glass rather than the flat white slab this used to draw, so a folder
-        // sits in the grid like every other panel in the menu.
-        const float inset = 10.f * s;
-        const nxui::Rect shell = r.shrunk(inset);
-        const float shellRadius = std::max(12.f, rad - 2.f);
-        // No fill and no outline: the tile's own glass is the background, so the
-        // folder reads as clear glass with its contents on it rather than a
-        // tinted card inside a card.
-        (void)shellRadius;
+            // Glass rather than the flat white slab this used to draw, so a folder
+            // sits in the grid like every other panel in the menu.
+            const float inset = 10.f * s;
+            const nxui::Rect shell = r.shrunk(inset);
+            const float shellRadius = std::max(12.f, rad - 2.f);
+            // No fill and no outline: the tile's own glass is the background, so the
+            // folder reads as clear glass with its contents on it rather than a
+            // tinted card inside a card.
+            (void)shellRadius;
 
-        // The shape follows the member count rather than always being a 3x3:
-        // one game fills the tile, two sit side by side, four make a square.
-        const int available = m_folderPreview.empty()
-            ? std::max(0, m_folderPreviewCount)
-            : static_cast<int>(m_folderPreview.size());
-        const int shown = std::clamp(available, 0, 9);
-        int gridColumns = 3;
-        int gridRows = 3;
-        if (shown <= 1)      { gridColumns = 1; gridRows = 1; }
-        else if (shown == 2) { gridColumns = 2; gridRows = 1; }
-        else if (shown == 3) { gridColumns = 3; gridRows = 1; }
-        else if (shown == 4) { gridColumns = 2; gridRows = 2; }
-        else if (shown <= 6) { gridColumns = 3; gridRows = 2; }
+            // The shape follows the member count rather than always being a 3x3:
+            // one game fills the tile, two sit side by side, four make a square.
+            const int available = m_folderPreview.empty()
+                ? std::max(0, m_folderPreviewCount)
+                : static_cast<int>(m_folderPreview.size());
+            const int shown = std::clamp(available, 0, 9);
+            int gridColumns = 3;
+            int gridRows = 3;
+            if (shown <= 1)      { gridColumns = 1; gridRows = 1; }
+            else if (shown == 2) { gridColumns = 2; gridRows = 1; }
+            else if (shown == 3) { gridColumns = 3; gridRows = 1; }
+            else if (shown == 4) { gridColumns = 2; gridRows = 2; }
+            else if (shown <= 6) { gridColumns = 3; gridRows = 2; }
 
-        const int largest = std::max(gridColumns, gridRows);
-        const float span = std::min(shell.width, shell.height * 0.82f) * 0.78f;
-        const float gapRatio = 0.14f;
-        const float cell = span / (static_cast<float>(largest)
-                                   + gapRatio * static_cast<float>(largest - 1));
-        const float gap = cell * gapRatio;
-        const float gridW = cell * gridColumns + gap * (gridColumns - 1);
-        const float gridH = cell * gridRows + gap * (gridRows - 1);
-        const float gridX = shell.x + (shell.width - gridW) * 0.5f;
-        // Centred on the tile. The name is drawn along the bottom edge rather
-        // than through the middle, so nothing has to be nudged upwards for it.
-        const float gridY = shell.y + (shell.height - gridH) * 0.5f;
+            const int largest = std::max(gridColumns, gridRows);
+            const float span = std::min(shell.width, shell.height * 0.82f) * 0.78f;
+            const float gapRatio = 0.14f;
+            const float cell = span / (static_cast<float>(largest)
+                                       + gapRatio * static_cast<float>(largest - 1));
+            const float gap = cell * gapRatio;
+            const float gridW = cell * gridColumns + gap * (gridColumns - 1);
+            const float gridH = cell * gridRows + gap * (gridRows - 1);
+            const float gridX = shell.x + (shell.width - gridW) * 0.5f;
+            // Centred on the tile. The name is drawn along the bottom edge rather
+            // than through the middle, so nothing has to be nudged upwards for it.
+            const float gridY = shell.y + (shell.height - gridH) * 0.5f;
 
-        for (int i = 0; i < shown; ++i) {
-            const int col = i % gridColumns;
-            const int row = i / gridColumns;
-            if (row >= gridRows)
-                break;
-            const nxui::Rect cellRect{gridX + col * (cell + gap),
-                                      gridY + row * (cell + gap), cell, cell};
-            ren.drawRoundedRect({cellRect.x, cellRect.y + 1.8f * s,
-                                 cellRect.width, cellRect.height},
-                                nxui::Color(0.05f, 0.08f, 0.10f, 0.20f * m_opacity),
-                                cell * 0.22f);
-            nxui::Texture* icon = i < static_cast<int>(m_folderPreview.size())
-                ? m_folderPreview[static_cast<std::size_t>(i)] : nullptr;
-            if (icon && icon->valid()) {
-                ren.drawTextureRounded(icon, cellRect, cell * 0.22f,
-                                       nxui::Color::white().withAlpha(m_opacity));
-            } else {
-                // Still loading, or the title has no icon: the accent block keeps
-                // the shape stable so the tile does not jump when it arrives.
-                const float variation = 0.92f + 0.035f * static_cast<float>((i + row) % 3);
-                ren.drawRoundedRect(cellRect,
-                    nxui::Color(std::min(1.f, accent.r * variation),
-                                std::min(1.f, accent.g * variation),
-                                std::min(1.f, accent.b * variation),
-                                0.80f * m_opacity),
-                    cell * 0.22f);
+            for (int i = 0; i < shown; ++i) {
+                const int col = i % gridColumns;
+                const int row = i / gridColumns;
+                if (row >= gridRows)
+                    break;
+                const nxui::Rect cellRect{gridX + col * (cell + gap),
+                                          gridY + row * (cell + gap), cell, cell};
+                ren.drawRoundedRect({cellRect.x, cellRect.y + 1.8f * s,
+                                     cellRect.width, cellRect.height},
+                                    nxui::Color(0.05f, 0.08f, 0.10f, 0.20f * m_opacity),
+                                    cell * 0.22f);
+                nxui::Texture* icon = i < static_cast<int>(m_folderPreview.size())
+                    ? m_folderPreview[static_cast<std::size_t>(i)] : nullptr;
+                if (icon && icon->valid()) {
+                    ren.drawTextureRounded(icon, cellRect, cell * 0.22f,
+                                           nxui::Color::white().withAlpha(m_opacity));
+                } else {
+                    // Still loading, or the title has no icon: the accent block keeps
+                    // the shape stable so the tile does not jump when it arrives.
+                    const float variation = 0.92f + 0.035f * static_cast<float>((i + row) % 3);
+                    ren.drawRoundedRect(cellRect,
+                        nxui::Color(std::min(1.f, accent.r * variation),
+                                    std::min(1.f, accent.g * variation),
+                                    std::min(1.f, accent.b * variation),
+                                    0.80f * m_opacity),
+                        cell * 0.22f);
+                }
             }
+
+            const bool named = m_font && !m_title.empty();
+
+            if (named) {
+                const nxui::Vec2 measured = m_font->measure(m_title);
+                const float room = std::max(8.f, shell.width - 6.f * s);
+                float textScale = 0.58f * s;
+                if (measured.x > 0.f)
+                    textScale = std::min(textScale, room / measured.x);
+                textScale = std::max(0.32f * s, textScale);
+
+                const float textW = measured.x * textScale;
+                const float textH = measured.y * textScale;
+                const nxui::Vec2 textPos{shell.x + (shell.width - textW) * 0.5f,
+                                         shell.bottom() - textH - 4.f * s};
+
+                const float halo = std::max(1.f, 1.5f * s);
+                const nxui::Color shadow(0.05f, 0.16f, 0.26f, 0.34f * m_opacity);
+                const nxui::Vec2 offsets[8] = {
+                    {-halo, 0.f}, {halo, 0.f}, {0.f, -halo}, {0.f, halo},
+                    {-halo, -halo}, {halo, -halo}, {-halo, halo}, {halo, halo}};
+                for (const nxui::Vec2& off : offsets)
+                    ren.drawText(m_title, {textPos.x + off.x, textPos.y + off.y},
+                                 m_font, shadow, textScale);
+
+                ren.drawText(m_title,
+                             {textPos.x, textPos.y + halo * 0.7f},
+                             m_font,
+                             nxui::Color(0.04f, 0.14f, 0.24f, 0.30f * m_opacity),
+                             textScale);
+
+                ren.drawText(m_title, textPos, m_font,
+                             nxui::Color::white().withAlpha(0.98f * m_opacity),
+                             textScale);
+            }
+
+            // No focus outline. This one was drawn in the folder's own accent
+            // colour, so a selected folder was ringed in colour even after the
+            // shared focus glow was removed: it is the tint that survived two
+            // earlier attempts at this. The selection cursor already marks which
+            // tile is chosen.
+
         }
-
-        const bool named = m_font && !m_title.empty();
-
-        if (named) {
-            const nxui::Vec2 measured = m_font->measure(m_title);
-            const float room = std::max(8.f, shell.width - 6.f * s);
-            float textScale = 0.58f * s;
-            if (measured.x > 0.f)
-                textScale = std::min(textScale, room / measured.x);
-            textScale = std::max(0.32f * s, textScale);
-
-            const float textW = measured.x * textScale;
-            const float textH = measured.y * textScale;
-            const nxui::Vec2 textPos{shell.x + (shell.width - textW) * 0.5f,
-                                     shell.bottom() - textH - 4.f * s};
-
-            const float halo = std::max(1.f, 1.5f * s);
-            const nxui::Color shadow(0.05f, 0.16f, 0.26f, 0.34f * m_opacity);
-            const nxui::Vec2 offsets[8] = {
-                {-halo, 0.f}, {halo, 0.f}, {0.f, -halo}, {0.f, halo},
-                {-halo, -halo}, {halo, -halo}, {-halo, halo}, {halo, halo}};
-            for (const nxui::Vec2& off : offsets)
-                ren.drawText(m_title, {textPos.x + off.x, textPos.y + off.y},
-                             m_font, shadow, textScale);
-
-            ren.drawText(m_title,
-                         {textPos.x, textPos.y + halo * 0.7f},
-                         m_font,
-                         nxui::Color(0.04f, 0.14f, 0.24f, 0.30f * m_opacity),
-                         textScale);
-
-            ren.drawText(m_title, textPos, m_font,
-                         nxui::Color::white().withAlpha(0.98f * m_opacity),
-                         textScale);
-        }
-
-        // No focus outline. This one was drawn in the folder's own accent
-        // colour, so a selected folder was ringed in colour even after the
-        // shared focus glow was removed: it is the tint that survived two
-        // earlier attempts at this. The selection cursor already marks which
-        // tile is chosen.
         return;
     }
 

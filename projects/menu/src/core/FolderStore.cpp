@@ -286,8 +286,12 @@ bool FolderStore::addTitle(std::uint32_t folderId, std::uint64_t titleId) {
         return false;
     if (previous != 0)
         removeTitle(previous, titleId);
-    if (hole != folder->titleIds.end())
-        *hole = titleId;
+    folder = find(folderId);
+    if (!folder)
+        return false;
+    auto targetHole = std::find(folder->titleIds.begin(), folder->titleIds.end(), 0ULL);
+    if (targetHole != folder->titleIds.end())
+        *targetHole = titleId;
     else
         folder->titleIds.push_back(titleId);
     return true;

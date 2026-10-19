@@ -820,9 +820,12 @@ void WiiUMenuApp::syncSteamGridDb() {
                 m_recentWidgetIcon.reset();
             }
             if (result.kind == SteamGridDbManager::ArtworkKind::Icon && m_grid) {
+                // A folder showing this game as its cover (PoloNX #100) redraws too.
+                m_folderCoverCache.erase(result.titleId);
                 m_iconStreamer.reloadTitle(result.titleId, m_grid->currentPage(),
                                            m_grid->iconsPerPage(), app().gpu(),
                                            app().renderer(), m_grid->allIcons());
+                applyFolderCoversToIcons();
             } else if (result.kind == SteamGridDbManager::ArtworkKind::Cover && m_grid) {
                 m_grid->clearFlowCovers();
             } else {

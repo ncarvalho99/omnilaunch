@@ -683,7 +683,18 @@
     "size_medium": "Médio",
     "size_large": "Grande",
     "items": "itens",
-    "move": "Mover"
+    "move": "Mover",
+    "style": "Estilo das pastas",
+    "style_desc": "Vale para todas as pastas, inclusive as novas.",
+    "style_classic": "Clássico",
+    "style_simple": "Simples",
+    "style_minimal": "Mínimo",
+    "style_tab": "Aba",
+    "style_ring": "Anel",
+    "style_manila": "Manila",
+    "style_label": "Etiqueta",
+    "show_cover": "Mostrar capa",
+    "show_cover_desc": "Mostra o primeiro jogo em todas as pastas. O Clássico mantém o mosaico."
   },
   "add": {
     "title": "Adicionar"

@@ -2698,6 +2698,8 @@ void WiiUMenuApp::applyTheme() {
         icon->setBorderColor(m_theme.panelBorder);
         icon->setHighlightColor(m_theme.panelHighlight);
         icon->setCornerRadius(m_theme.iconCornerRadius);
+        icon->setLoadingColor(m_theme.cursorNormal);
+        icon->setThemeMode(m_theme.mode);
     }
     DebugLog::log("[theme-apply] widget recolor grid icons done");
 

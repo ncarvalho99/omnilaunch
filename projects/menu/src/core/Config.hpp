@@ -226,6 +226,11 @@ struct AppConfig {
     }
 
     std::string themePreset = "Default Dark";
+    // See switchu::folders::kFolderStyle*. Applies to every folder tile
+    // (PoloNX #100). Classic is this fork's own glass folder.
+    int folderStyle = 0;
+    // First-game icon overlay. Ignored by Classic (the mosaic is the cover).
+    bool folderShowCover = false;
 
     // Safe mode (the daemon's boot guard asked for it after repeated start-up
     // crashes). The overrides below live in memory for this run only: built-in

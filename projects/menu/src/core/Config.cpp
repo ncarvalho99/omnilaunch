@@ -1,6 +1,7 @@
 #include "Config.hpp"
 #include <cstdlib>
 #include <cstdio>
+#include "FolderStore.hpp"
 #include <fstream>
 #include <algorithm>
 #include <filesystem>
@@ -194,6 +195,9 @@ bool AppConfig::load() {
             }
         }
     }
+    readJsonOpt(j, "folderStyle", folderStyle);
+    readJsonOpt(j, "folderShowCover", folderShowCover);
+
     if (musicVolume < 0.f) musicVolume = 0.f;
     if (musicVolume > 1.f) musicVolume = 1.f;
     if (sfxVolume   < 0.f) sfxVolume   = 0.f;
@@ -208,6 +212,9 @@ bool AppConfig::load() {
     if (!defaultProfileEnabled) defaultProfileUid.clear();
     accessibilitySpeechRate = std::clamp(accessibilitySpeechRate, 120, 320);
     if (themePreset.empty()) themePreset = "Default Dark";
+    // PoloNX #100 also remaps a 9-style table from its own development builds
+    // when folderShowCover is absent; no build of this fork ever wrote one.
+    folderStyle = std::clamp(folderStyle, 0, switchu::folders::kFolderStyleCount - 1);
 
     return true;
 }
@@ -279,6 +286,8 @@ bool AppConfig::save() const {
     j["steamGridDbApiKey"] = steamGridDbApiKey;
     j["ytdlBackendUrl"] = ytdlBackendUrl;
     j["themePreset"] = (m_safe && !m_touchedTheme) ? m_savedTheme : themePreset;
+    j["folderStyle"] = std::clamp(folderStyle, 0, switchu::folders::kFolderStyleCount - 1);
+    j["folderShowCover"] = folderShowCover;
     j["lastPageTitleId"] = lastPageTitleId;
     j["sortMode"] = sortMode;
     j["lastOpenedSequence"] = lastOpenedSequence;
