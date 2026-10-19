@@ -10,10 +10,6 @@
 
 #include <memory>
 
-extern "C" {
-    size_t __nx_heap_size = 0x06000000;
-}
-
 extern "C" void userAppInit(void) {
     romfsInit();
     timeInitialize();
@@ -28,6 +24,7 @@ extern "C" void userAppExit(void) {
 
 int main(int, char**) {
     switchu::FileLog::open("manager");
+    switchu::FileLog::setImmediate(true);
     switchu::FileLog::log("[main] OmniLaunch Manager starting");
 
     SDL_Init(0);

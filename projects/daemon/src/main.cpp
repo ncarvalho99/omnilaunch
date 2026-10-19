@@ -774,16 +774,21 @@ static void restoreNormalPerformance(const char* source) {
 
     u32 before = 0;
     const Result beforeRc = readPerformanceConfiguration(apmSys.value, before);
-    // apm:sys SetCpuBoostMode
+    // apm:sys SetCpuBoostMode (cmd 6)
     const u32 mode = ApmCpuBoostMode_Normal;
     const Result setRc = serviceDispatchIn(&apmSys.value, 6, mode);
+    // apm:sys RequestPerformanceMode (cmd 0, mode 0 = Normal)
+    const u32 perfMode = 0;
+    const Result reqRc = serviceDispatchIn(&apmSys.value, 0, perfMode);
+    // apm:sys LoadAndApplySettings (cmd 5)
+    const Result loadRc = serviceDispatch(&apmSys.value, 5);
     u32 after = 0;
     const Result afterRc = readPerformanceConfiguration(apmSys.value, after);
 
     switchu::FileLog::log(
-        "[perf-config] %s boost reset before=0x%08X(boost=%d rc=0x%X) set=0x%X after=0x%08X(boost=%d rc=0x%X)",
+        "[perf-config] %s boost reset before=0x%08X(boost=%d rc=0x%X) set=0x%X req=0x%X load=0x%X after=0x%08X(boost=%d rc=0x%X)",
         source, before, isBoostPerformanceConfiguration(before) ? 1 : 0, beforeRc,
-        setRc, after, isBoostPerformanceConfiguration(after) ? 1 : 0, afterRc);
+        setRc, reqRc, loadRc, after, isBoostPerformanceConfiguration(after) ? 1 : 0, afterRc);
 }
 
 static Result openTimeAdminService(ScopedService& out) {
@@ -2028,6 +2033,7 @@ static void handleMenuCommand() {
         const auto args = reader.pop<smi::MenuReadyArgs>();
         switchu::FileLog::log("[smi] menu ready");
         logMenuReadyTrace(args, commandReceiveTick);
+        restoreNormalPerformance("menu-ready");
         logPerformanceConfiguration("menu-ready");
         // MenuReady only says the activity object exists. The observed crash
         // loop reached it every time and died ~3 s after the first frame, so

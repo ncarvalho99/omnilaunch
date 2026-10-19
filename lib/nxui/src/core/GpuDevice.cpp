@@ -201,14 +201,15 @@ void GpuDevice::createDepthStencil() {
     m_dsImage.initialize(dsLayout, m_dsPool.block, 0);
 }
 
-// The scene pair (OFF_SCENE + OFF_BG_BLUR, half res) feeds the per-frame
-// glass pipeline, so it exists from boot. The five full-res overlay targets
-// (dialog/settings caches, the sharp blur pair, the frozen scene) are only
-// written when an overlay opens; creating them on that first use keeps
-// ~18 MB out of every session that never opens one (issue #2 item 6).
+// All offscreen targets (the half-res scene pair and the full-res overlay targets)
+// are created at startup before any frame begins. Creating overlay targets lazily
+// mid-frame previously clobbered m_cmdbuf[0] during rendering, causing black
+// frames on cold start and queue desynchronization crashes (0x367).
 void GpuDevice::createOffscreenTargets() {
     createOffscreenGroup(/*overlay=*/false, m_offPool);
     m_offscreenReady = true;
+    createOffscreenGroup(/*overlay=*/true, m_overlayOffPool);
+    m_overlayOffscreenReady = true;
 }
 
 void GpuDevice::ensureOverlayOffscreenTargets() {
