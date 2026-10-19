@@ -108,12 +108,20 @@ bool GpuDevice::initialize() {
         m_uploadInFlight[i] = false;
         m_uploadCopyCount[i] = 0;
         traceAlloc("upload-slot", UPLOAD_STAGING_SIZE);
+        uint32_t stagingSize = UPLOAD_STAGING_SIZE;
+        bool stagingOk = m_uploadStagingPool[i].create(
+            m_dev, stagingSize,
+            DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached);
+        if (!stagingOk) {
+            // Fallback for memory-constrained environments (e.g. applet mode NROs)
+            stagingSize = 1024u * 1024u;
+            stagingOk = m_uploadStagingPool[i].create(
+                m_dev, stagingSize,
+                DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached);
+        }
         if (!m_uploadCmdPool[i].create(
                 m_dev, UPLOAD_CMD_BUF_SIZE,
-                DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached) ||
-            !m_uploadStagingPool[i].create(
-                m_dev, UPLOAD_STAGING_SIZE,
-                DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached)) {
+                DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached) || !stagingOk) {
             std::fprintf(stderr,
                          "[GpuDevice] upload slot %d allocation failed\n", i);
             return false;
@@ -207,16 +215,18 @@ void GpuDevice::createDepthStencil() {
 // frames on cold start and queue desynchronization crashes (0x367).
 void GpuDevice::createOffscreenTargets() {
     createOffscreenGroup(/*overlay=*/false, m_offPool);
-    m_offscreenReady = true;
-    createOffscreenGroup(/*overlay=*/true, m_overlayOffPool);
-    m_overlayOffscreenReady = true;
+    m_offscreenReady = (m_offPool.block != nullptr);
+    if (m_offscreenReady) {
+        createOffscreenGroup(/*overlay=*/true, m_overlayOffPool);
+        m_overlayOffscreenReady = (m_overlayOffPool.block != nullptr);
+    }
 }
 
 void GpuDevice::ensureOverlayOffscreenTargets() {
     if (m_overlayOffscreenReady)
         return;
     createOffscreenGroup(/*overlay=*/true, m_overlayOffPool);
-    m_overlayOffscreenReady = true;
+    m_overlayOffscreenReady = (m_overlayOffPool.block != nullptr);
 }
 
 void GpuDevice::createOffscreenGroup(bool overlay, GpuPool& pool) {
@@ -240,7 +250,11 @@ void GpuDevice::createOffscreenGroup(bool overlay, GpuPool& pool) {
         totalOff += layouts[i].getSize();
     }
     traceAlloc(overlay ? "offscreen-overlay-pool" : "offscreen-pool", totalOff);
-    pool.create(m_dev, totalOff, DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image);
+    if (!pool.create(m_dev, totalOff, DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image)) {
+        std::fprintf(stderr, "[GpuDevice] offscreen pool creation failed (overlay=%d %u bytes)\n",
+                     overlay ? 1 : 0, totalOff);
+        return;
+    }
 
     uint32_t off = 0;
     for (int i = 0; i < NUM_OFFSCREEN; ++i) {

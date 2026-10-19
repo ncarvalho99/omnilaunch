@@ -42,8 +42,8 @@ public:
             log_detail::format_line_timestamp(timestamp, sizeof(timestamp));
             self.m_sink.append(std::string("[") + timestamp + "] === " + tag + " log start ===");
             self.m_sink.flush();
+            fsdevCommitDevice("sdmc");
         }
-
     }
 
     
@@ -62,6 +62,7 @@ public:
         auto& self = inst();
         std::lock_guard<std::mutex> lock(self.m_mutex);
         close_current_file(self);
+        fsdevCommitDevice("sdmc");
     }
 
     // Forces buffered lines out to the SD card. Call before anything that may
@@ -70,6 +71,7 @@ public:
         auto& self = inst();
         std::lock_guard<std::mutex> lock(self.m_mutex);
         self.m_sink.flush();
+        fsdevCommitDevice("sdmc");
     }
 
     // Drains lines that have been buffered for a while. Intended for processes
@@ -91,8 +93,10 @@ public:
         auto& self = inst();
         std::lock_guard<std::mutex> lock(self.m_mutex);
         self.m_immediate = immediate;
-        if (immediate)
+        if (immediate) {
             self.m_sink.flush();
+            fsdevCommitDevice("sdmc");
+        }
     }
 
     static void log(const char* fmt, ...) {
@@ -110,8 +114,10 @@ public:
 
         std::fprintf(stderr, "[%s] %s\n", timestamp, buf);
         self.m_sink.append(std::string("[") + timestamp + "] " + buf);
-        if (self.m_immediate)
+        if (self.m_immediate) {
             self.m_sink.flush();
+            fsdevCommitDevice("sdmc");
+        }
     }
 
 private:

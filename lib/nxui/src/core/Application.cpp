@@ -45,11 +45,17 @@ bool Application::applyPendingActivity() {
 bool Application::initialize() {
     m_initializeTrace = {};
     m_initializeTrace.initializeStartTick = armGetSystemTick();
-    if (!m_gpu.initialize()) return false;
+    if (!m_gpu.initialize()) {
+        std::fprintf(stderr, "[Application] m_gpu.initialize() failed\n");
+        return false;
+    }
     m_initializeTrace.gpuReadyTick = armGetSystemTick();
 
     m_renderer = std::make_unique<Renderer>(m_gpu);
-    if (!m_renderer->initialize()) return false;
+    if (!m_renderer->initialize()) {
+        std::fprintf(stderr, "[Application] m_renderer->initialize() failed\n");
+        return false;
+    }
     m_initializeTrace.rendererReadyTick = armGetSystemTick();
 
     m_input.initialize();
@@ -69,7 +75,10 @@ bool Application::initialize() {
         // Set the root box to cover the entire screen
         m_activity->m_rootBox->setRect({0, 0, (float)m_gpu.width(), (float)m_gpu.height()});
         m_initializeTrace.activityCreateStartTick = armGetSystemTick();
-        if (!m_activity->onCreate()) return false;
+        if (!m_activity->onCreate()) {
+            std::fprintf(stderr, "[Application] m_activity->onCreate() failed\n");
+            return false;
+        }
         m_initializeTrace.activityCreateEndTick = armGetSystemTick();
     }
     return true;
