@@ -15,6 +15,12 @@
 #include <dirent.h>
 #include <memory>
 
+extern "C" {
+    void __libnx_init_time(void);
+    void __nx_win_init(void);
+    void __nx_win_exit(void);
+}
+
 static void rawDiag(const char* fmt, ...) {
     char buf[512];
     va_list args;
@@ -38,30 +44,71 @@ static void rawDiag(const char* fmt, ...) {
     }
 }
 
-extern "C" void userAppInit(void) {
-    rawDiag("[diag] userAppInit enter");
-    Result rc = romfsInit();
-    rawDiag("[diag] romfsInit rc=0x%X", rc);
+// Override libnx default __appInit to prevent hidden diagAbortWithResult aborts
+// before any diagnostic logging or user code runs.
+extern "C" void __appInit(void) {
+    svcOutputDebugString("[Manager] __appInit enter", 25);
+
+    // 1. Service manager
+    Result rc = smInitialize();
+    svcOutputDebugString(R_SUCCEEDED(rc) ? "[Manager] smInit OK" : "[Manager] smInit FAIL", 19);
+
+    // 2. Filesystem service
+    rc = fsInitialize();
+    svcOutputDebugString(R_SUCCEEDED(rc) ? "[Manager] fsInit OK" : "[Manager] fsInit FAIL", 19);
+
+    // 3. Mount SD card FIRST so diagnostic files can be written immediately
+    rc = fsdevMountSdmc();
+    svcOutputDebugString(R_SUCCEEDED(rc) ? "[Manager] sdmc OK" : "[Manager] sdmc FAIL", 17);
+    rawDiag("[__appInit] sdmc mounted rc=0x%X", rc);
+
+    // 4. Applet
+    rc = appletInitialize();
+    rawDiag("[__appInit] appletInitialize rc=0x%X", rc);
+
+    // 5. HID (do NOT abort on failure: library applets/forwarders can share sessions)
+    rc = hidInitialize();
+    rawDiag("[__appInit] hidInitialize rc=0x%X", rc);
+
+    // 6. Time
+    rc = timeInitialize();
+    rawDiag("[__appInit] timeInitialize rc=0x%X", rc);
+    __libnx_init_time();
+
+    // 7. Settings
+    rc = setInitialize();
+    rawDiag("[__appInit] setInitialize rc=0x%X", rc);
+    rc = setsysInitialize();
+    rawDiag("[__appInit] setsysInitialize rc=0x%X", rc);
+
+    // 8. RomFS with fallback
+    rc = romfsInit();
+    rawDiag("[__appInit] romfsInit rc=0x%X", rc);
     if (R_FAILED(rc)) {
         rc = romfsMountFromFsdev("sdmc:/switch/OmniLaunch-Manager/OmniLaunch-Manager.nro", 0, "romfs");
-        rawDiag("[diag] romfsMountFromFsdev fallback rc=0x%X", rc);
+        rawDiag("[__appInit] romfsMountFromFsdev fallback rc=0x%X", rc);
     }
-    rc = timeInitialize();
-    rawDiag("[diag] timeInitialize rc=0x%X", rc);
-    rc = setInitialize();
-    rawDiag("[diag] setInitialize rc=0x%X", rc);
-    rc = setsysInitialize();
-    rawDiag("[diag] setsysInitialize rc=0x%X", rc);
-    rawDiag("[diag] userAppInit exit");
+
+    // 9. Window
+    __nx_win_init();
+    rawDiag("[__appInit] __nx_win_init done");
+
+    rawDiag("[__appInit] complete");
 }
 
-extern "C" void userAppExit(void) {
-    rawDiag("[diag] userAppExit enter");
+extern "C" void __appExit(void) {
+    rawDiag("[__appExit] enter");
+    __nx_win_exit();
+    romfsExit();
     setsysExit();
     setExit();
     timeExit();
-    romfsExit();
-    rawDiag("[diag] userAppExit exit");
+    hidExit();
+    appletExit();
+    fsdevUnmountAll();
+    fsExit();
+    smExit();
+    rawDiag("[__appExit] exit");
 }
 
 int main(int argc, char** argv) {

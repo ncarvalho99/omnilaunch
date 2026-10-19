@@ -789,6 +789,38 @@ static void restoreNormalPerformance(const char* source) {
         "[perf-config] %s boost reset before=0x%08X(boost=%d rc=0x%X) set=0x%X req=0x%X load=0x%X after=0x%08X(boost=%d rc=0x%X)",
         source, before, isBoostPerformanceConfiguration(before) ? 1 : 0, beforeRc,
         setRc, reqRc, loadRc, after, isBoostPerformanceConfiguration(after) ? 1 : 0, afterRc);
+
+    // Query and restore actual hardware clocks via clkrst (Horizon 8.0.0+)
+    if (R_SUCCEEDED(clkrstInitialize())) {
+        ClkrstSession gpuSession{};
+        if (R_SUCCEEDED(clkrstOpenSession(&gpuSession, PcvModuleId_GPU, 3))) {
+            u32 gpuHz = 0;
+            clkrstGetClockRate(&gpuSession, &gpuHz);
+            switchu::FileLog::log("[perf-clkrst] %s GPU clock: %u MHz", source, gpuHz / 1000000u);
+            if (gpuHz < 307200000u) {
+                Result setGpuRc = clkrstSetClockRate(&gpuSession, 307200000u);
+                clkrstGetClockRate(&gpuSession, &gpuHz);
+                switchu::FileLog::log("[perf-clkrst] %s GPU clock restored to %u MHz (rc=0x%X)",
+                                      source, gpuHz / 1000000u, setGpuRc);
+            }
+            clkrstCloseSession(&gpuSession);
+        }
+
+        ClkrstSession emcSession{};
+        if (R_SUCCEEDED(clkrstOpenSession(&emcSession, PcvModuleId_EMC, 3))) {
+            u32 emcHz = 0;
+            clkrstGetClockRate(&emcSession, &emcHz);
+            switchu::FileLog::log("[perf-clkrst] %s EMC clock: %u MHz", source, emcHz / 1000000u);
+            if (emcHz < 1331200000u) {
+                Result setEmcRc = clkrstSetClockRate(&emcSession, 1331200000u);
+                clkrstGetClockRate(&emcSession, &emcHz);
+                switchu::FileLog::log("[perf-clkrst] %s EMC clock restored to %u MHz (rc=0x%X)",
+                                      source, emcHz / 1000000u, setEmcRc);
+            }
+            clkrstCloseSession(&emcSession);
+        }
+        clkrstExit();
+    }
 }
 
 static Result openTimeAdminService(ScopedService& out) {
