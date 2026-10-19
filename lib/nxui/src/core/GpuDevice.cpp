@@ -592,14 +592,25 @@ bool GpuDevice::uploadTexture(dk::Image& dst, const void* pixels, uint32_t size,
         return false;
     }
 
+    // Maxwell 2D copy engine (LAUNCH_DMA) requires source pitch to be a multiple
+    // of 32 bytes. When w * 4 is not 32-byte aligned (e.g. 1276px video frames),
+    // copy rows with an aligned pitch to prevent hardware copy engine fault (0x367).
+    const uint32_t srcPitch = (size >= static_cast<uint64_t>(w) * h * 4u)
+        ? static_cast<uint32_t>(w) * 4u
+        : (static_cast<uint32_t>(size) / static_cast<uint32_t>(h));
+    const uint32_t dstPitch = (srcPitch + 31u) & ~31u;
+    const uint32_t uploadBytes = (dstPitch != srcPitch)
+        ? (dstPitch * static_cast<uint32_t>(h))
+        : size;
+
     beginUploadBatch();
 
-    const bool oversized = size > UPLOAD_STAGING_SIZE;
+    const bool oversized = uploadBytes > UPLOAD_STAGING_SIZE;
     const auto& currentStaging = m_uploadStagingPool[m_uploadSlot];
     const uint32_t alignedUsed =
         (currentStaging.used + 255u) & ~255u;
     const bool stagingHasRoom = alignedUsed <= currentStaging.size &&
-        size <= currentStaging.size - alignedUsed;
+        uploadBytes <= currentStaging.size - alignedUsed;
     if (!oversized &&
         (m_uploadCopyCount[m_uploadSlot] >= UPLOAD_COPIES_PER_BATCH ||
          !stagingHasRoom)) {
@@ -617,17 +628,17 @@ bool GpuDevice::uploadTexture(dk::Image& dst, const void* pixels, uint32_t size,
     DkGpuAddr srcGpu = 0;
 
     if (!oversized) {
-        const uint32_t offset = m_uploadStagingPool[slot].alloc(size, 256);
+        const uint32_t offset = m_uploadStagingPool[slot].alloc(uploadBytes, 256);
         if (offset == UINT32_MAX) {
             std::fprintf(stderr,
                          "[GpuDevice] upload staging allocation failed for texture (%u bytes)\n",
-                         size);
+                         uploadBytes);
             return false;
         }
         srcCpu = m_uploadStagingPool[slot].cpuAddr(offset);
         srcGpu = m_uploadStagingPool[slot].gpuAddr(offset);
     } else {
-        const uint32_t allocSize = (size + kGpuAlign - 1) & ~(kGpuAlign - 1);
+        const uint32_t allocSize = (uploadBytes + kGpuAlign - 1) & ~(kGpuAlign - 1);
         traceAlloc("upload-staging", allocSize, m_imageMemUsed, s_imageBudget, m_imageChunks.size());
         m_uploadTempStaging[slot] = dk::MemBlockMaker{m_dev, allocSize}
             .setFlags(DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached)
@@ -638,19 +649,29 @@ bool GpuDevice::uploadTexture(dk::Image& dst, const void* pixels, uint32_t size,
             m_uploadTempStaging[slot] = {};
             std::fprintf(stderr,
                          "[GpuDevice] failed temp staging allocation for texture (%u bytes)\n",
-                         size);
+                         uploadBytes);
             return false;
         }
     }
 
-    std::memcpy(srcCpu, pixels, size);
+    if (dstPitch == srcPitch) {
+        std::memcpy(srcCpu, pixels, size);
+    } else {
+        const uint8_t* srcRow = static_cast<const uint8_t*>(pixels);
+        uint8_t* dstRow = static_cast<uint8_t*>(srcCpu);
+        for (int y = 0; y < h; ++y) {
+            std::memcpy(dstRow, srcRow, srcPitch);
+            srcRow += srcPitch;
+            dstRow += dstPitch;
+        }
+    }
 
     if (reuploadsLiveImage)
         m_uploadCmdbuf[slot].barrier(DkBarrier_Full, 0);
 
     dk::ImageView view{dst};
     m_uploadCmdbuf[slot].copyBufferToImage(
-        {srcGpu, 0, 0},
+        {srcGpu, dstPitch, 0},
         view,
         {0, 0, 0, w, h, 1}
     );

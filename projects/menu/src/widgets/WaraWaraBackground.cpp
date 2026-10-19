@@ -451,6 +451,9 @@ bool WaraWaraBackground::loadImageSequence(nxui::GpuDevice& gpu, nxui::Renderer&
 void WaraWaraBackground::pumpImageSequence(nxui::GpuDevice& gpu, nxui::Renderer& ren) {
     if (m_videoPlayer.isOpened()) {
         m_videoPlayer.tick(gpu, ren);
+        if (m_backgroundImage.valid() && m_videoPlayer.texture() && m_videoPlayer.texture()->valid()) {
+            m_backgroundImage = nxui::Texture{};
+        }
     }
 
     if (!m_frameSequencePending)
@@ -577,9 +580,6 @@ const nxui::Texture* WaraWaraBackground::currentBackground() const {
     if (m_videoPlayer.isOpened()) {
         const nxui::Texture* vt = m_videoPlayer.texture();
         if (vt && vt->valid()) {
-            if (m_backgroundImage.valid()) {
-                const_cast<WaraWaraBackground*>(this)->m_backgroundImage = nxui::Texture{};
-            }
             return vt;
         }
     }

@@ -384,11 +384,19 @@ bool VideoPlayer::openInternal(const std::string& path, bool loop, bool audio) {
         return false;
     }
 
-    // Downscale 4K / 1440p / 1080p videos to 1280x720 to match native Switch resolution and fit GPU staging budget
+    // Downscale / scale video wallpapers to 1280x720 to match native Switch resolution
+    // and guarantee 32-byte row alignment for the Maxwell 2D copy engine (1280*4 = 5120 = 160*32).
+    // Videos near 720p (like 1276x720) MUST be aligned to multiple of 8 (pitch multiple of 32 bytes)
+    // or scaled to full 1280x720 to prevent Maxwell DMA engine hardware faults.
     if (targetW > 1280 || targetH > 720) {
         float scale = std::min(1280.0f / targetW, 720.0f / targetH);
-        targetW = (static_cast<int>(targetW * scale) / 2) * 2;
+        targetW = (static_cast<int>(targetW * scale) / 8) * 8;
         targetH = (static_cast<int>(targetH * scale) / 2) * 2;
+    } else if (targetW >= 1270 && targetW <= 1280 && targetH == 720) {
+        targetW = 1280;
+    } else {
+        targetW = (targetW / 8) * 8;
+        targetH = (targetH / 2) * 2;
     }
 
     m_width = targetW;
