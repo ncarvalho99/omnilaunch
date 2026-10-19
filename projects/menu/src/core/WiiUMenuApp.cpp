@@ -5795,8 +5795,6 @@ void WiiUMenuApp::activateApplication(GlossyIcon* source, AppEntry* entry,
         resumeSuspendedApplication(titleId, launchTitle);
         return;
     }
-        return;
-    }
 
     if (entry && !entry->isLaunchable()) {
         m_audio.playSfx(Sfx::ModalShow);
