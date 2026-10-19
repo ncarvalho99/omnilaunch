@@ -131,24 +131,27 @@ SettingsScreen::Tab settings::tabs::DisplayTab::build(SettingsScreen& screen) {
         t.items.push_back(std::move(it));
     }
 
-    // {
-    //     SettingItem it; it.label = i18n.tr("settings.display.tv_screen_size", "TV Screen Size"); it.type = ItemType::Slider;
-    //     it.description = i18n.tr("settings.display.tv_screen_size_desc", "Adjust overscan so the full image is visible.");
-    //     SetSysTvSettings tv{};
-    //     if (R_SUCCEEDED(setsysGetTvSettings(&tv)))
-    //         it.floatVal = tv.underscan / 100.f;
-    //     else
-    //         it.floatVal = 1.f;
-    //     it.anim01 = std::clamp(it.floatVal, 0.f, 1.f);
-    //     it.onChange = [](SettingItem& self) {
-    //         SetSysTvSettings tv{};
-    //         if (R_SUCCEEDED(setsysGetTvSettings(&tv))) {
-    //             tv.underscan = (u32)(self.floatVal * 100.f);
-    //             setsysSetTvSettings(&tv);
-    //         }
-    //     };
-    //     t.items.push_back(std::move(it));
-    // }
+    {
+        // Underscan, 0-100 %. The console applies it to every layer, so the
+        // 2.11.0 full-screen docked image shrinks with it; only a TV shows the
+        // effect, which is why this sat commented out until now (issue #1).
+        SettingItem it; it.label = i18n.tr("settings.display.tv_screen_size", "TV Screen Size"); it.type = ItemType::Slider;
+        it.description = i18n.tr("settings.display.tv_screen_size_desc", "Adjust overscan so the full image is visible.");
+        SetSysTvSettings tv{};
+        if (R_SUCCEEDED(setsysGetTvSettings(&tv)))
+            it.floatVal = std::clamp(tv.underscan / 100.f, 0.f, 1.f);
+        else
+            it.floatVal = 1.f;
+        it.anim01 = std::clamp(it.floatVal, 0.f, 1.f);
+        it.onChange = [](SettingItem& self) {
+            SetSysTvSettings tv{};
+            if (R_SUCCEEDED(setsysGetTvSettings(&tv))) {
+                tv.underscan = (u32)(self.floatVal * 100.f);
+                setsysSetTvSettings(&tv);
+            }
+        };
+        t.items.push_back(std::move(it));
+    }
 
     {
         SettingItem it; it.label = i18n.tr("settings.display.album_storage", "Primary Album Storage"); it.type = ItemType::Selector;

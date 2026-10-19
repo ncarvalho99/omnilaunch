@@ -30,6 +30,8 @@ class AboutTab;
 
 class TabbedOverlayScreen : public nxui::GlassWidget {
 public:
+    friend class settings::tabs::SystemTab;
+
     enum class ScreenMode {
         Settings,
         ThemeShop,
@@ -92,6 +94,32 @@ public:
     void requestDateTimeEditor(const DateTimeEditorValue& initial,
                                DateTimeCommitCb onCommit);
     void requestToast(const std::string& msg, float holdSeconds = 2.5f);
+
+    using TimezoneSelectCb = std::function<void(const std::string& zone)>;
+    using TimezoneSearchCb = std::function<void()>;
+    using TimezonePickerRequestCb = std::function<void(
+        const std::vector<std::string>& zones,
+        int selectedIndex,
+        TimezoneSelectCb onSelect,
+        TimezoneSearchCb onSearch)>;
+    void onTimezonePickerRequest(TimezonePickerRequestCb cb) {
+        m_timezonePickerRequestCb = std::move(cb);
+    }
+    void requestTimezonePicker(const std::vector<std::string>& zones,
+                               int selectedIndex,
+                               TimezoneSelectCb onSelect,
+                               TimezoneSearchCb onSearch);
+
+    using TextEntryAcceptCb = std::function<void(const std::string&)>;
+    using TextEntryRequestCb = std::function<void(const std::string& title,
+                                                  const std::string& guide,
+                                                  const std::string& initial,
+                                                  int maxLength,
+                                                  TextEntryAcceptCb onAccept)>;
+    void onTextEntryRequest(TextEntryRequestCb cb) { m_textEntryRequestCb = std::move(cb); }
+    void requestTextEntry(const std::string& title, const std::string& guide,
+                          const std::string& initial, int maxLength,
+                          TextEntryAcceptCb onAccept);
 
     using BoolCb = std::function<void(bool)>;
     using FloatCb = std::function<void(float)>;
@@ -315,6 +343,8 @@ protected:
     VoidCb  m_closedCb;
     DialogRequestCb m_dialogRequestCb;
     DateTimeEditorRequestCb m_dateTimeEditorRequestCb;
+    TimezonePickerRequestCb m_timezonePickerRequestCb;
+    TextEntryRequestCb m_textEntryRequestCb;
     BoolCb  m_toggleSfxCb;
     BoolCb  m_sliderSfxCb;
     StringCb m_accessibilityCb;

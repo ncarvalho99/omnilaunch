@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <array>
+#include <cstring>
 #include <cstdlib>
 #include <dirent.h>
 #include <fstream>
@@ -194,7 +196,231 @@ bool setManualDateTime(
     return false;
 }
 
+std::string toLowerCopy(std::string s) {
+    for (char& c : s)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return s;
+}
+
+bool containsInsensitive(const std::string& haystack, const std::string& needle) {
+    if (needle.empty())
+        return true;
+    return toLowerCopy(haystack).find(toLowerCopy(needle)) != std::string::npos;
+}
+
+std::vector<std::string> loadAllTimezoneNames() {
+    std::vector<std::string> out;
+    s32 total = 0;
+    if (R_FAILED(timeGetTotalLocationNameCount(&total)) || total <= 0)
+        return out;
+
+    out.reserve(static_cast<size_t>(total));
+    constexpr s32 kChunk = 64;
+    TimeLocationName buf[kChunk];
+    for (s32 index = 0; index < total; ) {
+        s32 got = 0;
+        if (R_FAILED(timeLoadLocationNameList(index, buf, kChunk, &got)) || got <= 0)
+            break;
+        for (s32 i = 0; i < got; ++i) {
+            if (buf[i].name[0] != '\0')
+                out.emplace_back(buf[i].name);
+        }
+        index += got;
+    }
+    return out;
+}
+
+std::string timezoneLabel() {
+    return nxui::I18n::instance().tr("settings.system.timezone", "Timezone");
+}
+
 } // namespace
+
+namespace settings::tabs {
+
+// Timezone picker (PoloNX #131): the console's own location list, filtered by
+// a search the owner types, written with timeSetDeviceLocationName.
+// Console language (issue #1): the console's own list via setGetAvailableLanguageCodes,
+// picked in the same searchable dialog the timezone uses, written with
+// setsysSetLanguageCode after a confirm. Applies at the next restart.
+namespace {
+std::string languageTagFromCode(u64 code) {
+    char buf[9]{};
+    std::memcpy(buf, &code, 8);
+    return buf;
+}
+std::string languageDisplayName(const std::string& tag) {
+    return nxui::I18n::instance().tr("languages." + tag, tag);
+}
+} // namespace
+
+void SystemTab::refreshConsoleLanguageRow(SettingsScreen& screen, const std::string& name) {
+    if (screen.m_tabIndex < 0 || screen.m_tabIndex >= (int)screen.m_tabs.size())
+        return;
+    auto& items = screen.m_tabs[screen.m_tabIndex].items;
+    for (auto& item : items) {
+        if (item.label != nxui::I18n::instance().tr("settings.system.console_language", "Console Language"))
+            continue;
+        item.description = name;
+        break;
+    }
+}
+
+void SystemTab::beginConsoleLanguageChange(SettingsScreen& screen) {
+    auto& i18n = nxui::I18n::instance();
+    s32 total = 0;
+    std::array<u64, 64> codes{};
+    if (R_FAILED(setGetAvailableLanguageCodes(&total, codes.data(), codes.size())) || total <= 0) {
+        screen.requestToast(i18n.tr("settings.system.language_failed",
+                                    "Could not change the console language."));
+        return;
+    }
+    u64 current = 0;
+    setGetSystemLanguage(&current);
+
+    auto names = std::make_shared<std::vector<std::string>>();
+    auto list = std::make_shared<std::vector<u64>>();
+    int selected = 0;
+    for (s32 i = 0; i < total && i < (s32)codes.size(); ++i) {
+        const std::string tag = languageTagFromCode(codes[(size_t)i]);
+        if (tag.empty())
+            continue;
+        if (codes[(size_t)i] == current)
+            selected = (int)names->size();
+        names->push_back(languageDisplayName(tag));
+        list->push_back(codes[(size_t)i]);
+    }
+    if (names->empty()) {
+        screen.requestToast(i18n.tr("settings.system.language_failed",
+                                    "Could not change the console language."));
+        return;
+    }
+
+    screen.requestTimezonePicker(
+        *names,
+        selected,
+        [&screen, names, list](const std::string& chosen) {
+            auto& i18nInner = nxui::I18n::instance();
+            u64 code = 0;
+            for (std::size_t i = 0; i < names->size(); ++i) {
+                if ((*names)[i] == chosen) {
+                    code = (*list)[i];
+                    break;
+                }
+            }
+            if (code == 0)
+                return;
+            // Worth a confirm: the whole system UI changes language, and only a
+            // restart brings it into effect.
+            screen.requestDialog(
+                i18nInner.tr("settings.system.language_confirm_title", "Change console language?"),
+                chosen + " — " + i18nInner.tr(
+                    "settings.system.language_restart",
+                    "The console language changes after the next restart."),
+                {
+                    {i18nInner.tr("button.cancel", "Cancel"), []() {}},
+                    {i18nInner.tr("button.ok", "OK"), [&screen, code, chosen]() {
+                        const Result rc = setsysSetLanguageCode(code);
+                        DebugLog::log("[settings-lang] set language '%s' rc=0x%X",
+                                      languageTagFromCode(code).c_str(), rc);
+                        if (R_FAILED(rc)) {
+                            screen.requestToast(nxui::I18n::instance().tr(
+                                "settings.system.language_failed",
+                                "Could not change the console language."));
+                            return;
+                        }
+                        SystemTab::refreshConsoleLanguageRow(screen, chosen);
+                        screen.requestToast(nxui::I18n::instance().tr(
+                            "settings.system.language_saved",
+                            "Saved. Restart the console to apply it."));
+                    }},
+                });
+        },
+        TabbedOverlayScreen::TimezoneSearchCb{});
+}
+
+void SystemTab::refreshTimezoneRowDescription(SettingsScreen& screen, const std::string& zoneName) {
+    if (screen.m_tabIndex < 0 || screen.m_tabIndex >= (int)screen.m_tabs.size())
+        return;
+    auto& items = screen.m_tabs[screen.m_tabIndex].items;
+    for (auto& item : items) {
+        if (item.label != timezoneLabel())
+            continue;
+        item.description = zoneName.empty()
+            ? nxui::I18n::instance().tr("common.na", "N/A")
+            : zoneName;
+        break;
+    }
+}
+
+void SystemTab::beginTimezoneChange(SettingsScreen& screen, const std::string& filter) {
+    auto& i18n = nxui::I18n::instance();
+    TimeLocationName current{};
+    std::string currentName;
+    if (R_SUCCEEDED(timeGetDeviceLocationName(&current)))
+        currentName = current.name;
+
+    std::vector<std::string> zones;
+    {
+        auto all = loadAllTimezoneNames();
+        zones.reserve(all.size());
+        for (const auto& zone : all) {
+            if (containsInsensitive(zone, filter))
+                zones.push_back(zone);
+        }
+    }
+    if (zones.empty()) {
+        screen.requestToast(i18n.tr(
+            "settings.system.timezone_none",
+            "No matching timezones."));
+        return;
+    }
+
+    int selected = 0;
+    for (int i = 0; i < (int)zones.size(); ++i) {
+        if (zones[i] == currentName) {
+            selected = i;
+            break;
+        }
+    }
+
+    screen.requestTimezonePicker(
+        zones,
+        selected,
+        [&screen](const std::string& chosen) {
+            auto& i18nInner = nxui::I18n::instance();
+            TimeLocationName name{};
+            std::snprintf(name.name, sizeof(name.name), "%s", chosen.c_str());
+            const Result rc = timeSetDeviceLocationName(&name);
+            DebugLog::log("[settings-time] set timezone '%s' rc=0x%X",
+                          chosen.c_str(), rc);
+            if (R_FAILED(rc)) {
+                screen.requestToast(i18nInner.tr(
+                    "settings.system.timezone_failed",
+                    "Could not change timezone."));
+                return;
+            }
+            SystemTab::refreshTimezoneRowDescription(screen, chosen);
+            screen.requestToast(i18nInner.tr(
+                "settings.system.timezone_saved",
+                "Timezone updated."));
+        },
+        [&screen]() {
+            auto& i18nInner = nxui::I18n::instance();
+            screen.requestTextEntry(
+                i18nInner.tr("settings.system.timezone_filter_title", "Filter timezones"),
+                i18nInner.tr(
+                    "settings.system.timezone_filter_guide",
+                    "Type to filter (e.g. Sao_Paulo). Leave empty for all."),
+                std::string(),
+                36,
+                [&screen](const std::string& nextFilter) {
+                    SystemTab::beginTimezoneChange(screen, nextFilter);
+                });
+        });
+}
+
+} // namespace settings::tabs
 
 SettingsScreen::Tab settings::tabs::SystemTab::build(SettingsScreen& screen) {
     using Tab = SettingsScreen::Tab;
@@ -300,11 +526,17 @@ SettingsScreen::Tab settings::tabs::SystemTab::build(SettingsScreen& screen) {
 
     {
         TimeLocationName tz{};
-        SettingItem it; it.label = i18n.tr("settings.system.timezone", "Timezone"); it.type = ItemType::Info;
+        SettingItem it;
+        it.label = timezoneLabel();
+        it.type = ItemType::Action;
+        it.buttonLabel = i18n.tr("settings.system.timezone_button", "Change");
         if (R_SUCCEEDED(timeGetDeviceLocationName(&tz)))
-            it.infoText = tz.name;
+            it.description = tz.name;
         else
-            it.infoText = i18n.tr("common.na", "N/A");
+            it.description = i18n.tr("common.na", "N/A");
+        it.onChange = [&screen](SettingItem&) {
+            SystemTab::beginTimezoneChange(screen);
+        };
         t.items.push_back(std::move(it));
     }
 
@@ -509,18 +741,22 @@ SettingsScreen::Tab settings::tabs::SystemTab::build(SettingsScreen& screen) {
     }
 
     {
-        SettingItem it; it.label = i18n.tr("settings.system.console_language", "Console Language"); it.type = ItemType::Info;
-        it.description = i18n.tr("settings.system.console_language_desc",
-                                 "Read-only. Change this in Nintendo Switch System Settings.");
+        SettingItem it;
+        it.label = i18n.tr("settings.system.console_language", "Console Language");
+        it.type = ItemType::Action;
+        it.buttonLabel = i18n.tr("settings.system.timezone_button", "Change");
         u64 langCode = 0;
         if (R_SUCCEEDED(setGetSystemLanguage(&langCode))) {
             SetLanguage lang = SetLanguage_ENUS;
             if (R_SUCCEEDED(setMakeLanguage(langCode, &lang))) {
                 std::string tag = nxui::I18n::detectSystemLanguageTag();
-                it.infoText = i18n.tr(std::string("languages.") + tag, tag);
+                it.description = i18n.tr(std::string("languages.") + tag, tag);
             }
         }
-        if (it.infoText.empty()) it.infoText = i18n.tr("common.na", "N/A");
+        if (it.description.empty()) it.description = i18n.tr("common.na", "N/A");
+        it.onChange = [&screen](SettingItem&) {
+            SystemTab::beginConsoleLanguageChange(screen);
+        };
         t.items.push_back(std::move(it));
     }
 

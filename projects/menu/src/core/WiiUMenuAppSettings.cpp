@@ -644,6 +644,32 @@ void WiiUMenuApp::createSettings() {
                 });
             focusManager().setFocus(m_dialog.get());
         });
+    // Timezone picker and its search filter (PoloNX #131).
+    m_settings->onTimezonePickerRequest(
+        [this](const std::vector<std::string>& zones, int selectedIndex,
+               TabbedOverlayScreen::TimezoneSelectCb onSelect,
+               TabbedOverlayScreen::TimezoneSearchCb onSearch) {
+            if (!m_dialog) return;
+            m_dialogReturnFocus = m_settings.get();
+            m_dialog->showTimezonePicker(
+                zones,
+                selectedIndex,
+                [this, onSelect = std::move(onSelect)](const std::string& zone) mutable {
+                    if (onSelect) onSelect(zone);
+                    m_clockService.invalidate();
+                },
+                [onSearch = std::move(onSearch)]() mutable {
+                    if (onSearch) onSearch();
+                });
+            focusManager().setFocus(m_dialog.get());
+        });
+    m_settings->onTextEntryRequest(
+        [this](const std::string& title, const std::string& guide,
+               const std::string& initial, int maxLength,
+               TabbedOverlayScreen::TextEntryAcceptCb onAccept) {
+            requestTextEntry(title, guide, initial, maxLength, false,
+                             std::move(onAccept));
+        });
     m_settings->onClosed([this]() {
         m_navigator.routeDidClose(switchu::navigation::Route::Settings);
         m_configSaveFuture = m_threadPool.submit([cfg = m_config]() {

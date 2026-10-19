@@ -128,12 +128,15 @@
     "navigation": {
       "title": "Navegação",
       "body": "Use o direcional ou o analógico esquerdo para mover o foco.",
-      "objective": "Mova o foco para outro item."
+      "objective": "Mova o foco para outro item.",
+      "left_right": "Esquerda / direita",
+      "up_down": "Cima / baixo"
     },
     "confirm": {
       "title": "Pronto",
       "body": "Você já pode começar.",
-      "objective": "Pressione A para confirmar esta etapa."
+      "objective": "Pressione A para confirmar esta etapa.",
+      "detected": "Botão A detectado"
     },
     "themes": {
       "title": "Temas",
@@ -157,7 +160,8 @@
       "skip_step": "Pular etapa",
       "skip_all": "Pular tudo",
       "skip_all_banner": "Aperte  +  para pular a configuração"
-    }
+    },
+    "test_label": "Teste"
   },
   "sidebar": {
     "album": "Álbum",
@@ -226,6 +230,8 @@
       "not_detected": "Não detectado",
       "emunand": "EmuNAND",
       "inactive_sysnand": "Inativo / SysNAND",
+      "console_nickname_guide": "Digite um nome para este console",
+      "console_nickname_desc": "O nome que outros consoles e aplicativos veem.",
       "console_nickname": "Apelido do Console",
       "serial_number": "Número de Série",
       "timezone": "Fuso Horário",
@@ -274,8 +280,6 @@
       "ntp_syncing": "Sincronizando relógio pela Internet...",
       "time_change_failed": "Não foi possível alterar a data e a hora.",
       "year": "Ano",
-      "console_nickname_guide": "Digite um nome para este console",
-      "console_nickname_desc": "O nome que outros consoles e aplicativos veem.",
       "save_logs": "Salvar logs para cópia",
       "save_logs_desc": "Fecha os logs atuais para que possam ser copiados de config/OmniLaunch.",
       "save_logs_done": "Logs salvos. Copie menu-*.log e daemon-*.log de config/OmniLaunch.",
@@ -290,7 +294,19 @@
       "sysmodules": "Sysmodules iniciados no boot",
       "sysmodules_desc": "Cada um roda desde o boot e usa memória do pool acima.",
       "sysmodules_none": "Nenhum",
-      "region_desc": "Somente leitura. Altere nas Configurações do Nintendo Switch."
+      "region_desc": "Somente leitura. Altere nas Configurações do Nintendo Switch.",
+      "timezone_button": "Alterar",
+      "timezone_filter_title": "Filtrar fusos horários",
+      "timezone_filter_guide": "Digite para filtrar (ex.: Sao_Paulo). Deixe vazio para ver todos.",
+      "timezone_filter_option": "Buscar",
+      "timezone_popup_hint": "Esquerda para Buscar. Cima/baixo para escolher. A para confirmar.",
+      "timezone_none": "Nenhum fuso horário encontrado.",
+      "timezone_failed": "Não foi possível alterar o fuso horário.",
+      "timezone_saved": "Fuso horário atualizado.",
+      "language_confirm_title": "Mudar o idioma do console?",
+      "language_restart": "O idioma do console muda depois do próximo reinício.",
+      "language_failed": "Não foi possível mudar o idioma do console.",
+      "language_saved": "Salvo. Reinicie o console para aplicar."
     },
     "accessibility": {
       "voice": "Leitura por voz",
@@ -404,7 +420,8 @@
       "new_games_title": "SteamGridDB",
       "new_game_detected": "Novo jogo detectado: ",
       "new_game_ask": "Deseja verificar e baixar capas e artes do SteamGridDB?",
-      "new_games_detected": "novos jogos ou atalhos detectados.\n\nDeseja verificar e baixar capas e artes do SteamGridDB?"
+      "new_games_detected": "novos jogos ou atalhos detectados.\n\nDeseja verificar e baixar capas e artes do SteamGridDB?",
+      "https_clock_hint": "Falha no HTTPS. Se o relógio do console estiver errado, corrija em Configurações > Sistema (sincronizar o relógio pela internet ou ajustar a data e a hora manualmente)."
     },
     "controllers": {
       "test": "Testar dispositivos de entrada",
@@ -533,7 +550,15 @@
       "delete": "Excluir",
       "manage_title": "Gerenciar softwares",
       "title_id": "ID do título",
-      "homebrew_library_unavailable": "O gerenciamento de softwares instalados não está disponível no modo homebrew."
+      "homebrew_library_unavailable": "O gerenciamento de softwares instalados não está disponível no modo homebrew.",
+      "theme_cleanup": "Limpar arquivos de tema",
+      "theme_cleanup_desc": "Remove pastas de tema que não têm mais um tema legível. Pergunta antes.",
+      "theme_cleanup_button": "Verificar",
+      "theme_cleanup_none": "Nenhuma sobra de tema encontrada.",
+      "theme_cleanup_confirm_title": "Limpar arquivos de tema?",
+      "theme_cleanup_confirm": "Estas pastas não têm um tema legível. Apagar?",
+      "theme_cleanup_done": "Sobras de tema removidas.",
+      "theme_cleanup_failed": "Alguns arquivos não puderam ser removidos."
     },
     "about": {
       "version": "Versão",
@@ -658,8 +683,7 @@
     "size_medium": "Médio",
     "size_large": "Grande",
     "items": "itens",
-    "move": "Mover",
-    "page_added": "Página adicionada"
+    "move": "Mover"
   },
   "add": {
     "title": "Adicionar"

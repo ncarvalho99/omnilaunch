@@ -128,12 +128,15 @@
     "navigation": {
       "title": "Navigation",
       "body": "You can navigate with the directional pad, left stick, or right stick. Try one horizontal direction and one vertical direction.",
-      "objective": "Try left or right, then up or down."
+      "objective": "Try left or right, then up or down.",
+      "left_right": "Left / right",
+      "up_down": "Up / down"
     },
     "confirm": {
       "title": "Confirm",
       "body": "The A button confirms an action, launches a game, or opens the selected item.",
-      "objective": "Press A to validate this step."
+      "objective": "Press A to validate this step.",
+      "detected": "A button detected"
     },
     "themes": {
       "title": "Themes",
@@ -157,7 +160,8 @@
       "skip_step": "Skip step",
       "skip_all": "Skip all",
       "skip_all_banner": "Press  +  to skip the setup"
-    }
+    },
+    "test_label": "Test"
   },
   "sidebar": {
     "album": "Album",
@@ -226,6 +230,8 @@
       "not_detected": "Not detected",
       "emunand": "EmuNAND",
       "inactive_sysnand": "Inactive / SysNAND",
+      "console_nickname_guide": "Enter a name for this console",
+      "console_nickname_desc": "The name other consoles and apps see.",
       "console_nickname": "Console Nickname",
       "serial_number": "Serial Number",
       "timezone": "Timezone",
@@ -274,8 +280,6 @@
       "ntp_syncing": "Synchronizing clock via Internet...",
       "time_change_failed": "The date and time setting could not be changed.",
       "year": "Year",
-      "console_nickname_guide": "Enter a name for this console",
-      "console_nickname_desc": "The name other consoles and apps see.",
       "save_logs": "Save logs for copying",
       "save_logs_desc": "Closes the current logs so they can be copied from config/OmniLaunch.",
       "save_logs_done": "Logs saved. Copy menu-*.log and daemon-*.log from config/OmniLaunch.",
@@ -290,7 +294,19 @@
       "sysmodules": "Sysmodules Started at Boot",
       "sysmodules_desc": "Each one runs from boot and takes its memory from the pool above.",
       "sysmodules_none": "None",
-      "region_desc": "Read-only. Change this in Nintendo Switch System Settings."
+      "region_desc": "Read-only. Change this in Nintendo Switch System Settings.",
+      "timezone_button": "Change",
+      "timezone_filter_title": "Filter timezones",
+      "timezone_filter_guide": "Type to filter (e.g. Sao_Paulo). Leave empty for all.",
+      "timezone_filter_option": "Search",
+      "timezone_popup_hint": "Left for Search. Up/down to choose. A to confirm.",
+      "timezone_none": "No matching timezones.",
+      "timezone_failed": "Could not change timezone.",
+      "timezone_saved": "Timezone updated.",
+      "language_confirm_title": "Change console language?",
+      "language_restart": "The console language changes after the next restart.",
+      "language_failed": "Could not change the console language.",
+      "language_saved": "Saved. Restart the console to apply it."
     },
     "accessibility": {
       "voice": "Voice Guidance",
@@ -404,7 +420,8 @@
       "new_games_title": "SteamGridDB",
       "new_game_detected": "New game detected: ",
       "new_game_ask": "Would you like to check and download covers and artwork from SteamGridDB?",
-      "new_games_detected": "new games or shortcuts detected.\n\nWould you like to check and download covers and artwork from SteamGridDB?"
+      "new_games_detected": "new games or shortcuts detected.\n\nWould you like to check and download covers and artwork from SteamGridDB?",
+      "https_clock_hint": "HTTPS failed. If the console clock is wrong, fix it in Settings > System (Synchronize Clock via Internet, or set the date and time yourself)."
     },
     "controllers": {
       "test": "Test Input Devices",
@@ -533,7 +550,15 @@
       "delete": "Delete",
       "manage_title": "Manage Software",
       "title_id": "Title ID",
-      "homebrew_library_unavailable": "Installed software management is unavailable in homebrew mode."
+      "homebrew_library_unavailable": "Installed software management is unavailable in homebrew mode.",
+      "theme_cleanup": "Clean up theme files",
+      "theme_cleanup_desc": "Remove theme folders that no longer hold a readable theme. Asks first.",
+      "theme_cleanup_button": "Scan",
+      "theme_cleanup_none": "No leftover theme files found.",
+      "theme_cleanup_confirm_title": "Clean up theme files?",
+      "theme_cleanup_confirm": "These folders hold no readable theme. Delete them?",
+      "theme_cleanup_done": "Leftover theme files removed.",
+      "theme_cleanup_failed": "Some files could not be removed."
     },
     "about": {
       "version": "Version",
@@ -658,8 +683,7 @@
     "size_medium": "Medium",
     "size_large": "Large",
     "items": "items",
-    "move": "Move",
-    "page_added": "Page added"
+    "move": "Move"
   },
   "add": {
     "title": "Add"

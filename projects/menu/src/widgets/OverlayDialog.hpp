@@ -55,6 +55,13 @@ public:
     void showDateTimeEditor(const DateTimeValue& initial,
                             DateTimeSaveCallback onSave,
                             CancelCallback onCancel = {});
+    using TimezoneSelectCallback = std::function<void(const std::string& zone)>;
+    using TimezoneSearchCallback = std::function<void()>;
+    void showTimezonePicker(const std::vector<std::string>& zones,
+                            int selectedIndex,
+                            TimezoneSelectCallback onSelect,
+                            TimezoneSearchCallback onSearch,
+                            CancelCallback onCancel = {});
 
     // Same dialog with a create tile after the accounts, which is what the top
     // avatar opens. Passing no create callback leaves it out, so the launch
@@ -104,15 +111,19 @@ private:
     void buildWidgetTree();
     void buildUserSelect();
     void buildDateTimeEditor();
+    void buildTimezonePicker();
     void animateButtonFocus(float duration, nxui::EasingFunc easing);
     void setupActions();
     void setupUserActions();
     void setupDateTimeActions();
+    void setupTimezoneActions();
     void activateSelected();
     void activateSelectedUser();
     void saveDateTime();
     void moveDateTimeField(int direction);
     void adjustDateTimeField(int direction);
+    void moveTimezoneHover(int direction);
+    void activateTimezoneSelection();
 
     // The create tile is the slot past the last account, so navigation, touch
     // and geometry all count it; only the account array itself does not.
@@ -126,6 +137,7 @@ private:
     void syncCursor();
     void syncUserCursor();
     void syncDateTimeCursor();
+    void syncTimezoneCursor();
     void announceCurrentSelection(bool forceRepeat = false, bool forceContext = false);
     void currentAccessibilityParts(std::string& context,
                                    std::string& position,
@@ -137,7 +149,12 @@ private:
     nxui::Rect userAvatarRect(int index) const;
     void renderUserContent(nxui::Renderer& ren, float alpha);
     void renderDateTimeContent(nxui::Renderer& ren, float alpha);
+    void renderTimezoneContent(nxui::Renderer& ren, float alpha);
     nxui::Rect dateTimeFieldRect(int index) const;
+    nxui::Rect timezoneSearchRect() const;
+    nxui::Rect timezoneListRect() const;
+    nxui::Rect timezoneRowRect(int visualRow) const;
+    void ensureTimezoneHoverVisible();
 
     nxui::Rect panelRect() const;
 
@@ -145,6 +162,7 @@ private:
         Buttons,
         UserSelect,
         DateTime,
+        Timezone,
     };
 
     struct UserEntry {
@@ -188,6 +206,13 @@ private:
 
     nxui::AnimatedFloat m_overlayAlpha;
     nxui::AnimatedFloat m_panelScale;
+    TimezoneSelectCallback m_onTimezoneSelect;
+    TimezoneSearchCallback m_onTimezoneSearch;
+    std::vector<std::string> m_timezoneOptions;
+    int m_timezoneHover = 0;
+    int m_timezoneScroll = 0;
+    bool m_timezoneSearchFocused = false;
+    static constexpr int kTimezoneVisibleRows = 7;
     nxui::AnimatedFloat m_contentReveal;
     std::vector<nxui::AnimatedFloat> m_buttonFocus;
 
@@ -215,6 +240,8 @@ private:
 
     int  m_touchHitButton  = -1;
     int  m_touchHitUser    = -1;
+    int  m_touchHitTimezone = -1;
+    bool m_touchOnTimezoneSearch = false;
     bool m_touchOnSelected = false;
     bool m_ignoreInitialTouchRelease = false;
 
@@ -232,6 +259,8 @@ private:
     // that small is a sign the dialog needs fewer buttons, not smaller text.
     static constexpr float kButtonLabelPadding  = 12.f;
     static constexpr float kButtonLabelMinScale = 0.62f;
+    static constexpr float kTimezoneSearchW = 108.f;
+    static constexpr float kTimezoneRowH = 44.f;
     static constexpr float kTitleMsgGap  = 14.f;
     static constexpr float kMsgBtnGap    = 24.f;
     static constexpr float kUserAvatarSize = 96.f;

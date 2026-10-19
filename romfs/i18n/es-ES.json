@@ -8,7 +8,8 @@
     "auto": "Auto",
     "na": "N/A",
     "active": "Activo",
-    "disabled": "Desactivado"
+    "disabled": "Desactivado",
+    "none": "Ninguno"
   },
   "accessibility": {
     "speech": {
@@ -128,12 +129,15 @@
     "navigation": {
       "title": "Navegación",
       "body": "Usa la cruz direccional o el stick izquierdo para mover el foco.",
-      "objective": "Mueve el foco a otro elemento."
+      "objective": "Mueve el foco a otro elemento.",
+      "left_right": "Izquierda / derecha",
+      "up_down": "Arriba / abajo"
     },
     "confirm": {
       "title": "Listo",
       "body": "Ya puedes empezar.",
-      "objective": "Pulsa A para validar este paso."
+      "objective": "Pulsa A para validar este paso.",
+      "detected": "Botón A detectado"
     },
     "themes": {
       "title": "Temas",
@@ -157,7 +161,8 @@
       "skip_step": "Saltar paso",
       "skip_all": "Saltar todo",
       "skip_all_banner": "Pulsa  +  para omitir la configuración"
-    }
+    },
+    "test_label": "Prueba"
   },
   "sidebar": {
     "album": "Álbum",
@@ -226,6 +231,8 @@
       "not_detected": "No detectado",
       "emunand": "EmuNAND",
       "inactive_sysnand": "Inactivo / SysNAND",
+      "console_nickname_guide": "Escribe un nombre para esta consola",
+      "console_nickname_desc": "El nombre que ven otras consolas y aplicaciones.",
       "console_nickname": "Apodo de la consola",
       "serial_number": "Número de serie",
       "timezone": "Zona horaria",
@@ -268,8 +275,6 @@
       "month": "Mes",
       "time_change_failed": "No se pudo cambiar la fecha y hora.",
       "year": "Año",
-      "console_nickname_guide": "Escribe un nombre para esta consola",
-      "console_nickname_desc": "El nombre que ven otras consolas y aplicaciones.",
       "save_logs": "Guardar registros para copiar",
       "save_logs_desc": "Cierra los registros actuales para poder copiarlos desde config/OmniLaunch.",
       "save_logs_done": "Registros guardados. Copia menu-*.log y daemon-*.log de config/OmniLaunch.",
@@ -284,7 +289,19 @@
       "sysmodules": "Sysmodules iniciados al arrancar",
       "sysmodules_desc": "Cada uno se ejecuta desde el arranque y usa memoria del pool de arriba.",
       "sysmodules_none": "Ninguno",
-      "region_desc": "Solo lectura. Cámbialo en los Ajustes de Nintendo Switch."
+      "region_desc": "Solo lectura. Cámbialo en los Ajustes de Nintendo Switch.",
+      "timezone_button": "Cambiar",
+      "timezone_filter_title": "Filtrar zonas horarias",
+      "timezone_filter_guide": "Escribe para filtrar (p. ej. Madrid). Déjalo vacío para ver todas.",
+      "timezone_filter_option": "Buscar",
+      "timezone_popup_hint": "Izquierda para Buscar. Arriba/abajo para elegir. A para confirmar.",
+      "timezone_none": "No hay zonas horarias que coincidan.",
+      "timezone_failed": "No se pudo cambiar la zona horaria.",
+      "timezone_saved": "Zona horaria actualizada.",
+      "language_confirm_title": "¿Cambiar el idioma de la consola?",
+      "language_restart": "El idioma de la consola cambia después del próximo reinicio.",
+      "language_failed": "No se pudo cambiar el idioma de la consola.",
+      "language_saved": "Guardado. Reinicia la consola para aplicarlo."
     },
     "accessibility": {
       "voice": "Lectura de voz",
@@ -394,7 +411,8 @@
       "start_failed": "No se pudo iniciar el análisis de ilustraciones.",
       "started": "Análisis de SteamGridDB iniciado.",
       "download_title": "Descargando ilustraciones",
-      "download_start": "Buscando en SteamGridDB..."
+      "download_start": "Buscando en SteamGridDB...",
+      "https_clock_hint": "Error de HTTPS. Si el reloj de la consola es incorrecto, corrígelo en Ajustes > Sistema (sincronizar el reloj por Internet o ajustar la fecha y la hora a mano)."
     },
     "controllers": {
       "test": "Probar dispositivos de entrada",
@@ -521,7 +539,15 @@
       "delete": "Eliminar",
       "manage_title": "Gestionar software",
       "title_id": "ID del título",
-      "homebrew_library_unavailable": "La gestión de software instalado no está disponible en modo homebrew."
+      "homebrew_library_unavailable": "La gestión de software instalado no está disponible en modo homebrew.",
+      "theme_cleanup": "Limpiar archivos de temas",
+      "theme_cleanup_desc": "Quita carpetas de temas que ya no contienen un tema legible. Pregunta antes.",
+      "theme_cleanup_button": "Buscar",
+      "theme_cleanup_none": "No se encontraron restos de temas.",
+      "theme_cleanup_confirm_title": "¿Limpiar archivos de temas?",
+      "theme_cleanup_confirm": "Estas carpetas no contienen un tema legible. ¿Eliminarlas?",
+      "theme_cleanup_done": "Restos de temas eliminados.",
+      "theme_cleanup_failed": "Algunos archivos no se pudieron eliminar."
     },
     "about": {
       "version": "Versión",
@@ -645,7 +671,17 @@
     "size_large": "Grande",
     "items": "elementos",
     "move": "Mover",
-    "page_added": "Página añadida"
+    "style": "Estilo de carpeta",
+    "style_desc": "Se aplica a todas las carpetas, incluidas las nuevas.",
+    "style_classic": "Clásico",
+    "style_simple": "Simple",
+    "style_minimal": "Minimalista",
+    "style_tab": "Pestaña",
+    "style_ring": "Anillo",
+    "style_manila": "Manila",
+    "style_label": "Etiqueta",
+    "show_cover": "Mostrar portada",
+    "show_cover_desc": "Muestra el primer juego en cada carpeta. El estilo Clásico conserva el mosaico."
   },
   "add": {
     "title": "Añadir"
@@ -934,6 +970,10 @@
     "animated": {
       "title": "Temas animados",
       "subtitle": "Fondos en movimiento, con sonido cuando el tema lo trae."
+    },
+    "options": {
+      "auto_theme": "Tema automático",
+      "auto_theme_desc": "Alterna automáticamente entre un tema de día y uno de noche."
     }
   },
   "dialog": {
@@ -1143,5 +1183,38 @@
     "hint_shortcut": "Registro diario",
     "hint_step": "Cambiar fecha",
     "hint_today": "Hoy"
+  },
+  "autotheme": {
+    "day_starts": "El día comienza a las",
+    "day_theme": "Tema de día",
+    "day_theme_desc": "Se aplica durante el día.",
+    "geo_locating": "Ubicando por Internet...",
+    "geo_location": "Ubicación",
+    "geo_midnight_sun": "Sol de medianoche",
+    "geo_polar_night": "Noche polar",
+    "geo_sunrise": "Amanecer",
+    "geo_sunset": "Atardecer",
+    "header": "Tema automático",
+    "header_mode": "Modo: ",
+    "mode": "Cambio",
+    "mode_desc": "Desactivado mantiene el tema elegido. Manual usa horas fijas. ",
+    "mode_geo": "Geolocalización (IP)",
+    "mode_manual": "Horas manuales",
+    "mode_off": "Desactivado",
+    "night_starts": "La noche comienza a las",
+    "night_theme": "Tema de noche",
+    "night_theme_desc": "Se aplica durante la noche.",
+    "section": {
+      "geo": "Geolocalización",
+      "mode": "Modo",
+      "schedule": "Horario",
+      "themes": "Temas"
+    },
+    "summary": {
+      "geo": "Geolocalización (IP)",
+      "manual": "Horas manuales",
+      "off": "Desactivado"
+    },
+    "title": "Tema automático"
   }
 }

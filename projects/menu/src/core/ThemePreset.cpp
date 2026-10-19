@@ -1059,3 +1059,43 @@ int ThemePreset::sweepInstallLeftovers() {
     }
     return removed;
 }
+
+std::vector<ThemePreset::OrphanDir> ThemePreset::orphanThemeDirs() {
+    // A folder is an orphan only when its theme.json cannot be LOADED: missing
+    // file or JSON the manifest reader refuses. A valid theme, the installer's
+    // own working folders (swept elsewhere) and plain files are never offered.
+    // theme_presets.ini lives in the parent config dir, not here.
+    std::vector<OrphanDir> result;
+    std::error_code ec;
+    for (const auto& entry : std::filesystem::directory_iterator(kInstalledThemesDir, ec)) {
+        if (ec)
+            break;
+        if (!entry.is_directory(ec)) {
+            ec.clear();
+            continue;
+        }
+        const std::string dirName = entry.path().filename().string();
+        if (isThemeInstallLeftover(dirName))
+            continue;
+        const std::string installDir = entry.path().string();
+        ThemePreset probe;
+        if (loadThemePresetFromManifest(installDir + "/theme.json",
+                                        ThemePresetSource::InstalledPackage,
+                                        dirName, nxui::ThemeMode::Dark,
+                                        installDir, probe))
+            continue;   // a real theme; not ours to touch
+
+        OrphanDir orphan;
+        orphan.path = installDir;
+        orphan.name = dirName;
+        std::error_code sizeEc;
+        for (std::filesystem::recursive_directory_iterator walker(installDir, sizeEc), end;
+             walker != end && !sizeEc; walker.increment(sizeEc)) {
+            std::error_code fileEc;
+            if (walker->is_regular_file(fileEc))
+                orphan.sizeBytes += walker->file_size(fileEc);
+        }
+        result.push_back(std::move(orphan));
+    }
+    return result;
+}

@@ -128,12 +128,15 @@
     "navigation": {
       "title": "Navigation",
       "body": "Tu peux naviguer avec la croix directionnelle, le stick gauche ou le stick droit. Essaie une direction horizontale et une direction verticale.",
-      "objective": "Teste une direction gauche ou droite puis haut ou bas."
+      "objective": "Teste une direction gauche ou droite puis haut ou bas.",
+      "left_right": "Gauche / droite",
+      "up_down": "Haut / bas"
     },
     "confirm": {
       "title": "Valider",
       "body": "Le bouton A confirme une action, lance un jeu ou ouvre l'élément sélectionné.",
-      "objective": "Appuie sur A pour valider cette étape."
+      "objective": "Appuie sur A pour valider cette étape.",
+      "detected": "Bouton A détecté"
     },
     "themes": {
       "title": "Thèmes",
@@ -157,7 +160,8 @@
       "skip_step": "Passer étape",
       "skip_all": "Tout passer",
       "skip_all_banner": "Appuyez sur  +  pour passer la configuration"
-    }
+    },
+    "test_label": "Test"
   },
   "sidebar": {
     "album": "Album",
@@ -226,6 +230,8 @@
       "not_detected": "Non détecté",
       "emunand": "EmuNAND",
       "inactive_sysnand": "Inactif / SysNAND",
+      "console_nickname_guide": "Saisis un nom pour cette console",
+      "console_nickname_desc": "Le nom que voient les autres consoles et applications.",
       "console_nickname": "Surnom de la console",
       "serial_number": "Numéro de série",
       "timezone": "Fuseau horaire",
@@ -268,8 +274,6 @@
       "month": "Mois",
       "time_change_failed": "Impossible de modifier la date et l'heure.",
       "year": "Année",
-      "console_nickname_guide": "Saisis un nom pour cette console",
-      "console_nickname_desc": "Le nom que voient les autres consoles et applications.",
       "save_logs": "Enregistrer les journaux",
       "save_logs_desc": "Ferme les journaux actuels pour pouvoir les copier depuis config/OmniLaunch.",
       "save_logs_done": "Journaux enregistrés. Copie menu-*.log et daemon-*.log depuis config/OmniLaunch.",
@@ -284,7 +288,19 @@
       "sysmodules": "Sysmodules lancés au démarrage",
       "sysmodules_desc": "Chacun tourne dès le démarrage et prend sa mémoire dans le pool ci-dessus.",
       "sysmodules_none": "Aucun",
-      "region_desc": "Lecture seule. Modifiez-le dans les paramètres de la Nintendo Switch."
+      "region_desc": "Lecture seule. Modifiez-le dans les paramètres de la Nintendo Switch.",
+      "timezone_button": "Modifier",
+      "timezone_filter_title": "Filtrer les fuseaux horaires",
+      "timezone_filter_guide": "Tapez pour filtrer (ex. Paris). Laissez vide pour tout afficher.",
+      "timezone_filter_option": "Rechercher",
+      "timezone_popup_hint": "Gauche pour Rechercher. Haut/bas pour choisir. A pour valider.",
+      "timezone_none": "Aucun fuseau horaire ne correspond.",
+      "timezone_failed": "Impossible de changer le fuseau horaire.",
+      "timezone_saved": "Fuseau horaire mis à jour.",
+      "language_confirm_title": "Changer la langue de la console ?",
+      "language_restart": "La langue de la console change après le prochain redémarrage.",
+      "language_failed": "Impossible de changer la langue de la console.",
+      "language_saved": "Enregistré. Redémarrez la console pour l’appliquer."
     },
     "accessibility": {
       "voice": "Lecture vocale",
@@ -394,7 +410,8 @@
       "start_failed": "La recherche des visuels n'a pas pu démarrer.",
       "started": "Recherche SteamGridDB démarrée.",
       "download_title": "Téléchargement des visuels",
-      "download_start": "Recherche sur SteamGridDB..."
+      "download_start": "Recherche sur SteamGridDB...",
+      "https_clock_hint": "Échec HTTPS. Si l’horloge de la console est fausse, corrigez-la dans Paramètres > Système (synchroniser l’horloge via Internet ou régler la date et l’heure vous-même)."
     },
     "controllers": {
       "test": "Tester les périphériques",
@@ -521,7 +538,15 @@
       "delete": "Supprimer",
       "manage_title": "Gérer les logiciels",
       "title_id": "ID du titre",
-      "homebrew_library_unavailable": "La gestion des logiciels installés est indisponible en mode homebrew."
+      "homebrew_library_unavailable": "La gestion des logiciels installés est indisponible en mode homebrew.",
+      "theme_cleanup": "Nettoyer les fichiers de thèmes",
+      "theme_cleanup_desc": "Supprime les dossiers de thèmes qui ne contiennent plus de thème lisible. Demande d’abord.",
+      "theme_cleanup_button": "Analyser",
+      "theme_cleanup_none": "Aucun reste de thème trouvé.",
+      "theme_cleanup_confirm_title": "Nettoyer les fichiers de thèmes ?",
+      "theme_cleanup_confirm": "Ces dossiers ne contiennent aucun thème lisible. Les supprimer ?",
+      "theme_cleanup_done": "Restes de thèmes supprimés.",
+      "theme_cleanup_failed": "Certains fichiers n’ont pas pu être supprimés."
     },
     "about": {
       "version": "Version",
@@ -644,8 +669,7 @@
     "size_medium": "Moyen",
     "size_large": "Grand",
     "items": "éléments",
-    "move": "Déplacer",
-    "page_added": "Page ajoutée"
+    "move": "Déplacer"
   },
   "add": {
     "title": "Ajouter"

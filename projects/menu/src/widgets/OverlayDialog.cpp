@@ -441,6 +441,30 @@ void OverlayDialog::currentAccessibilityParts(std::string& context,
         return;
     }
 
+    if (m_mode == DialogMode::Timezone) {
+        auto& i18n = nxui::I18n::instance();
+        if (m_timezoneSearchFocused) {
+            summary = i18n.tr("settings.system.timezone_filter_option", "Search");
+            if (m_accessibilitySpeakHints)
+                summary += ". "
+                        + i18n.tr("accessibility.settings.companion_actions",
+                                  "A to activate. Right for list. B to close.");
+        } else if (!m_timezoneOptions.empty()) {
+            const int idx = std::clamp(
+                m_timezoneHover, 0, (int)m_timezoneOptions.size() - 1);
+            summary = m_timezoneOptions[(size_t)idx];
+            if (m_accessibilitySpeakPosition)
+                position = std::to_string(idx + 1) + " "
+                         + i18n.tr("accessibility.context.of", "of") + " "
+                         + std::to_string((int)m_timezoneOptions.size());
+            if (m_accessibilitySpeakHints)
+                summary += ". "
+                        + i18n.tr("settings.system.timezone_popup_hint",
+                                  "Left for Search. Up/down to choose. A to confirm.");
+        }
+        return;
+    }
+
     std::string choice;
     if (m_selected >= 0 && m_selected < (int)m_buttons.size())
         choice = m_buttons[(size_t)m_selected].label;
@@ -674,6 +698,83 @@ void OverlayDialog::showDateTimeEditor(const DateTimeValue& initial,
     syncDateTimeCursor();
 }
 
+void OverlayDialog::buildTimezonePicker() {
+    m_mode = DialogMode::Timezone;
+    clearChildren();
+    m_btnWidgets.clear();
+    m_buttonFocus.clear();
+    m_titleLabel.reset();
+    m_messageLabel.reset();
+    m_buttonRow.reset();
+
+    m_panelW = 760.f;
+    // Title + list (7 rows) + padding. No footer strip.
+    m_panelH = 78.f + 6.f + kTimezoneVisibleRows * kTimezoneRowH + 6.f + 28.f;
+    setAxis(nxui::Axis::COLUMN);
+    setRect(panelRect());
+    setCornerRadius(kPanelRadius);
+    setPadding(0.f);
+    setBackingEnabled(false);
+    setLiquidGlassEnabled(false);
+    setBlurEnabled(false);
+    setWireframeEnabled(false);
+    setPanelOpacity(0.94f);
+    if (m_theme) {
+        setBaseColor(m_theme->panelBase.withAlpha(
+            m_theme->mode == nxui::ThemeMode::Dark ? 0.95f : 0.96f));
+        setBorderColor(m_theme->panelBorder.withAlpha(0.42f));
+        setHighlightColor(m_theme->panelHighlight.withAlpha(0.10f));
+    }
+}
+
+void OverlayDialog::showTimezonePicker(const std::vector<std::string>& zones,
+                                       int selectedIndex,
+                                       TimezoneSelectCallback onSelect,
+                                       TimezoneSearchCallback onSearch,
+                                       CancelCallback onCancel) {
+    auto& i18n = nxui::I18n::instance();
+    m_title = i18n.tr("settings.system.timezone", "Timezone");
+    m_message = i18n.tr(
+        "settings.system.timezone_popup_hint",
+        "Left for Search. Up/down to choose. A to confirm.");
+    m_buttons.clear();
+    m_timezoneOptions = zones;
+    m_timezoneHover = std::clamp(
+        selectedIndex, 0, std::max(0, (int)m_timezoneOptions.size() - 1));
+    m_timezoneScroll = 0;
+    m_timezoneSearchFocused = false;
+    ensureTimezoneHoverVisible();
+    m_onTimezoneSelect = std::move(onSelect);
+    m_onTimezoneSearch = std::move(onSearch);
+    m_onCancel = std::move(onCancel);
+
+    m_active = true;
+    m_animatingOut = false;
+    m_backdropCacheValid = false;
+    m_cachedPreBlurRadius = -1.f;
+    m_cachedBlurIterations = -1;
+    buildTimezonePicker();
+
+    m_overlayAlpha.setImmediate(0.f);
+    m_panelScale.setImmediate(0.92f);
+    m_contentReveal.setImmediate(0.f);
+    m_overlayAlpha.set(1.f, 0.24f, nxui::Easing::outCubic);
+    m_panelScale.set(1.f, 0.28f, nxui::Easing::outCubic);
+    m_contentReveal.set(1.f, 0.34f, nxui::Easing::outCubic);
+
+    setFocusable(true);
+    setVisible(true);
+    setupTimezoneActions();
+    m_touchHitButton = -1;
+    m_touchHitUser = -1;
+    m_touchHitTimezone = -1;
+    m_touchOnTimezoneSearch = false;
+    m_touchOnSelected = false;
+    m_ignoreInitialTouchRelease = true;
+    m_pendingInitialAccessibilityFrames = 2;
+    syncTimezoneCursor();
+}
+
 void OverlayDialog::hide() {
     if (!m_active || m_animatingOut) return;
 
@@ -783,6 +884,81 @@ void OverlayDialog::setupDateTimeActions() {
     });
 }
 
+void OverlayDialog::setupTimezoneActions() {
+    clearActions();
+    addDirectionAction(nxui::FocusDirection::LEFT, [this]() {
+        if (!m_active || m_animatingOut || m_timezoneSearchFocused) return;
+        m_timezoneSearchFocused = true;
+        syncTimezoneCursor();
+        if (m_navSfxCb) m_navSfxCb();
+        announceCurrentSelection(true, false);
+    });
+    addDirectionAction(nxui::FocusDirection::RIGHT, [this]() {
+        if (!m_active || m_animatingOut || !m_timezoneSearchFocused) return;
+        m_timezoneSearchFocused = false;
+        syncTimezoneCursor();
+        if (m_navSfxCb) m_navSfxCb();
+        announceCurrentSelection(true, false);
+    });
+    addDirectionAction(nxui::FocusDirection::UP, [this]() {
+        if (!m_timezoneSearchFocused) moveTimezoneHover(-1);
+    });
+    addDirectionAction(nxui::FocusDirection::DOWN, [this]() {
+        if (!m_timezoneSearchFocused) moveTimezoneHover(1);
+    });
+    addAction(static_cast<uint64_t>(nxui::Button::A), [this]() {
+        if (m_active && !m_animatingOut) activateTimezoneSelection();
+    });
+    addAction(static_cast<uint64_t>(nxui::Button::B), [this]() {
+        if (m_active && !m_animatingOut) cancel();
+    });
+}
+
+void OverlayDialog::ensureTimezoneHoverVisible() {
+    const int total = (int)m_timezoneOptions.size();
+    if (total <= 0) {
+        m_timezoneHover = 0;
+        m_timezoneScroll = 0;
+        return;
+    }
+    m_timezoneHover = std::clamp(m_timezoneHover, 0, total - 1);
+    const int visible = std::min(total, kTimezoneVisibleRows);
+    if (m_timezoneHover < m_timezoneScroll)
+        m_timezoneScroll = m_timezoneHover;
+    else if (m_timezoneHover >= m_timezoneScroll + visible)
+        m_timezoneScroll = m_timezoneHover - visible + 1;
+    m_timezoneScroll = std::clamp(m_timezoneScroll, 0, std::max(0, total - visible));
+}
+
+void OverlayDialog::moveTimezoneHover(int direction) {
+    if (!m_active || m_animatingOut || m_timezoneOptions.empty() || direction == 0)
+        return;
+    const int total = (int)m_timezoneOptions.size();
+    m_timezoneHover = (m_timezoneHover + direction + total) % total;
+    ensureTimezoneHoverVisible();
+    syncTimezoneCursor();
+    if (m_navSfxCb) m_navSfxCb();
+    announceCurrentSelection(true, false);
+}
+
+void OverlayDialog::activateTimezoneSelection() {
+    if (!m_active || m_animatingOut) return;
+    if (m_timezoneSearchFocused) {
+        auto cb = std::move(m_onTimezoneSearch);
+        if (m_activateSfxCb) m_activateSfxCb();
+        hide();
+        if (cb) cb();
+        return;
+    }
+    if (m_timezoneOptions.empty()) return;
+    const int idx = std::clamp(m_timezoneHover, 0, (int)m_timezoneOptions.size() - 1);
+    const std::string zone = m_timezoneOptions[(size_t)idx];
+    auto cb = std::move(m_onTimezoneSelect);
+    if (m_activateSfxCb) m_activateSfxCb();
+    hide();
+    if (cb) cb(zone);
+}
+
 void OverlayDialog::moveDateTimeField(int direction) {
     if (!m_active || m_animatingOut || direction == 0) return;
     m_dateTimeField = (m_dateTimeField + (direction > 0 ? 1 : 4)) % 5;
@@ -859,6 +1035,75 @@ void OverlayDialog::cancel() {
 
 void OverlayDialog::handleTouch(nxui::Input& input) {
     if (!m_active || m_animatingOut) return;
+
+    if (m_mode == DialogMode::Timezone) {
+        if (input.touchDown()) {
+            if (m_ignoreInitialTouchRelease)
+                m_ignoreInitialTouchRelease = false;
+            m_touchHitTimezone = -1;
+            m_touchOnTimezoneSearch = false;
+            m_touchOnSelected = false;
+            const float tx = input.touchX();
+            const float ty = input.touchY();
+            if (timezoneSearchRect().expanded(8.f).contains(tx, ty)) {
+                m_touchOnTimezoneSearch = true;
+                m_touchOnSelected = m_timezoneSearchFocused;
+                return;
+            }
+            const nxui::Rect list = timezoneListRect();
+            if (list.contains(tx, ty)) {
+                const float localY = ty - list.y - 6.f;
+                const int visual = (int)std::floor(localY / (kTimezoneRowH * m_panelScale.value()));
+                const int idx = m_timezoneScroll + visual;
+                if (idx >= 0 && idx < (int)m_timezoneOptions.size()) {
+                    m_touchHitTimezone = idx;
+                    m_touchOnSelected = (!m_timezoneSearchFocused && idx == m_timezoneHover);
+                }
+            }
+        }
+        if (input.touchUp()) {
+            if (m_ignoreInitialTouchRelease) {
+                m_ignoreInitialTouchRelease = false;
+                m_touchHitTimezone = -1;
+                m_touchOnTimezoneSearch = false;
+                return;
+            }
+            const float dx = std::abs(input.touchDeltaX());
+            const float dy = std::abs(input.touchDeltaY());
+            if (dx < 20.f && dy < 20.f) {
+                if (m_touchOnTimezoneSearch) {
+                    if (m_touchOnSelected) {
+                        activateTimezoneSelection();
+                    } else {
+                        m_timezoneSearchFocused = true;
+                        syncTimezoneCursor();
+                        if (m_navSfxCb) m_navSfxCb();
+                        announceCurrentSelection(true, false);
+                    }
+                } else if (m_touchHitTimezone >= 0) {
+                    if (m_touchOnSelected) {
+                        m_timezoneSearchFocused = false;
+                        m_timezoneHover = m_touchHitTimezone;
+                        activateTimezoneSelection();
+                    } else {
+                        m_timezoneSearchFocused = false;
+                        m_timezoneHover = m_touchHitTimezone;
+                        ensureTimezoneHoverVisible();
+                        syncTimezoneCursor();
+                        if (m_navSfxCb) m_navSfxCb();
+                        announceCurrentSelection(true, false);
+                    }
+                } else if (!scaledRect(rect(), m_panelScale.value()).contains(
+                               input.touchX(), input.touchY())) {
+                    cancel();
+                }
+            }
+            m_touchHitTimezone = -1;
+            m_touchOnTimezoneSearch = false;
+            m_touchOnSelected = false;
+        }
+        return;
+    }
 
     if (m_mode == DialogMode::DateTime) {
         if (input.touchDown()) {
@@ -1006,6 +1251,10 @@ void OverlayDialog::syncCursor() {
         syncDateTimeCursor();
         return;
     }
+    if (m_mode == DialogMode::Timezone) {
+        syncTimezoneCursor();
+        return;
+    }
     if (m_mode == DialogMode::UserSelect) {
         syncUserCursor();
         return;
@@ -1027,6 +1276,174 @@ void OverlayDialog::syncDateTimeCursor() {
     if (m_theme)
         m_cursor.setColor(m_theme->cursorNormal);
     m_cursor.setOpacity(m_overlayAlpha.value());
+}
+
+void OverlayDialog::syncTimezoneCursor() {
+    const float sc = m_panelScale.value();
+    nxui::Rect target = m_timezoneSearchFocused
+        ? timezoneSearchRect()
+        : timezoneRowRect(m_timezoneHover - m_timezoneScroll);
+    // Keep the focus ring inside the list frame at the bottom edge.
+    if (!m_timezoneSearchFocused) {
+        const nxui::Rect list = timezoneListRect().shrunk(2.f * sc);
+        target = target.expanded(2.f);
+        if (target.bottom() > list.bottom())
+            target.y -= (target.bottom() - list.bottom());
+        if (target.y < list.y)
+            target.y = list.y;
+        if (target.height > list.height)
+            target.height = list.height;
+        m_cursor.setCornerRadius(12.f * sc);
+        m_cursor.moveTo(target, 12.f * sc, 0.14f);
+    } else {
+        m_cursor.setCornerRadius(14.f * sc);
+        m_cursor.moveTo(target.expanded(3.f), 14.f * sc, 0.14f);
+    }
+    if (m_theme) m_cursor.setColor(m_theme->cursorNormal);
+    m_cursor.setOpacity(m_overlayAlpha.value());
+}
+
+nxui::Rect OverlayDialog::timezoneSearchRect() const {
+    const nxui::Rect panel = scaledRect(panelRect(), m_panelScale.value());
+    const float sc = m_panelScale.value();
+    const nxui::Rect list = timezoneListRect();
+    return {
+        panel.x + kPanelPadX * sc,
+        list.y,
+        kTimezoneSearchW * sc,
+        kButtonH * sc
+    };
+}
+
+nxui::Rect OverlayDialog::timezoneListRect() const {
+    const nxui::Rect panel = scaledRect(panelRect(), m_panelScale.value());
+    const float sc = m_panelScale.value();
+    const float left = panel.x + (kPanelPadX + kTimezoneSearchW + 14.f) * sc;
+    const float top = panel.y + 78.f * sc;
+    const float rightPad = kPanelPadX * sc;
+    // Exact fit for visible rows + inner padding so the bottom highlight
+    // never clips through the list frame.
+    const float listH =
+        (6.f + kTimezoneVisibleRows * kTimezoneRowH + 6.f) * sc;
+    return {
+        left,
+        top,
+        std::max(0.f, panel.right() - rightPad - left),
+        listH
+    };
+}
+
+nxui::Rect OverlayDialog::timezoneRowRect(int visualRow) const {
+    const nxui::Rect list = timezoneListRect();
+    const float sc = m_panelScale.value();
+    return {
+        list.x + 8.f * sc,
+        list.y + 6.f * sc + visualRow * kTimezoneRowH * sc,
+        std::max(0.f, list.width - 16.f * sc),
+        (kTimezoneRowH - 4.f) * sc
+    };
+}
+
+void OverlayDialog::renderTimezoneContent(nxui::Renderer& ren, float alpha) {
+    if (alpha <= 0.01f) return;
+    const nxui::Rect panel = scaledRect(panelRect(), m_panelScale.value());
+    const float sc = m_panelScale.value();
+    const float contentAlpha = alpha * m_contentReveal.value();
+    nxui::Font* bodyFont = m_smallFont ? m_smallFont : m_font;
+    const nxui::Color primary = m_theme ? m_theme->textPrimary : nxui::Color::white();
+    const nxui::Color secondary = m_theme ? m_theme->textSecondary
+        : nxui::Color(0.82f, 0.82f, 0.9f, 1.f);
+    const nxui::Color accent = m_theme ? m_theme->cursorNormal : nxui::Color::white();
+    auto& i18n = nxui::I18n::instance();
+
+    if (m_font) {
+        ren.drawText(m_title,
+            {panel.x + kPanelPadX * sc, panel.y + 26.f * sc},
+            m_font, primary.withAlpha(contentAlpha), 0.92f * sc);
+    }
+
+    const nxui::Rect search = timezoneSearchRect();
+    const bool searchHot = m_timezoneSearchFocused;
+    nxui::Color searchFill = m_theme
+        ? m_theme->panelBase.withAlpha(searchHot ? 0.98f : 0.90f)
+        : nxui::Color(0.15f, 0.17f, 0.23f, searchHot ? 0.98f : 0.90f);
+    const nxui::Color searchBorder = searchHot ? accent :
+        (m_theme ? m_theme->panelBorder : nxui::Color::white());
+    ren.drawFrostedInset(search, searchFill,
+                         searchBorder.withAlpha(searchHot ? 0.75f : 0.30f),
+                         primary.withAlpha(searchHot ? 0.14f : 0.06f),
+                         14.f * sc, contentAlpha);
+    if (bodyFont) {
+        const std::string searchLabel = i18n.tr(
+            "settings.system.timezone_filter_option", "Search");
+        const nxui::Vec2 tsz = bodyFont->measure(searchLabel);
+        ren.drawText(
+            searchLabel,
+            {search.x + (search.width - tsz.x * 0.84f * sc) * 0.5f,
+             search.y + (search.height - tsz.y * 0.84f * sc) * 0.5f},
+            bodyFont, primary.withAlpha(contentAlpha), 0.84f * sc);
+    }
+
+    const nxui::Rect list = timezoneListRect();
+    nxui::Color listFill = m_theme
+        ? m_theme->panelBase.withAlpha(0.55f)
+        : nxui::Color(0.10f, 0.12f, 0.16f, 0.55f);
+    ren.drawRoundedRect(list, listFill.withAlpha(listFill.a * contentAlpha), 16.f * sc);
+    ren.drawRoundedRectOutline(
+        list,
+        (m_theme ? m_theme->panelBorder : nxui::Color::white()).withAlpha(0.35f * contentAlpha),
+        16.f * sc, 1.2f);
+
+    const int total = (int)m_timezoneOptions.size();
+    const int visible = std::min(total, kTimezoneVisibleRows);
+    ren.pushClipRect(list.shrunk(2.f * sc));
+    for (int i = 0; i < visible; ++i) {
+        const int idx = m_timezoneScroll + i;
+        if (idx < 0 || idx >= total) continue;
+        const nxui::Rect row = timezoneRowRect(i);
+        const bool hovered = !m_timezoneSearchFocused && idx == m_timezoneHover;
+        if (hovered) {
+            ren.drawRoundedRect(
+                row,
+                accent.withAlpha(0.18f * contentAlpha),
+                12.f * sc);
+            ren.drawRoundedRectOutline(
+                row, accent.withAlpha(0.45f * contentAlpha), 12.f * sc, 1.2f);
+        }
+        if (bodyFont) {
+            std::string text = m_timezoneOptions[(size_t)idx];
+            const float maxW = std::max(0.f, row.width - 20.f * sc);
+            while (!text.empty() && bodyFont->measure(text).x * 0.82f * sc > maxW)
+                text.pop_back();
+            if (text.size() < m_timezoneOptions[(size_t)idx].size() && text.size() > 3)
+                text = text.substr(0, text.size() - 3) + "...";
+            const nxui::Vec2 tsz = bodyFont->measure(text);
+            ren.drawText(
+                text,
+                {row.x + 12.f * sc,
+                 row.y + (row.height - tsz.y * 0.82f * sc) * 0.5f},
+                bodyFont,
+                (hovered ? primary : secondary).withAlpha(contentAlpha),
+                0.82f * sc);
+        }
+    }
+    ren.popClipRect();
+
+    if (total > visible) {
+        const float railH = std::max(1.f, list.height - 20.f * sc);
+        const float thumbH = std::max(24.f * sc, railH * ((float)visible / (float)total));
+        const float maxStart = (float)std::max(1, total - visible);
+        const float thumbY = list.y + 10.f * sc
+            + (railH - thumbH) * ((float)m_timezoneScroll / maxStart);
+        ren.drawRoundedRect(
+            {list.right() - 10.f * sc, list.y + 10.f * sc, 3.f * sc, railH},
+            (m_theme ? m_theme->panelBorder : nxui::Color::white()).withAlpha(0.22f * contentAlpha),
+            1.5f * sc);
+        ren.drawRoundedRect(
+            {list.right() - 10.5f * sc, thumbY, 4.f * sc, thumbH},
+            accent.withAlpha(0.55f * contentAlpha),
+            2.f * sc);
+    }
 }
 
 void OverlayDialog::syncUserCursor() {
@@ -1461,6 +1878,8 @@ void OverlayDialog::render(nxui::Renderer& ren) {
         renderUserContent(ren, alpha);
     } else if (m_mode == DialogMode::DateTime) {
         renderDateTimeContent(ren, alpha);
+    } else if (m_mode == DialogMode::Timezone) {
+        renderTimezoneContent(ren, alpha);
     } else {
         for (auto& c : children())
             c->render(ren);

@@ -1,6 +1,8 @@
 #include "TabBuilders.hpp"
 #include "core/DebugLog.hpp"
 #include "core/NsService.hpp"
+#include "core/ThemePreset.hpp"
+#include <switchu/fs_remove.hpp>
 #include <nxui/core/I18n.hpp>
 #include <switch.h>
 // sd_commit is outside the guard: saveApplicationSizeCache() is compiled in
@@ -10,6 +12,7 @@
 #include <switchu/control_cache.hpp>
 #endif
 #include <algorithm>
+#include <memory>
 #include <cmath>
 #include <cstring>
 #include <cstdio>
@@ -524,6 +527,63 @@ SettingsScreen::Tab settings::tabs::StorageTab::build(SettingsScreen& screen) {
                 { i18n.tr("button.cancel", "Cancel"), []() {} }
             });
     };
+
+    {
+        // Issue #3 item 4: folders in config/SwitchU/themes with no loadable
+        // theme.json. Scanned when the button is pressed (never at tab build),
+        // shown with their total size, and deleted only after the dialog.
+        SettingItem it;
+        it.label = i18n.tr("settings.storage.theme_cleanup", "Clean up theme files");
+        it.description = i18n.tr("settings.storage.theme_cleanup_desc",
+                                 "Remove theme folders that no longer hold a readable theme. Asks first.");
+        it.type = ItemType::Action;
+        it.buttonLabel = i18n.tr("settings.storage.theme_cleanup_button", "Scan");
+        it.onChange = [&screen](SettingItem&) {
+            auto& i18nInner = nxui::I18n::instance();
+            auto orphans = std::make_shared<std::vector<ThemePreset::OrphanDir>>(
+                ThemePreset::orphanThemeDirs());
+            if (orphans->empty()) {
+                screen.requestToast(i18nInner.tr("settings.storage.theme_cleanup_none",
+                                                 "No leftover theme files found."));
+                return;
+            }
+            std::uint64_t totalBytes = 0;
+            std::string names;
+            for (const auto& orphan : *orphans) {
+                totalBytes += orphan.sizeBytes;
+                if (!names.empty()) names += ", ";
+                names += orphan.name;
+            }
+            char size[32];
+            std::snprintf(size, sizeof(size), "%.1f MB", totalBytes / (1024.0 * 1024.0));
+            screen.requestDialog(
+                i18nInner.tr("settings.storage.theme_cleanup_confirm_title", "Clean up theme files?"),
+                names + " (" + size + ") — " +
+                    i18nInner.tr("settings.storage.theme_cleanup_confirm",
+                                 "These folders hold no readable theme. Delete them?"),
+                {
+                    { i18nInner.tr("button.delete", "Delete"), [orphans, &screen]() {
+                        int removed = 0;
+                        for (const auto& orphan : *orphans) {
+                            std::string failedPath;
+                            if (switchu::removeRecursive(orphan.path, &failedPath)) {
+                                ++removed;
+                                DebugLog::log("[themes] cleanup removed %s", orphan.name.c_str());
+                            } else {
+                                DebugLog::log("[themes] cleanup FAILED at %s", failedPath.c_str());
+                            }
+                        }
+                        switchu::commitSdCard("theme cleanup");
+                        auto& i18nDone = nxui::I18n::instance();
+                        screen.requestToast(removed == (int)orphans->size()
+                            ? i18nDone.tr("settings.storage.theme_cleanup_done", "Leftover theme files removed.")
+                            : i18nDone.tr("settings.storage.theme_cleanup_failed", "Some files could not be removed."));
+                    } },
+                    { i18nInner.tr("button.cancel", "Cancel"), []() {} }
+                });
+        };
+        t.items.push_back(std::move(it));
+    }
 
     return t;
 }

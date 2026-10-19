@@ -128,12 +128,15 @@
     "navigation": {
       "title": "Навигация",
       "body": "Используйте крестовину или левый стик, чтобы перемещать фокус.",
-      "objective": "Переместите фокус на другой элемент."
+      "objective": "Переместите фокус на другой элемент.",
+      "left_right": "Влево / вправо",
+      "up_down": "Вверх / вниз"
     },
     "confirm": {
       "title": "Готово",
       "body": "Можно начинать.",
-      "objective": "Нажмите A, чтобы подтвердить этот шаг."
+      "objective": "Нажмите A, чтобы подтвердить этот шаг.",
+      "detected": "Кнопка A нажата"
     },
     "themes": {
       "title": "Темы",
@@ -157,7 +160,8 @@
       "skip_step": "Пропустить шаг",
       "skip_all": "Пропустить всё",
       "skip_all_banner": "Нажмите  +  чтобы пропустить настройку"
-    }
+    },
+    "test_label": "Проверка"
   },
   "sidebar": {
     "album": "Альбом",
@@ -226,6 +230,8 @@
       "not_detected": "Не обнаружено",
       "emunand": "EmuNAND",
       "inactive_sysnand": "Неактивно / SysNAND",
+      "console_nickname_guide": "Введите имя для этой консоли",
+      "console_nickname_desc": "Имя, которое видят другие консоли и приложения.",
       "console_nickname": "Имя консоли",
       "serial_number": "Серийный номер",
       "timezone": "Часовой пояс",
@@ -268,8 +274,6 @@
       "month": "Месяц",
       "time_change_failed": "Не удалось изменить дату и время.",
       "year": "Год",
-      "console_nickname_guide": "Введите имя для этой консоли",
-      "console_nickname_desc": "Имя, которое видят другие консоли и приложения.",
       "save_logs": "Сохранить логи для копирования",
       "save_logs_desc": "Закрывает текущие логи, чтобы их можно было скопировать из config/OmniLaunch.",
       "save_logs_done": "Логи сохранены. Скопируйте menu-*.log и daemon-*.log из config/OmniLaunch.",
@@ -284,7 +288,19 @@
       "sysmodules": "Сисмодули, запускаемые при загрузке",
       "sysmodules_desc": "Каждый работает с момента загрузки и берёт память из пула выше.",
       "sysmodules_none": "Нет",
-      "region_desc": "Только чтение. Измените это в системных настройках Nintendo Switch."
+      "region_desc": "Только чтение. Измените это в системных настройках Nintendo Switch.",
+      "timezone_button": "Изменить",
+      "timezone_filter_title": "Фильтр часовых поясов",
+      "timezone_filter_guide": "Введите для фильтра (например, Moscow). Оставьте пустым, чтобы показать все.",
+      "timezone_filter_option": "Поиск",
+      "timezone_popup_hint": "Влево — поиск. Вверх/вниз — выбор. A — подтвердить.",
+      "timezone_none": "Подходящих часовых поясов нет.",
+      "timezone_failed": "Не удалось изменить часовой пояс.",
+      "timezone_saved": "Часовой пояс обновлён.",
+      "language_confirm_title": "Сменить язык консоли?",
+      "language_restart": "Язык консоли изменится после следующей перезагрузки.",
+      "language_failed": "Не удалось сменить язык консоли.",
+      "language_saved": "Сохранено. Перезапустите консоль, чтобы применить."
     },
     "accessibility": {
       "voice": "Озвучивание",
@@ -394,7 +410,8 @@
       "start_failed": "Не удалось начать сканирование обложек.",
       "started": "Сканирование SteamGridDB начато.",
       "download_title": "Загрузка обложек",
-      "download_start": "Поиск в SteamGridDB…"
+      "download_start": "Поиск в SteamGridDB…",
+      "https_clock_hint": "Ошибка HTTPS. Если часы консоли идут неверно, исправьте их в Настройки > Система (синхронизация часов через Интернет или ручная установка даты и времени)."
     },
     "controllers": {
       "test": "Проверка устройств ввода",
@@ -521,7 +538,15 @@
       "delete": "Удалить",
       "manage_title": "Управление ПО",
       "title_id": "ID игры",
-      "homebrew_library_unavailable": "Управление установленным ПО недоступно в режиме homebrew."
+      "homebrew_library_unavailable": "Управление установленным ПО недоступно в режиме homebrew.",
+      "theme_cleanup": "Очистить файлы тем",
+      "theme_cleanup_desc": "Удаляет папки тем, в которых больше нет читаемой темы. Сначала спрашивает.",
+      "theme_cleanup_button": "Проверить",
+      "theme_cleanup_none": "Остатков тем не найдено.",
+      "theme_cleanup_confirm_title": "Очистить файлы тем?",
+      "theme_cleanup_confirm": "В этих папках нет читаемой темы. Удалить их?",
+      "theme_cleanup_done": "Остатки тем удалены.",
+      "theme_cleanup_failed": "Некоторые файлы удалить не удалось."
     },
     "about": {
       "version": "Версия",
@@ -644,8 +669,7 @@
     "size_medium": "Средний",
     "size_large": "Крупный",
     "items": "элементов",
-    "move": "Переместить",
-    "page_added": "Страница добавлена"
+    "move": "Переместить"
   },
   "add": {
     "title": "Добавить"

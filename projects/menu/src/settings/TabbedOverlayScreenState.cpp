@@ -91,6 +91,24 @@ void TabbedOverlayScreen::requestDateTimeEditor(
         m_dateTimeEditorRequestCb(initial, std::move(onCommit));
 }
 
+void TabbedOverlayScreen::requestTimezonePicker(
+    const std::vector<std::string>& zones,
+    int selectedIndex,
+    TimezoneSelectCb onSelect,
+    TimezoneSearchCb onSearch) {
+    if (m_timezonePickerRequestCb)
+        m_timezonePickerRequestCb(zones, selectedIndex, std::move(onSelect),
+                                  std::move(onSearch));
+}
+
+void TabbedOverlayScreen::requestTextEntry(
+    const std::string& title, const std::string& guide,
+    const std::string& initial, int maxLength,
+    TextEntryAcceptCb onAccept) {
+    if (m_textEntryRequestCb)
+        m_textEntryRequestCb(title, guide, initial, maxLength, std::move(onAccept));
+}
+
 void TabbedOverlayScreen::requestToast(const std::string& msg, float holdSeconds) {
     if (msg.empty()) return;
     std::lock_guard<std::mutex> lk(m_toastMutex);

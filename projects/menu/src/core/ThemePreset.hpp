@@ -1,5 +1,6 @@
 #pragma once
 #include <nxui/Theme.hpp>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -120,4 +121,16 @@ struct ThemePreset {
     // Removes the folders a theme install leaves behind when it is interrupted.
     // Returns how many went. Never touches an installed theme.
     static int sweepInstallLeftovers();
+
+    // Folders under the installed-themes dir that hold NO loadable theme.json
+    // (missing or unparsable) and are not installer leftovers. These are what
+    // the confirmed "Clean up theme files" action offers to delete -- never a
+    // folder a theme still lives in (issue #3). Each entry is a full path with
+    // its size in bytes.
+    struct OrphanDir {
+        std::string path;
+        std::string name;
+        std::uint64_t sizeBytes = 0;
+    };
+    static std::vector<OrphanDir> orphanThemeDirs();
 };

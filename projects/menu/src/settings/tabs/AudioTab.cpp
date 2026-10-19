@@ -1,7 +1,27 @@
 #include "TabBuilders.hpp"
+#include "core/DebugLog.hpp"
 #include <nxui/core/I18n.hpp>
 #include <switch.h>
 #include <algorithm>
+
+namespace {
+
+// setsys writes what the next boot reads; audctl changes what is playing now.
+// The menu holds the audctl session only for the one call.
+struct ScopedAudctl {
+    bool ok = false;
+    ScopedAudctl() { ok = R_SUCCEEDED(audctlInitialize()); }
+    ~ScopedAudctl() { if (ok) audctlExit(); }
+};
+
+// libnx has no wrapper for these (audctl commands 30/31, FW 13.0.0+,
+// switchbrew Audio services). A bool goes over the wire as one byte.
+Result audctlSetSpeakerAutoMuteEnabledRaw(bool enable) {
+    const u8 in = enable ? 1 : 0;
+    return serviceDispatchIn(audctlGetServiceSession(), 30, in);
+}
+
+} // namespace
 
 SettingsScreen::Tab settings::tabs::AudioTab::build(SettingsScreen& screen) {
     (void)screen;
@@ -23,6 +43,16 @@ SettingsScreen::Tab settings::tabs::AudioTab::build(SettingsScreen& screen) {
         it.anim01 = val ? 1.f : 0.f;
         it.onChange = [](SettingItem& self) {
             setsysSetSpeakerAutoMuteFlag(self.boolVal);
+            // The saved flag is read at boot; FW 13+ can also flip it live
+            // (issue #1).
+            if (hosversionAtLeast(13, 0, 0)) {
+                ScopedAudctl audctl;
+                if (audctl.ok) {
+                    const Result rc = audctlSetSpeakerAutoMuteEnabledRaw(self.boolVal);
+                    DebugLog::log("[settings-audio] speaker auto-mute live=%d rc=0x%X",
+                                  self.boolVal ? 1 : 0, rc);
+                }
+            }
         };
         t.items.push_back(std::move(it));
     }
@@ -55,6 +85,15 @@ SettingsScreen::Tab settings::tabs::AudioTab::build(SettingsScreen& screen) {
         it.onChange = [](SettingItem& self) {
             setsysSetAudioOutputMode(SetSysAudioOutputModeTarget_Unknown0,
                                      (SetSysAudioOutputMode)self.intVal);
+            // Apply to the TV right away too. audctl counts from 1
+            // (Pcm1ch/Pcm2ch/Pcm6ch); setsys counts from 0 (issue #1).
+            ScopedAudctl audctl;
+            if (audctl.ok) {
+                const Result rc = audctlSetAudioOutputMode(
+                    AudioTarget_Tv, (AudioOutputMode)(self.intVal + 1));
+                DebugLog::log("[settings-audio] tv output mode=%d live rc=0x%X",
+                              self.intVal, rc);
+            }
         };
         t.items.push_back(std::move(it));
     }

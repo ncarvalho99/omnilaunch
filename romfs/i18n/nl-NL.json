@@ -128,12 +128,15 @@
     "navigation": {
       "title": "Navigatie",
       "body": "Gebruik de richtingsknoppen of linkerstick om de focus te verplaatsen.",
-      "objective": "Verplaats de focus naar een ander item."
+      "objective": "Verplaats de focus naar een ander item.",
+      "left_right": "Links / rechts",
+      "up_down": "Omhoog / omlaag"
     },
     "confirm": {
       "title": "Klaar",
       "body": "Je kunt beginnen.",
-      "objective": "Druk op A om deze stap te bevestigen."
+      "objective": "Druk op A om deze stap te bevestigen.",
+      "detected": "A-knop gedetecteerd"
     },
     "themes": {
       "title": "Thema’s",
@@ -157,7 +160,8 @@
       "skip_step": "Stap overslaan",
       "skip_all": "Alles overslaan",
       "skip_all_banner": "Druk op  +  om de installatie over te slaan"
-    }
+    },
+    "test_label": "Test"
   },
   "sidebar": {
     "album": "Album",
@@ -226,6 +230,8 @@
       "not_detected": "Niet gedetecteerd",
       "emunand": "EmuNAND",
       "inactive_sysnand": "Inactief / SysNAND",
+      "console_nickname_guide": "Voer een naam in voor deze console",
+      "console_nickname_desc": "De naam die andere consoles en apps zien.",
       "console_nickname": "Consolenaam",
       "serial_number": "Serienummer",
       "timezone": "Tijdzone",
@@ -268,8 +274,6 @@
       "month": "Maand",
       "time_change_failed": "De datum- en tijdinstelling kon niet worden gewijzigd.",
       "year": "Jaar",
-      "console_nickname_guide": "Voer een naam in voor deze console",
-      "console_nickname_desc": "De naam die andere consoles en apps zien.",
       "save_logs": "Logboeken opslaan om te kopiëren",
       "save_logs_desc": "Sluit de huidige logboeken zodat ze uit config/OmniLaunch gekopieerd kunnen worden.",
       "save_logs_done": "Logboeken opgeslagen. Kopieer menu-*.log en daemon-*.log uit config/OmniLaunch.",
@@ -284,7 +288,19 @@
       "sysmodules": "Sysmodules gestart bij opstarten",
       "sysmodules_desc": "Elk draait vanaf het opstarten en gebruikt geheugen uit de pool hierboven.",
       "sysmodules_none": "Geen",
-      "region_desc": "Alleen-lezen. Wijzig dit in de Nintendo Switch-systeeminstellingen."
+      "region_desc": "Alleen-lezen. Wijzig dit in de Nintendo Switch-systeeminstellingen.",
+      "timezone_button": "Wijzigen",
+      "timezone_filter_title": "Tijdzones filteren",
+      "timezone_filter_guide": "Typ om te filteren (bijv. Amsterdam). Laat leeg voor alle.",
+      "timezone_filter_option": "Zoeken",
+      "timezone_popup_hint": "Links voor Zoeken. Omhoog/omlaag om te kiezen. A om te bevestigen.",
+      "timezone_none": "Geen overeenkomende tijdzones.",
+      "timezone_failed": "Tijdzone kon niet worden gewijzigd.",
+      "timezone_saved": "Tijdzone bijgewerkt.",
+      "language_confirm_title": "Consoletaal wijzigen?",
+      "language_restart": "De consoletaal verandert na de volgende herstart.",
+      "language_failed": "De consoletaal kon niet worden gewijzigd.",
+      "language_saved": "Opgeslagen. Herstart de console om het toe te passen."
     },
     "accessibility": {
       "voice": "Spraak",
@@ -394,7 +410,8 @@
       "start_failed": "De artworkscan kon niet worden gestart.",
       "started": "SteamGridDB-scan gestart.",
       "download_title": "Artwork downloaden",
-      "download_start": "SteamGridDB doorzoeken..."
+      "download_start": "SteamGridDB doorzoeken...",
+      "https_clock_hint": "HTTPS mislukt. Als de klok van de console verkeerd staat, corrigeer die in Instellingen > Systeem (klok via internet synchroniseren of datum en tijd zelf instellen)."
     },
     "controllers": {
       "test": "Invoerapparaten testen",
@@ -521,7 +538,15 @@
       "delete": "Verwijderen",
       "manage_title": "Software beheren",
       "title_id": "Titel-ID",
-      "homebrew_library_unavailable": "Beheer van geïnstalleerde software is niet beschikbaar in homebrew-modus."
+      "homebrew_library_unavailable": "Beheer van geïnstalleerde software is niet beschikbaar in homebrew-modus.",
+      "theme_cleanup": "Themabestanden opruimen",
+      "theme_cleanup_desc": "Verwijdert themamappen die geen leesbaar thema meer bevatten. Vraagt eerst.",
+      "theme_cleanup_button": "Scannen",
+      "theme_cleanup_none": "Geen achtergebleven themabestanden gevonden.",
+      "theme_cleanup_confirm_title": "Themabestanden opruimen?",
+      "theme_cleanup_confirm": "Deze mappen bevatten geen leesbaar thema. Verwijderen?",
+      "theme_cleanup_done": "Achtergebleven themabestanden verwijderd.",
+      "theme_cleanup_failed": "Sommige bestanden konden niet worden verwijderd."
     },
     "about": {
       "version": "Versie",
@@ -644,8 +669,7 @@
     "size_medium": "Gemiddeld",
     "size_large": "Groot",
     "items": "items",
-    "move": "Verplaatsen",
-    "page_added": "Pagina toegevoegd"
+    "move": "Verplaatsen"
   },
   "add": {
     "title": "Toevoegen"

@@ -185,6 +185,20 @@ bool I18n::setLanguage(const std::string& tag) {
         normalized = detectSystemLanguageTag();
     }
 
+    // Regional variants with no file of their own read the closest language
+    // that ships instead of dropping to English. The detected tag itself stays
+    // exact, since System Settings names the console's language with it.
+    static const std::pair<const char*, const char*> kClosest[] = {
+        {"es-419", "es-ES"}, {"pt-PT", "pt-BR"}, {"fr-CA", "fr-FR"}, {"en-GB", "en-US"},
+    };
+    std::error_code existsEc;
+    for (const auto& [variant, closest] : kClosest) {
+        if (normalized == variant && !std::filesystem::exists(buildLanguagePath(normalized), existsEc)) {
+            normalized = closest;
+            break;
+        }
+    }
+
     std::unordered_map<std::string, std::string> nextMap;
     if (!loadJsonMapFromFile(buildLanguagePath(normalized), nextMap)) {
         normalized = m_fallbackTag;

@@ -5,6 +5,8 @@
 #include "gallery/GameGalleryClient.hpp"
 #include "themeshop/ThemeHttp.hpp"
 
+#include <nxui/core/I18n.hpp>
+
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -19,6 +21,32 @@ namespace {
 
 constexpr const char* kApiBase = "https://www.steamgriddb.com/api/v2";
 constexpr int kMatcherVersion = 3; // v3 always matches against the cached English title.
+
+bool looksLikeHttpsClockFailure(const std::string& error) {
+    if (error.empty())
+        return true;
+    std::string lower = error;
+    for (char& c : lower)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return lower.find("ssl") != std::string::npos
+        || lower.find("tls") != std::string::npos
+        || lower.find("certificate") != std::string::npos
+        || lower.find("cert verify") != std::string::npos
+        || lower.find("peer certificate") != std::string::npos
+        || lower.find("certificate has expired") != std::string::npos
+        || lower.find("https failed") != std::string::npos;
+}
+
+// Wrong console clocks break TLS to SteamGridDB (PoloNX #131) and used to surface as a blank
+// picker error (empty curl what()). Point people at System clock sync.
+std::string friendlySteamGridDbTransportError(const std::string& error) {
+    if (!looksLikeHttpsClockFailure(error))
+        return error.empty() ? "SteamGridDB search failed." : error;
+    return nxui::I18n::instance().tr(
+        "settings.steamgriddb.https_clock_hint",
+        "HTTPS failed. If the console clock is wrong, fix it in Settings > System "
+        "(Synchronize Clock via Internet, or set the date and time yourself).");
+}
 
 std::string titleDirectory(std::uint64_t titleId) {
     char id[17]{};
@@ -534,7 +562,7 @@ SteamGridDbManager::BrowseResult SteamGridDbManager::browse(
         }
         result.success = true;
     } catch (const std::exception& ex) {
-        result.error = ex.what();
+        result.error = friendlySteamGridDbTransportError(ex.what() ? ex.what() : "");
         DebugLog::log("[steamgriddb] browse '%s' failed: %s",
                       result.query.c_str(), ex.what());
     }

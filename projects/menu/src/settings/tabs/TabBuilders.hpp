@@ -7,6 +7,11 @@ namespace settings::tabs {
 class SystemTab {
 public:
     static SettingsScreen::Tab build(SettingsScreen& screen);
+    static void refreshTimezoneRowDescription(SettingsScreen& screen, const std::string& zoneName);
+    static void beginTimezoneChange(SettingsScreen& screen,
+                                    const std::string& filter = std::string());
+    static void refreshConsoleLanguageRow(SettingsScreen& screen, const std::string& name);
+    static void beginConsoleLanguageChange(SettingsScreen& screen);
 };
 
 class AccessibilityTab {

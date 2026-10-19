@@ -128,12 +128,15 @@
     "navigation": {
       "title": "Navigation",
       "body": "Benutze das Steuerkreuz oder den linken Stick, um den Fokus zu bewegen.",
-      "objective": "Bewege den Fokus zu einem anderen Element."
+      "objective": "Bewege den Fokus zu einem anderen Element.",
+      "left_right": "Links / rechts",
+      "up_down": "Oben / unten"
     },
     "confirm": {
       "title": "Fertig",
       "body": "Du bist startklar.",
-      "objective": "Drücke A, um diesen Schritt zu bestätigen."
+      "objective": "Drücke A, um diesen Schritt zu bestätigen.",
+      "detected": "A-Taste erkannt"
     },
     "themes": {
       "title": "Themes",
@@ -157,7 +160,8 @@
       "skip_step": "Schritt überspringen",
       "skip_all": "Alles überspringen",
       "skip_all_banner": "Drücke  +  um die Einrichtung zu überspringen"
-    }
+    },
+    "test_label": "Test"
   },
   "sidebar": {
     "album": "Album",
@@ -226,6 +230,8 @@
       "not_detected": "Nicht erkannt",
       "emunand": "EmuNAND",
       "inactive_sysnand": "Inaktiv / SysNAND",
+      "console_nickname_guide": "Gib dieser Konsole einen Namen",
+      "console_nickname_desc": "Der Name, den andere Konsolen und Apps sehen.",
       "console_nickname": "Konsolen-Spitzname",
       "serial_number": "Seriennummer",
       "timezone": "Zeitzone",
@@ -268,8 +274,6 @@
       "month": "Monat",
       "time_change_failed": "Die Datums- und Uhrzeiteinstellung konnte nicht geändert werden.",
       "year": "Jahr",
-      "console_nickname_guide": "Gib dieser Konsole einen Namen",
-      "console_nickname_desc": "Der Name, den andere Konsolen und Apps sehen.",
       "save_logs": "Protokolle zum Kopieren sichern",
       "save_logs_desc": "SchlieÃŸt die aktuellen Protokolle, damit sie aus config/OmniLaunch kopiert werden kÃ¶nnen.",
       "save_logs_done": "Protokolle gesichert. Kopiere menu-*.log und daemon-*.log aus config/OmniLaunch.",
@@ -284,7 +288,19 @@
       "sysmodules": "Beim Start geladene Sysmodule",
       "sysmodules_desc": "Jedes lÃ¤uft ab dem Start und nutzt Speicher aus dem Pool oben.",
       "sysmodules_none": "Keine",
-      "region_desc": "Nur Anzeige. Ã„ndere dies in den Nintendo Switch Systemeinstellungen."
+      "region_desc": "Nur Anzeige. Ã„ndere dies in den Nintendo Switch Systemeinstellungen.",
+      "timezone_button": "Ändern",
+      "timezone_filter_title": "Zeitzonen filtern",
+      "timezone_filter_guide": "Zum Filtern tippen (z. B. Berlin). Leer lassen für alle.",
+      "timezone_filter_option": "Suchen",
+      "timezone_popup_hint": "Links für Suchen. Oben/unten zum Auswählen. A zum Bestätigen.",
+      "timezone_none": "Keine passenden Zeitzonen.",
+      "timezone_failed": "Zeitzone konnte nicht geändert werden.",
+      "timezone_saved": "Zeitzone aktualisiert.",
+      "language_confirm_title": "Konsolensprache ändern?",
+      "language_restart": "Die Konsolensprache ändert sich nach dem nächsten Neustart.",
+      "language_failed": "Die Konsolensprache konnte nicht geändert werden.",
+      "language_saved": "Gespeichert. Starte die Konsole neu, um es anzuwenden."
     },
     "accessibility": {
       "voice": "Sprachausgabe",
@@ -394,7 +410,8 @@
       "start_failed": "Der Artwork-Scan konnte nicht gestartet werden.",
       "started": "SteamGridDB-Scan gestartet.",
       "download_title": "Artwork wird heruntergeladen",
-      "download_start": "SteamGridDB wird durchsucht..."
+      "download_start": "SteamGridDB wird durchsucht...",
+      "https_clock_hint": "HTTPS fehlgeschlagen. Falls die Uhr der Konsole falsch ist, korrigiere sie unter Einstellungen > System (Uhr über das Internet synchronisieren oder Datum und Uhrzeit selbst einstellen)."
     },
     "controllers": {
       "test": "Eingabegeräte testen",
@@ -521,7 +538,15 @@
       "delete": "Löschen",
       "manage_title": "Software verwalten",
       "title_id": "Titel-ID",
-      "homebrew_library_unavailable": "Die Verwaltung installierter Software ist im Homebrew-Modus nicht verfügbar."
+      "homebrew_library_unavailable": "Die Verwaltung installierter Software ist im Homebrew-Modus nicht verfügbar.",
+      "theme_cleanup": "Design-Dateien aufräumen",
+      "theme_cleanup_desc": "Entfernt Design-Ordner, die kein lesbares Design mehr enthalten. Fragt zuerst.",
+      "theme_cleanup_button": "Prüfen",
+      "theme_cleanup_none": "Keine Design-Überreste gefunden.",
+      "theme_cleanup_confirm_title": "Design-Dateien aufräumen?",
+      "theme_cleanup_confirm": "Diese Ordner enthalten kein lesbares Design. Löschen?",
+      "theme_cleanup_done": "Design-Überreste entfernt.",
+      "theme_cleanup_failed": "Einige Dateien konnten nicht entfernt werden."
     },
     "about": {
       "version": "Version",
@@ -644,8 +669,7 @@
     "size_medium": "Mittel",
     "size_large": "Groß",
     "items": "Elemente",
-    "move": "Verschieben",
-    "page_added": "Seite hinzugefügt"
+    "move": "Verschieben"
   },
   "add": {
     "title": "Hinzufügen"
