@@ -45,8 +45,10 @@ private:
     void rebootNow();
     void requestUpdate();
     void startUpdateCheck();
-    void startUpdateInstall();
+    void startUpdateInstall(bool repair);
+    bool repairAvailable() const;
     void syncUpdater();
+    void releaseRomfs();
     void beginUpdateInputBlock();
     void endUpdateInputBlock();
     void showError(ToggleError error, int detail);
@@ -55,6 +57,9 @@ private:
     void focusFirstAvailable();
 
     nxui::Theme m_theme = nxui::Theme::dark();
+    // Backing store for the three fonts below; must outlive them.
+    std::vector<unsigned char> m_fontData;
+    bool m_romfsReleased = false;
     nxui::Font m_titleFont;
     nxui::Font m_bodyFont;
     nxui::Font m_smallFont;
@@ -97,6 +102,7 @@ private:
     };
     UpdateUiState m_updateState = UpdateUiState::Idle;
     ReleaseInfo m_latestRelease;
+    bool m_repairing = false;
     std::future<ReleaseInfo> m_updateCheckFuture;
     std::future<UpdateInstallResult> m_updateInstallFuture;
     std::atomic<float> m_updateDownloadProgress{0.f};

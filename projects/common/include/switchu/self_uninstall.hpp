@@ -27,5 +27,9 @@ inline constexpr const char* kLegacyManagerNro = "sdmc:/switch/SwitchU-Manager.n
 inline constexpr const char* kConfigDirectory =
     "sdmc:/config/OmniLaunch";
 inline constexpr const char* kLegacyConfigDirectory = "sdmc:/config/SwitchU";
+inline constexpr const char* kBackupDirectory =
+    "sdmc:/backup/OmniLaunch";
+inline constexpr const char* kLegacyBackupDirectory =
+    "sdmc:/backup/SwitchU";
 
 } // namespace switchu::self_uninstall

@@ -555,6 +555,8 @@ ReleaseInfo ReleaseUpdater::checkLatest() {
     if (release.downloadSize > kMaxArchiveBytes)
         throw std::runtime_error("GitHub release archive exceeds the safety limit");
     release.updateAvailable = isNewerVersion(release.version, kCurrentVersion);
+    release.matchesCurrent = !release.updateAvailable
+        && !isNewerVersion(kCurrentVersion, release.version);
     switchu::FileLog::log("[updater] current=%s latest=%s available=%d size=%lu",
                           kCurrentVersion, release.version.c_str(),
                           release.updateAvailable ? 1 : 0,

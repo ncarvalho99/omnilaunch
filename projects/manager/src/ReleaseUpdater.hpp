@@ -13,6 +13,9 @@ struct ReleaseInfo {
     std::string sha256;
     std::uint64_t downloadSize = 0;
     bool updateAvailable = false;
+    // Same version as the running Manager: reinstalling it is a repair, not
+    // a downgrade.
+    bool matchesCurrent = false;
 };
 
 struct UpdateInstallResult {

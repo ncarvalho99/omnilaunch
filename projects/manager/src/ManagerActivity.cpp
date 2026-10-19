@@ -68,9 +68,28 @@ bool ManagerActivity::onCreate() {
     auto& renderer = app().renderer();
     renderer.setBoxWireframeEnabled(false);
 
-    if (!m_titleFont.load(app().gpu(), renderer, "romfs:/fonts/DejaVuSans.ttf", 34)
-        || !m_bodyFont.load(app().gpu(), renderer, "romfs:/fonts/DejaVuSans.ttf", 24)
-        || !m_smallFont.load(app().gpu(), renderer, "romfs:/fonts/DejaVuSans.ttf", 18)) {
+    // The font is read into memory rather than opened from romfs: SDL_ttf would
+    // keep that file open for the whole session, and romfs is the Manager's own
+    // .nro. Horizon will not rename a file somebody holds open, so an update
+    // could never replace the Manager itself (see releaseRomfs()).
+    if (std::FILE* file = std::fopen("romfs:/fonts/DejaVuSans.ttf", "rb")) {
+        std::fseek(file, 0, SEEK_END);
+        const long size = std::ftell(file);
+        std::fseek(file, 0, SEEK_SET);
+        if (size > 0) {
+            m_fontData.resize(static_cast<std::size_t>(size));
+            if (std::fread(m_fontData.data(), 1, m_fontData.size(), file) != m_fontData.size())
+                m_fontData.clear();
+        }
+        std::fclose(file);
+    }
+    auto loadFont = [&](nxui::Font& font, int size) {
+        return !m_fontData.empty()
+            && font.loadFromMemory(app().gpu(), renderer,
+                                   m_fontData.data(), m_fontData.size(), size);
+    };
+    if (!loadFont(m_titleFont, 34) || !loadFont(m_bodyFont, 24)
+        || !loadFont(m_smallFont, 18)) {
         switchu::FileLog::log("[ui] font loading failed");
         return false;
     }
@@ -282,7 +301,10 @@ void ManagerActivity::refreshPresentation() {
     } else if (m_snapshot.state == InstallationState::Missing) {
         m_detailLabel->setText(tr("manager.missing",
             "OmniLaunch's Atmosphere override was not found on the SD card."));
-        m_noticeLabel->setText(tr("manager.operation_blocked", "Operation blocked for safety"));
+        m_noticeLabel->setText(repairAvailable()
+            ? tr("manager.repair_hint",
+                 "An Atmosphere update may have removed it. Repair to restore it.")
+            : tr("manager.operation_blocked", "Operation blocked for safety"));
     } else {
         m_detailLabel->setText(runtimeEnabled
             ? tr("manager.enabled_detail", "The OmniLaunch HOME menu is configured for this boot.")
@@ -316,13 +338,17 @@ void ManagerActivity::refreshPresentation() {
             updateText = tr("manager.update_to", "Update to ") + m_latestRelease.version;
             break;
         case UpdateUiState::UpToDate:
-            updateText = tr("manager.up_to_date", "Up to date")
-                + std::string(" (v") + ReleaseUpdater::kCurrentVersion + ")";
+            updateText = repairAvailable()
+                ? tr("manager.repair", "Repair installation")
+                : tr("manager.up_to_date", "Up to date")
+                    + std::string(" (v") + ReleaseUpdater::kCurrentVersion + ")";
             break;
         case UpdateUiState::Installing: {
             const int percent = std::clamp(
                 static_cast<int>(m_updateInstallProgress.load() * 100.f), 0, 100);
-            updateText = tr("manager.updating", "Updating...") + std::string(" ")
+            updateText = (m_repairing
+                    ? tr("manager.repairing", "Repairing...")
+                    : tr("manager.updating", "Updating...")) + std::string(" ")
                 + std::to_string(percent) + "%";
             break;
         }
@@ -361,6 +387,16 @@ void ManagerActivity::focusFirstAvailable() {
         focusManager().setFocus(m_updateButton.button.get());
 }
 
+bool ManagerActivity::repairAvailable() const {
+    // Packs that update Atmosphere often wipe atmosphere/contents, taking the
+    // qlaunch override with them. Reinstalling the release this Manager came
+    // from puts it back; any other version goes through the normal update.
+    return m_snapshot.state == InstallationState::Missing
+        && !m_restartRequired
+        && m_updateState == UpdateUiState::UpToDate
+        && m_latestRelease.matchesCurrent;
+}
+
 void ManagerActivity::startUpdateCheck() {
     if (m_loading || m_rebooting || m_restartRequired
         || m_updateState == UpdateUiState::Checking
@@ -375,6 +411,22 @@ void ManagerActivity::startUpdateCheck() {
 }
 
 void ManagerActivity::requestUpdate() {
+    if (repairAvailable()) {
+        m_dialog->show(
+            tr("manager.repair_confirm_title", "Repair OmniLaunch?"),
+            tr("manager.repair_confirm_message", "Download OmniLaunch ")
+                + m_latestRelease.version
+                + tr("manager.repair_confirm_suffix",
+                     " from GitHub again and restore the Atmosphere override?"
+                     " Your configuration and themes will be preserved."),
+            {
+                {tr("manager.cancel", "Cancel"), {}, true},
+                {tr("manager.repair", "Repair installation"),
+                 [this]() { startUpdateInstall(true); }, true},
+            }, 0);
+        focusManager().setFocus(m_dialog.get());
+        return;
+    }
     if (m_updateState != UpdateUiState::Available) {
         startUpdateCheck();
         return;
@@ -390,14 +442,18 @@ void ManagerActivity::requestUpdate() {
         {
             {tr("manager.cancel", "Cancel"), {}, true},
             {tr("manager.update_install", "Install update"),
-             [this]() { startUpdateInstall(); }, true},
+             [this]() { startUpdateInstall(false); }, true},
         }, 0);
     focusManager().setFocus(m_dialog.get());
 }
 
-void ManagerActivity::startUpdateInstall() {
-    if (m_updateState != UpdateUiState::Available)
+void ManagerActivity::startUpdateInstall(bool repair) {
+    if (repair ? !repairAvailable() : m_updateState != UpdateUiState::Available)
         return;
+    m_repairing = repair;
+    switchu::FileLog::log("[updater] %s version=%s",
+                          repair ? "repair" : "update",
+                          m_latestRelease.version.c_str());
     const bool preserveDisabled = m_snapshot.state == InstallationState::Disabled;
     const ReleaseInfo release = m_latestRelease;
     m_updateDownloadProgress.store(0.f);
@@ -407,9 +463,11 @@ void ManagerActivity::startUpdateInstall() {
     m_lastInstallPercent = -1;
     m_lastUpdateStage = static_cast<int>(UpdateWorkerStage::Idle);
     m_updateState = UpdateUiState::Installing;
+    releaseRomfs();
     beginUpdateInputBlock();
-    m_updateProgressDialog->show(
-        tr("manager.update_progress_title", "Installing OmniLaunch update"));
+    m_updateProgressDialog->show(repair
+        ? tr("manager.repair_progress_title", "Repairing OmniLaunch")
+        : tr("manager.update_progress_title", "Installing OmniLaunch update"));
     m_updateProgressDialog->setProgress(
         0.f, 0.f, tr("manager.update_preparing", "Preparing update..."));
     m_updateInstallFuture = std::async(std::launch::async,
@@ -420,6 +478,21 @@ void ManagerActivity::startUpdateInstall() {
                                            m_updateWorkerStage);
         });
     refreshPresentation();
+}
+
+// The payload contains switch/OmniLaunch-Manager/OmniLaunch-Manager.nro, the file
+// this process is running from. hbloader lets go of it once the code is loaded;
+// romfs keeps it open for as long as it is mounted, and Horizon refuses to
+// rename an open file: every update from the Manager failed with "Unable to
+// back up" on its own .nro and rolled back. Everything the Manager reads from
+// romfs -- shaders, translations, the font -- is in memory by now, so unmounting
+// it lets the install replace the Manager like any other file.
+void ManagerActivity::releaseRomfs() {
+    if (m_romfsReleased)
+        return;
+    const Result rc = romfsExit();
+    m_romfsReleased = R_SUCCEEDED(rc);
+    switchu::FileLog::log("[updater] romfs released result=0x%X", rc);
 }
 
 void ManagerActivity::syncUpdater() {
@@ -480,6 +553,7 @@ void ManagerActivity::syncUpdater() {
             const UpdateInstallResult result = m_updateInstallFuture.get();
             m_updateProgressDialog->hide();
             endUpdateInputBlock();
+            m_repairing = false;
             if (result.success) {
                 m_updateState = UpdateUiState::UpToDate;
                 m_restartRequired = true;

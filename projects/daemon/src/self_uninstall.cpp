@@ -88,10 +88,12 @@ StagedRequestResult applyStagedRequest() {
     // 4. Close FileLog before deleting the config directory where logs live.
     switchu::FileLog::close();
 
-    // 5. Purge SwitchU config directory (configs, themes, artwork, cache, logs, update, request marker).
+    // 5. Purge OmniLaunch config directory (configs, themes, artwork, cache, logs, update, request marker).
     if (!switchu::removeRecursive(kConfigDirectory, &failedPath)) {
-        svcOutputDebugString("[SwitchU-daemon] config directory purge incomplete", 48);
+        svcOutputDebugString("[OmniLaunch-daemon] config directory purge incomplete", 51);
     }
+    (void)switchu::removeRecursive(kBackupDirectory);
+    (void)switchu::removeRecursive(kLegacyBackupDirectory);
 
     // 6. Commit SD card filesystem metadata.
     if (!switchu::commitSdCard("self-uninstall full purge")) {

@@ -19,7 +19,24 @@ bool Font::load(GpuDevice& gpu, Renderer& ren,
         std::fprintf(stderr, "[Font] TTF_OpenFont failed: %s\n", TTF_GetError());
         return false;
     }
+    adopt(gpu, ren, newFont, ptSize);
+    return true;
+}
 
+bool Font::loadFromMemory(GpuDevice& gpu, Renderer& ren,
+                          const void* data, std::size_t size, int ptSize)
+{
+    SDL_RWops* rw = SDL_RWFromConstMem(data, static_cast<int>(size));
+    TTF_Font* newFont = rw ? TTF_OpenFontRW(rw, 1, ptSize) : nullptr;
+    if (!newFont) {
+        std::fprintf(stderr, "[Font] TTF_OpenFontRW failed: %s\n", TTF_GetError());
+        return false;
+    }
+    adopt(gpu, ren, newFont, ptSize);
+    return true;
+}
+
+void Font::adopt(GpuDevice& gpu, Renderer& ren, TTF_Font* newFont, int ptSize) {
     if (m_font)
         TTF_CloseFont(m_font);
 
@@ -29,7 +46,6 @@ bool Font::load(GpuDevice& gpu, Renderer& ren,
     m_ptSize = ptSize;
     ++m_revision;
     clearCache();
-    return true;
 }
 
 Vec2 Font::measure(const std::string& text) const {

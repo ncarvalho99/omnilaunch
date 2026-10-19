@@ -20,6 +20,12 @@ public:
     bool load(GpuDevice& gpu, Renderer& ren,
               const std::string& path, int ptSize);
 
+    // Same, from a font file already in memory. SDL_ttf reads glyphs from the
+    // source for as long as the font lives, so the bytes are not copied and
+    // must outlive it -- in exchange, no file stays open.
+    bool loadFromMemory(GpuDevice& gpu, Renderer& ren,
+                        const void* data, std::size_t size, int ptSize);
+
     // Render a string to a texture (cached) and draw it
     void draw(Renderer& ren, const std::string& text,
               const Vec2& pos, const Color& color, float scale = 1.f);
@@ -43,6 +49,7 @@ public:
 private:
     // Render full string to texture (cache by string)
     Texture* getOrRender(GpuDevice& gpu, Renderer& ren, const std::string& text);
+    void adopt(GpuDevice& gpu, Renderer& ren, TTF_Font* newFont, int ptSize);
 
     TTF_Font* m_font = nullptr;
     int       m_ptSize = 0;
