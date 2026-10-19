@@ -14,26 +14,47 @@
 #include <cstring>
 #include <memory>
 
-// Standard libnx user initialization hooks.
-// CRT0 (init.o) handles envSetup, heap setup via envHasHeapOverride() (which nx-hbloader
-// supplies in both Album applet mode and Title Override mode), thread init, argument
-// parsing, standard services (sm, applet, hid, time, fs, fsdev, vi/nwindow), and then
-// calls userAppInit().
-extern "C" void userAppInit(void) {
-    Result rc = romfsInit();
-    if (R_FAILED(rc)) {
-        svcOutputDebugString("[Manager] romfsInit FAILED", 26);
-    }
-    timeInitialize();
-    setInitialize();
-    setsysInitialize();
-}
+extern "C" {
+    // Official libnx fallback path for romfsMountSelf() when argc == 0 or argv[0] is missing.
+    const char* __romfs_path = "sdmc:/switch/OmniLaunch-Manager/OmniLaunch-Manager.nro";
 
-extern "C" void userAppExit(void) {
-    setsysExit();
-    setExit();
-    timeExit();
-    romfsExit();
+    void userAppInit(void) {
+        svcOutputDebugString("[Manager] userAppInit enter", 27);
+
+        // Raw, independent proof-of-life marker on SD root
+        if (FILE* f = std::fopen("sdmc:/manager_boot.txt", "w")) {
+            std::fprintf(f, "[boot] userAppInit entered\n");
+            std::fclose(f);
+            fsdevCommitDevice("sdmc");
+        }
+
+        Result rc = romfsInit();
+        if (FILE* f = std::fopen("sdmc:/manager_boot.txt", "a")) {
+            std::fprintf(f, "[boot] romfsInit rc=0x%X\n", rc);
+            std::fclose(f);
+            fsdevCommitDevice("sdmc");
+        }
+        if (R_FAILED(rc)) {
+            svcOutputDebugString("[Manager] romfsInit FAILED", 26);
+        }
+
+        timeInitialize();
+        setInitialize();
+        setsysInitialize();
+
+        if (FILE* f = std::fopen("sdmc:/manager_boot.txt", "a")) {
+            std::fprintf(f, "[boot] userAppInit finished services\n");
+            std::fclose(f);
+            fsdevCommitDevice("sdmc");
+        }
+    }
+
+    void userAppExit(void) {
+        setsysExit();
+        setExit();
+        timeExit();
+        romfsExit();
+    }
 }
 
 static void logMilestone(const char* fmt, ...) {
@@ -47,19 +68,47 @@ static void logMilestone(const char* fmt, ...) {
     std::fprintf(stderr, "%s\n", buf);
     switchu::FileLog::log("%s", buf);
 
-    // Also write directly to the manager directory as an unbuffered secondary trail
-    if (FILE* f = std::fopen("sdmc:/switch/OmniLaunch-Manager/manager.log", "a")) {
+    // Also write directly to manager_boot.txt and manager.log
+    if (FILE* f = std::fopen("sdmc:/manager_boot.txt", "a")) {
         std::fprintf(f, "%s\n", buf);
         std::fflush(f);
         std::fclose(f);
         fsdevCommitDevice("sdmc");
     }
+    if (FILE* f2 = std::fopen("sdmc:/switch/OmniLaunch-Manager/manager.log", "a")) {
+        std::fprintf(f2, "%s\n", buf);
+        std::fflush(f2);
+        std::fclose(f2);
+        fsdevCommitDevice("sdmc");
+    }
 }
 
 int main(int argc, char** argv) {
-    // Open primary file log with immediate flushing
-    switchu::FileLog::open("manager");
-    switchu::FileLog::setImmediate(true);
+    // 1. Raw marker at entry of main before any complex subsystem
+    if (FILE* f = std::fopen("sdmc:/manager_boot.txt", "a")) {
+        std::fprintf(f, "[boot] main() reached! argc=%d, argv0=%s\n",
+                     argc, (argc > 0 && argv && argv[0]) ? argv[0] : "<null>");
+        std::fclose(f);
+        fsdevCommitDevice("sdmc");
+    }
+
+    // 2. Open primary FileLog with exception guard
+    try {
+        switchu::FileLog::open("manager");
+        switchu::FileLog::setImmediate(true);
+    } catch (const std::exception& e) {
+        if (FILE* f = std::fopen("sdmc:/manager_boot.txt", "a")) {
+            std::fprintf(f, "[boot] FileLog::open exception: %s\n", e.what());
+            std::fclose(f);
+            fsdevCommitDevice("sdmc");
+        }
+    } catch (...) {
+        if (FILE* f = std::fopen("sdmc:/manager_boot.txt", "a")) {
+            std::fprintf(f, "[boot] FileLog::open unknown exception\n");
+            std::fclose(f);
+            fsdevCommitDevice("sdmc");
+        }
+    }
 
     logMilestone("[main] OmniLaunch Manager starting (argc=%d, argv0=%s)",
                  argc, (argc > 0 && argv && argv[0]) ? argv[0] : "<null>");
