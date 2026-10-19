@@ -12,46 +12,31 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
-#include <dirent.h>
 #include <memory>
 
-extern "C" {
-    void __libnx_init_time(void);
-    void __nx_win_init(void);
-    void __nx_win_exit(void);
-
-    // Dynamic heap initialization with progressive ladder.
-    // In Album (applet) mode, libnx's default calculation clamps or overflows
-    // and selects 512 MB (0x20000000), which exceeds the 450 MB available pool,
-    // immediately triggering diagAbortWithResult(0x1F59) during CRT0 (__libnx_init)
-    // before __appInit, userAppInit, or main can ever run.
-    void __libnx_initheap(void) {
-        extern char* fake_heap_start;
-        extern char* fake_heap_end;
-
-        static constexpr size_t kManagerHeapLadder[] = {
-            128u * 1024u * 1024u,
-            64u  * 1024u * 1024u,
-            32u  * 1024u * 1024u,
-            16u  * 1024u * 1024u,
-            8u   * 1024u * 1024u,
-        };
-
-        void*  addr = nullptr;
-        size_t size = 0;
-        for (size_t want : kManagerHeapLadder) {
-            if (R_SUCCEEDED(svcSetHeapSize(&addr, want))) {
-                size = want;
-                break;
-            }
-        }
-
-        fake_heap_start = static_cast<char*>(addr);
-        fake_heap_end   = static_cast<char*>(addr) + size;
+// Standard libnx user initialization hooks.
+// CRT0 (init.o) handles envSetup, heap setup via envHasHeapOverride() (which nx-hbloader
+// supplies in both Album applet mode and Title Override mode), thread init, argument
+// parsing, standard services (sm, applet, hid, time, fs, fsdev, vi/nwindow), and then
+// calls userAppInit().
+extern "C" void userAppInit(void) {
+    Result rc = romfsInit();
+    if (R_FAILED(rc)) {
+        svcOutputDebugString("[Manager] romfsInit FAILED", 26);
     }
+    timeInitialize();
+    setInitialize();
+    setsysInitialize();
 }
 
-static void rawDiag(const char* fmt, ...) {
+extern "C" void userAppExit(void) {
+    setsysExit();
+    setExit();
+    timeExit();
+    romfsExit();
+}
+
+static void logMilestone(const char* fmt, ...) {
     char buf[512];
     va_list args;
     va_start(args, fmt);
@@ -59,165 +44,106 @@ static void rawDiag(const char* fmt, ...) {
     va_end(args);
 
     svcOutputDebugString(buf, std::strlen(buf));
+    std::fprintf(stderr, "%s\n", buf);
+    switchu::FileLog::log("%s", buf);
 
-    if (FILE* f = std::fopen("sdmc:/manager_diag.txt", "a")) {
+    // Also write directly to the manager directory as an unbuffered secondary trail
+    if (FILE* f = std::fopen("sdmc:/switch/OmniLaunch-Manager/manager.log", "a")) {
         std::fprintf(f, "%s\n", buf);
         std::fflush(f);
         std::fclose(f);
         fsdevCommitDevice("sdmc");
     }
-    if (FILE* f2 = std::fopen("sdmc:/switch/OmniLaunch-Manager/diag.txt", "a")) {
-        std::fprintf(f2, "%s\n", buf);
-        std::fflush(f2);
-        std::fclose(f2);
-        fsdevCommitDevice("sdmc");
-    }
-}
-
-// Override libnx default __appInit to prevent hidden diagAbortWithResult aborts
-// before any diagnostic logging or user code runs.
-extern "C" void __appInit(void) {
-    svcOutputDebugString("[Manager] __appInit enter", 25);
-
-    // 1. Service manager
-    Result rc = smInitialize();
-    svcOutputDebugString(R_SUCCEEDED(rc) ? "[Manager] smInit OK" : "[Manager] smInit FAIL", 19);
-
-    // 2. Filesystem service
-    rc = fsInitialize();
-    svcOutputDebugString(R_SUCCEEDED(rc) ? "[Manager] fsInit OK" : "[Manager] fsInit FAIL", 19);
-
-    // 3. Mount SD card FIRST so diagnostic files can be written immediately
-    rc = fsdevMountSdmc();
-    svcOutputDebugString(R_SUCCEEDED(rc) ? "[Manager] sdmc OK" : "[Manager] sdmc FAIL", 17);
-    rawDiag("[__appInit] sdmc mounted rc=0x%X", rc);
-
-    // 4. Applet
-    rc = appletInitialize();
-    rawDiag("[__appInit] appletInitialize rc=0x%X", rc);
-
-    // 5. HID (do NOT abort on failure: library applets/forwarders can share sessions)
-    rc = hidInitialize();
-    rawDiag("[__appInit] hidInitialize rc=0x%X", rc);
-
-    // 6. Time
-    rc = timeInitialize();
-    rawDiag("[__appInit] timeInitialize rc=0x%X", rc);
-    __libnx_init_time();
-
-    // 7. Settings
-    rc = setInitialize();
-    rawDiag("[__appInit] setInitialize rc=0x%X", rc);
-    rc = setsysInitialize();
-    rawDiag("[__appInit] setsysInitialize rc=0x%X", rc);
-
-    // 8. RomFS with fallback
-    rc = romfsInit();
-    rawDiag("[__appInit] romfsInit rc=0x%X", rc);
-    if (R_FAILED(rc)) {
-        rc = romfsMountFromFsdev("sdmc:/switch/OmniLaunch-Manager/OmniLaunch-Manager.nro", 0, "romfs");
-        rawDiag("[__appInit] romfsMountFromFsdev fallback rc=0x%X", rc);
-    }
-
-    // 9. Window
-    __nx_win_init();
-    rawDiag("[__appInit] __nx_win_init done");
-
-    rawDiag("[__appInit] complete");
-}
-
-extern "C" void __appExit(void) {
-    rawDiag("[__appExit] enter");
-    __nx_win_exit();
-    romfsExit();
-    setsysExit();
-    setExit();
-    timeExit();
-    hidExit();
-    appletExit();
-    fsdevUnmountAll();
-    fsExit();
-    smExit();
-    rawDiag("[__appExit] exit");
 }
 
 int main(int argc, char** argv) {
-    rawDiag("[diag] main enter: argc=%d, argv0=%s", argc, (argc > 0 && argv && argv[0]) ? argv[0] : "<null>");
+    // Open primary file log with immediate flushing
+    switchu::FileLog::open("manager");
+    switchu::FileLog::setImmediate(true);
+
+    logMilestone("[main] OmniLaunch Manager starting (argc=%d, argv0=%s)",
+                 argc, (argc > 0 && argv && argv[0]) ? argv[0] : "<null>");
+
+    // Hook up GpuDevice debug sink to our diagnostic logger
+    nxui::GpuDevice::setDebugSink([](const char* msg) {
+        logMilestone("[gpu-sink] %s", msg);
+    });
+
     try {
-        rawDiag("[diag] testing sdmc:/config/OmniLaunch directory...");
-        DIR* d = opendir("sdmc:/config/OmniLaunch");
-        if (d) {
-            rawDiag("[diag] opendir sdmc:/config/OmniLaunch OK");
-            closedir(d);
-        } else {
-            rawDiag("[diag] opendir sdmc:/config/OmniLaunch FAIL: errno=%d", errno);
-        }
+        // Inspect runtime heap facts
+        extern char* fake_heap_start;
+        extern char* fake_heap_end;
+        const bool hasOverride = envHasHeapOverride();
+        const size_t heapBytes = (fake_heap_end >= fake_heap_start)
+            ? static_cast<size_t>(fake_heap_end - fake_heap_start) : 0;
+        logMilestone("[main] heap: envHasOverride=%d, start=%p, end=%p, size=%zu MB",
+                     hasOverride ? 1 : 0, fake_heap_start, fake_heap_end, heapBytes / (1024 * 1024));
 
-        rawDiag("[diag] calling FileLog::open('manager')...");
-        switchu::FileLog::open("manager");
-        switchu::FileLog::setImmediate(true);
-        switchu::FileLog::log("[main] OmniLaunch Manager starting (argc=%d, argv0=%s)",
-                              argc, (argc > 0 && argv && argv[0]) ? argv[0] : "<null>");
-        rawDiag("[diag] FileLog::open complete");
-
-        rawDiag("[diag] SDL_Init(0)...");
-        int sdlRc = SDL_Init(0);
-        rawDiag("[diag] SDL_Init rc=%d", sdlRc);
-
-        rawDiag("[diag] TTF_Init()...");
-        int ttfRc = TTF_Init();
-        rawDiag("[diag] TTF_Init rc=%d", ttfRc);
-
-        rawDiag("[diag] testing font file in romfs...");
+        // Test RomFS assets
         FILE* fontTest = std::fopen("romfs:/fonts/DejaVuSans.ttf", "rb");
         if (fontTest) {
             std::fseek(fontTest, 0, SEEK_END);
             long fsz = std::ftell(fontTest);
             std::fclose(fontTest);
-            rawDiag("[diag] romfs:/fonts/DejaVuSans.ttf size=%ld bytes", fsz);
+            logMilestone("[main] romfs:/fonts/DejaVuSans.ttf size=%ld bytes", fsz);
         } else {
-            rawDiag("[diag] romfs:/fonts/DejaVuSans.ttf FAILED to open: errno=%d", errno);
+            logMilestone("[main] WARNING: romfs:/fonts/DejaVuSans.ttf failed to open (errno=%d)", errno);
         }
+
+        FILE* shaderTest = std::fopen("romfs:/shaders/basic_vsh.dksh", "rb");
+        if (shaderTest) {
+            std::fclose(shaderTest);
+            logMilestone("[main] romfs:/shaders/basic_vsh.dksh verified present");
+        } else {
+            logMilestone("[main] WARNING: romfs:/shaders/basic_vsh.dksh failed to open (errno=%d)", errno);
+        }
+
+        logMilestone("[main] SDL_Init(0)...");
+        int sdlRc = SDL_Init(0);
+        logMilestone("[main] SDL_Init rc=%d", sdlRc);
+
+        logMilestone("[main] TTF_Init()...");
+        int ttfRc = TTF_Init();
+        logMilestone("[main] TTF_Init rc=%d", ttfRc);
 
         nxui::Renderer::setShaderBasePath("romfs:/shaders/");
-        rawDiag("[diag] I18n::initialize...");
+        logMilestone("[main] I18n::initialize...");
         nxui::I18n::instance().initialize("romfs:/i18n", "en-US");
-        rawDiag("[diag] I18n done");
 
-        rawDiag("[diag] creating Application...");
+        logMilestone("[main] creating Application...");
         nxui::Application application;
-        rawDiag("[diag] setActivity...");
+
+        logMilestone("[main] setActivity(ManagerActivity)...");
         application.setActivity(std::make_unique<switchu::manager::ManagerActivity>());
-        rawDiag("[diag] calling application.initialize()...");
+
+        logMilestone("[main] calling application.initialize()...");
         const bool initialized = application.initialize();
-        rawDiag("[diag] application.initialize() returned %d", initialized ? 1 : 0);
-        switchu::FileLog::log("[main] application.initialize() result=%d", initialized ? 1 : 0);
+        logMilestone("[main] application.initialize() returned %d", initialized ? 1 : 0);
 
         if (initialized) {
-            rawDiag("[diag] entering application.run()...");
-            switchu::FileLog::log("[main] entering application.run()");
+            logMilestone("[main] entering application.run()");
             application.run();
-            rawDiag("[diag] application.run() exited");
-            switchu::FileLog::log("[main] exited application.run()");
+            logMilestone("[main] exited application.run()");
         } else {
-            rawDiag("[diag] application.initialize() was FALSE");
-            switchu::FileLog::log("[main] nxui initialization failed");
+            logMilestone("[main] ERROR: nxui initialization failed!");
         }
 
-        rawDiag("[diag] application.shutdown()...");
+        logMilestone("[main] application.shutdown()...");
         application.shutdown();
-        rawDiag("[diag] application.shutdown() done");
+        logMilestone("[main] application.shutdown() complete");
 
         TTF_Quit();
         SDL_Quit();
         switchu::FileLog::close();
-        rawDiag("[diag] main returning %d", initialized ? 0 : 1);
+        logMilestone("[main] returning %d", initialized ? 0 : 1);
         return initialized ? 0 : 1;
     } catch (const std::exception& ex) {
-        rawDiag("[diag] FATAL EXCEPTION in main: %s", ex.what());
+        logMilestone("[main] FATAL EXCEPTION: %s", ex.what());
+        switchu::FileLog::close();
         return 1;
     } catch (...) {
-        rawDiag("[diag] UNKNOWN FATAL EXCEPTION in main");
+        logMilestone("[main] UNKNOWN FATAL EXCEPTION");
+        switchu::FileLog::close();
         return 1;
     }
 }

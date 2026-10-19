@@ -81,6 +81,11 @@ bool Renderer::initialize() {
 
     if (m_gpu.offscreenReady()) {
         for (int i = 0; i < GpuDevice::NUM_OFFSCREEN; ++i) {
+            if (GpuDevice::offscreenIsOverlay(i) && !m_gpu.overlayOffscreenReady()) {
+                dk::ImageView view{m_whiteImage};
+                m_offDescSlot[i] = registerTexture(view);
+                continue;
+            }
             dk::ImageView view{m_gpu.offscreenImage(i)};
             m_offDescSlot[i] = registerTexture(view);
             std::printf("[Renderer] Offscreen %d registered at slot %d\n", i, m_offDescSlot[i]);

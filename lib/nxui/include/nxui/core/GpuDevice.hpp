@@ -374,8 +374,8 @@ private:
     static constexpr uint32_t UPLOAD_STAGING_SIZE = 8192u * 1024u;
     static constexpr uint32_t UPLOAD_COPIES_PER_BATCH = 32;
 
-    void createFramebuffers();
-    void createDepthStencil();
+    bool createFramebuffers();
+    bool createDepthStencil();
     void createOffscreenTargets();
     void createOffscreenGroup(bool overlay, GpuPool& pool);
     void beginUploadBatch();

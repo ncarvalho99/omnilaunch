@@ -71,36 +71,33 @@ bool GpuDevice::initialize() {
     m_frameDumpArmed = false;
     m_frameDumpPending = false;
     m_dev   = dk::DeviceMaker{}.setCbDebug(deviceDebug).create();
+    if (!m_dev) {
+        std::fprintf(stderr, "[GpuDevice] dk::Device creation failed\n");
+        if (s_debugSink) s_debugSink("[GpuDevice] dk::Device creation failed");
+        return false;
+    }
     m_queue = dk::QueueMaker{m_dev}.setFlags(DkQueueFlags_Graphics).create();
-
-    // Two dump buffers, not one. The second is a self-test: endFrame copies the
-    // same framebuffer image into both, back to back in one command list, and
-    // takeFrameDump compares them.
-    //
-    // This separates the only two possibilities left for the Plaza artifact.
-    // The dump reads the rendered image on the GPU before presentImage, so
-    // nothing downstream of presentation — backlight, panel, scanout, dock —
-    // can write back into it. Either the image genuinely contains attenuated
-    // pixels, or the readback path returned something the image does not hold.
-    // Identical copies mean the former and exonerate the capture; differing
-    // copies mean the measurement itself is unstable and every attenuation
-    // figure recorded so far has to be re-read in that light.
-    constexpr uint32_t frameDumpSize = FB_WIDTH * FB_HEIGHT * 4u;
-    for (int i = 0; i < 2; ++i) {
-        traceAlloc("frame-dump", frameDumpSize);
-        m_frameDumpBuffers[i] = dk::MemBlockMaker{m_dev, frameDumpSize}
-            .setFlags(DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached)
-            .create();
-        if (!m_frameDumpBuffers[i]) {
-            std::fprintf(stderr,
-                         "[GpuDevice] frame-dump buffer %d allocation failed (%u bytes)\n",
-                         i, frameDumpSize);
-        }
+    if (!m_queue) {
+        std::fprintf(stderr, "[GpuDevice] dk::Queue creation failed\n");
+        if (s_debugSink) s_debugSink("[GpuDevice] dk::Queue creation failed");
+        return false;
     }
 
+    // Frame-dump buffers are allocated lazily in requestFrameDump() rather
+    // than consuming ~7.37 MB of precious VRAM unconditionally at startup.
+
     for (int i = 0; i < NUM_FB; ++i) {
-        m_cmdPool[i].create(m_dev, CMD_BUF_SIZE, DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached);
+        if (!m_cmdPool[i].create(m_dev, CMD_BUF_SIZE, DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached)) {
+            std::fprintf(stderr, "[GpuDevice] cmdPool %d creation failed\n", i);
+            if (s_debugSink) s_debugSink("[GpuDevice] cmdPool creation failed");
+            return false;
+        }
         m_cmdbuf[i] = dk::CmdBufMaker{m_dev}.create();
+        if (!m_cmdbuf[i]) {
+            std::fprintf(stderr, "[GpuDevice] cmdbuf %d creation failed\n", i);
+            if (s_debugSink) s_debugSink("[GpuDevice] cmdbuf creation failed");
+            return false;
+        }
         m_cmdbuf[i].addMemory(m_cmdPool[i].block, 0, CMD_BUF_SIZE);
     }
 
@@ -124,14 +121,24 @@ bool GpuDevice::initialize() {
                 DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached) || !stagingOk) {
             std::fprintf(stderr,
                          "[GpuDevice] upload slot %d allocation failed\n", i);
+            if (s_debugSink) s_debugSink("[GpuDevice] upload slot allocation failed");
             return false;
         }
         m_uploadCmdbuf[i] = dk::CmdBufMaker{m_dev}.create();
+        if (!m_uploadCmdbuf[i]) {
+            std::fprintf(stderr, "[GpuDevice] upload cmdbuf %d creation failed\n", i);
+            if (s_debugSink) s_debugSink("[GpuDevice] upload cmdbuf creation failed");
+            return false;
+        }
         m_uploadCmdbuf[i].addMemory(m_uploadCmdPool[i].block, 0, UPLOAD_CMD_BUF_SIZE);
     }
 
-    m_codePool.create(m_dev, CODE_POOL_SIZE,
-        DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached | DkMemBlockFlags_Code);
+    if (!m_codePool.create(m_dev, CODE_POOL_SIZE,
+        DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached | DkMemBlockFlags_Code)) {
+        std::fprintf(stderr, "[GpuDevice] codePool creation failed\n");
+        if (s_debugSink) s_debugSink("[GpuDevice] codePool creation failed");
+        return false;
+    }
 
     uint32_t dataSize = 0;
     for (int i = 0; i < NUM_FB; ++i) {
@@ -144,7 +151,11 @@ bool GpuDevice::initialize() {
     dataSize += MAX_SAMPLERS * sizeof(DkSamplerDescriptor) + DK_SAMPLER_DESCRIPTOR_ALIGNMENT;
     dataSize = (dataSize + kGpuAlign - 1) & ~(kGpuAlign - 1);
     traceAlloc("data-pool", dataSize);
-    m_dataPool.create(m_dev, dataSize, DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached);
+    if (!m_dataPool.create(m_dev, dataSize, DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached)) {
+        std::fprintf(stderr, "[GpuDevice] dataPool creation failed\n");
+        if (s_debugSink) s_debugSink("[GpuDevice] dataPool creation failed");
+        return false;
+    }
 
     for (int i = 0; i < NUM_FB; ++i) {
         m_vtxOff[i]   = m_dataPool.alloc(VTX_BUF_SIZE, 256);
@@ -155,13 +166,21 @@ bool GpuDevice::initialize() {
     m_imgDescOff = m_dataPool.alloc(MAX_TEXTURES * sizeof(DkImageDescriptor), DK_IMAGE_DESCRIPTOR_ALIGNMENT);
     m_samDescOff = m_dataPool.alloc(MAX_SAMPLERS * sizeof(DkSamplerDescriptor), DK_SAMPLER_DESCRIPTOR_ALIGNMENT);
 
-    createFramebuffers();
-    createDepthStencil();
+    if (!createFramebuffers() || !createDepthStencil()) {
+        std::fprintf(stderr, "[GpuDevice] framebuffer or depth-stencil creation failed\n");
+        if (s_debugSink) s_debugSink("[GpuDevice] framebuffer or depth-stencil creation failed");
+        return false;
+    }
     createOffscreenTargets();
 
     std::array<DkImage const*, NUM_FB> fbArray;
     for (int i = 0; i < NUM_FB; ++i) fbArray[i] = &m_fbImages[i];
     m_swapchain = dk::SwapchainMaker{m_dev, nwindowGetDefault(), fbArray}.create();
+    if (!m_swapchain) {
+        std::fprintf(stderr, "[GpuDevice] swapchain creation failed\n");
+        if (s_debugSink) s_debugSink("[GpuDevice] swapchain creation failed");
+        return false;
+    }
     nwindowSetSwapInterval(nwindowGetDefault(), 1);
 
     std::printf("[GpuDevice] upload ring: %d slots, %u KiB staging each\n",
@@ -170,7 +189,7 @@ bool GpuDevice::initialize() {
     return true;
 }
 
-void GpuDevice::createFramebuffers() {
+bool GpuDevice::createFramebuffers() {
     dk::ImageLayout fbLayout;
     dk::ImageLayoutMaker{m_dev}
         .setFlags(DkImageFlags_UsageRender | DkImageFlags_UsagePresent |
@@ -186,7 +205,9 @@ void GpuDevice::createFramebuffers() {
         totalFb = (totalFb + fbAlign - 1) & ~(fbAlign - 1);
         totalFb += fbSize;
     }
-    m_fbPool.create(m_dev, totalFb, DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image);
+    if (!m_fbPool.create(m_dev, totalFb, DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image)) {
+        return false;
+    }
 
     uint32_t off = 0;
     for (int i = 0; i < NUM_FB; ++i) {
@@ -194,9 +215,10 @@ void GpuDevice::createFramebuffers() {
         m_fbImages[i].initialize(fbLayout, m_fbPool.block, off);
         off += fbSize;
     }
+    return true;
 }
 
-void GpuDevice::createDepthStencil() {
+bool GpuDevice::createDepthStencil() {
     dk::ImageLayout dsLayout;
     dk::ImageLayoutMaker{m_dev}
         .setFlags(DkImageFlags_UsageRender)
@@ -206,8 +228,11 @@ void GpuDevice::createDepthStencil() {
 
     uint32_t dsSize = dsLayout.getSize();
     dsSize = (dsSize + kGpuAlign - 1) & ~(kGpuAlign - 1);
-    m_dsPool.create(m_dev, dsSize, DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image);
+    if (!m_dsPool.create(m_dev, dsSize, DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image)) {
+        return false;
+    }
     m_dsImage.initialize(dsLayout, m_dsPool.block, 0);
+    return true;
 }
 
 // All offscreen targets (the half-res scene pair and the full-res overlay targets)
@@ -377,7 +402,22 @@ void GpuDevice::endFrame() {
 }
 
 bool GpuDevice::requestFrameDump() {
-    if (!m_frameDumpBuffers[0] || !m_frameDumpBuffers[1] || frameDumpBusy())
+    if (!m_frameDumpBuffers[0] || !m_frameDumpBuffers[1]) {
+        constexpr uint32_t frameDumpSize = FB_WIDTH * FB_HEIGHT * 4u;
+        for (int i = 0; i < 2; ++i) {
+            traceAlloc("frame-dump", frameDumpSize);
+            m_frameDumpBuffers[i] = dk::MemBlockMaker{m_dev, frameDumpSize}
+                .setFlags(DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached)
+                .create();
+            if (!m_frameDumpBuffers[i]) {
+                std::fprintf(stderr,
+                             "[GpuDevice] lazy frame-dump buffer %d allocation failed (%u bytes)\n",
+                             i, frameDumpSize);
+                return false;
+            }
+        }
+    }
+    if (frameDumpBusy())
         return false;
     m_frameDumpArmed = true;
     return true;
@@ -719,8 +759,8 @@ bool GpuDevice::uploadTexture(dk::Image& dst, const void* pixels, uint32_t size,
 
     beginUploadBatch();
 
-    const bool oversized = uploadBytes > UPLOAD_STAGING_SIZE;
     const auto& currentStaging = m_uploadStagingPool[m_uploadSlot];
+    const bool oversized = uploadBytes > currentStaging.size;
     const uint32_t alignedUsed =
         (currentStaging.used + 255u) & ~255u;
     const bool stagingHasRoom = alignedUsed <= currentStaging.size &&
