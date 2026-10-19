@@ -430,6 +430,7 @@ private:
     nxui::AnimatedFloat m_lineScrollOffset{0.f};
     // 0 = grid geometry (usual), 1 = carousel geometry (single row)
     nxui::AnimatedFloat m_layoutMorph{0.f};
+    nxui::AnimatedFloat m_layoutReveal{1.f};
     bool m_layoutMorphing = false;
     int  m_layoutMorphPage = 0;
     static constexpr float kLayoutMorphDuration = 0.40f;

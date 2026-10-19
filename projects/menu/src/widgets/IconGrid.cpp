@@ -951,9 +951,6 @@ nxui::Rect IconGrid::focusedDisplayRect() const {
             return dynamicIconRect(focused);
         }
     }
-            return dynamicIconRect(focused);
-        }
-    }
     if (auto* cur = m_focus.current())
         return cur->focusRect();
     return {};
