@@ -195,6 +195,15 @@ bool AppConfig::load() {
             }
         }
     }
+    readJsonOpt(j, "autoThemeMode", autoThemeMode);
+    readJsonOpt(j, "autoThemeDayPreset", autoThemeDayPreset);
+    readJsonOpt(j, "autoThemeNightPreset", autoThemeNightPreset);
+    readJsonOpt(j, "autoThemeDayStartHour", autoThemeDayStartHour);
+    readJsonOpt(j, "autoThemeNightStartHour", autoThemeNightStartHour);
+    readJsonOpt(j, "autoThemeGeoResolved", autoThemeGeoResolved);
+    readJsonOpt(j, "autoThemeGeoLat", autoThemeGeoLat);
+    readJsonOpt(j, "autoThemeGeoLon", autoThemeGeoLon);
+    readJsonOpt(j, "autoThemeGeoCity", autoThemeGeoCity);
     readJsonOpt(j, "folderStyle", folderStyle);
     readJsonOpt(j, "folderShowCover", folderShowCover);
 
@@ -215,6 +224,18 @@ bool AppConfig::load() {
     // PoloNX #100 also remaps a 9-style table from its own development builds
     // when folderShowCover is absent; no build of this fork ever wrote one.
     folderStyle = std::clamp(folderStyle, 0, switchu::folders::kFolderStyleCount - 1);
+
+    if (autoThemeMode != "off" && autoThemeMode != "manual" && autoThemeMode != "geo")
+        autoThemeMode = "off";
+    autoThemeDayStartHour = std::clamp(autoThemeDayStartHour, 0, 23);
+    autoThemeNightStartHour = std::clamp(autoThemeNightStartHour, 0, 23);
+    if (autoThemeGeoLat < -90.0 || autoThemeGeoLat > 90.0
+        || autoThemeGeoLon < -180.0 || autoThemeGeoLon > 180.0) {
+        autoThemeGeoResolved = false;
+        autoThemeGeoLat = 0.0;
+        autoThemeGeoLon = 0.0;
+        autoThemeGeoCity.clear();
+    }
 
     return true;
 }
@@ -354,6 +375,15 @@ bool AppConfig::save() const {
         }
         j["steamGridDbKnownTitles"] = std::move(known);
     }
+    j["autoThemeMode"] = (autoThemeMode == "manual" || autoThemeMode == "geo") ? autoThemeMode : "off";
+    j["autoThemeDayPreset"] = autoThemeDayPreset;
+    j["autoThemeNightPreset"] = autoThemeNightPreset;
+    j["autoThemeDayStartHour"] = std::clamp(autoThemeDayStartHour, 0, 23);
+    j["autoThemeNightStartHour"] = std::clamp(autoThemeNightStartHour, 0, 23);
+    j["autoThemeGeoResolved"] = autoThemeGeoResolved;
+    j["autoThemeGeoLat"] = autoThemeGeoLat;
+    j["autoThemeGeoLon"] = autoThemeGeoLon;
+    j["autoThemeGeoCity"] = autoThemeGeoCity;
 
     // Written beside the real file and swapped in, never over it. Truncating
     // the live config and then dying mid-write is how a crash used to reset

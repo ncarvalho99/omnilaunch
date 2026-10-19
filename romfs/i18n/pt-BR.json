@@ -1034,6 +1034,10 @@
     "animated": {
       "title": "Temas Animados",
       "subtitle": "Fundos em movimento, com som quando o tema traz."
+    },
+    "options": {
+      "auto_theme": "Tema automático",
+      "auto_theme_desc": "Alterna sozinho entre um tema de dia e um de noite."
     }
   },
   "dialog": {
@@ -1243,5 +1247,37 @@
     "hint_shortcut": "Registro Diário",
     "hint_step": "Alterar data",
     "hint_today": "Hoje"
+  },
+  "autotheme": {
+    "day_starts": "O dia começa às",
+    "day_theme": "Tema do dia",
+    "day_theme_desc": "Usado durante o dia.",
+    "geo_locating": "Localizando pela internet...",
+    "geo_location": "Local",
+    "geo_midnight_sun": "Sol da meia-noite",
+    "geo_polar_night": "Noite polar",
+    "geo_sunrise": "Nascer do sol",
+    "geo_sunset": "Pôr do sol",
+    "header": "Tema automático",
+    "header_mode": "Modo: ",
+    "mode": "Troca",
+    "mode_geo": "Geolocalização (IP)",
+    "mode_manual": "Horários manuais",
+    "mode_off": "Desligado",
+    "night_starts": "A noite começa às",
+    "night_theme": "Tema da noite",
+    "night_theme_desc": "Usado durante a noite.",
+    "section": {
+      "geo": "Geolocalização",
+      "mode": "Modo",
+      "schedule": "Horários",
+      "themes": "Temas"
+    },
+    "summary": {
+      "geo": "Geolocalização (IP)",
+      "manual": "Horários manuais",
+      "off": "Desligado"
+    },
+    "title": "Tema automático"
   }
 }

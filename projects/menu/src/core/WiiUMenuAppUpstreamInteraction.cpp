@@ -264,6 +264,8 @@ void WiiUMenuApp::startEditGhost(GlossyIcon* sourceIcon) {
                                ghost->gridSpanColumns(), ghost->gridSpanRows())
         : sourceIcon->focusRect();
     ghost->setRect(m_editGhostTargetRect);
+    m_editGhostRect.setImmediate(m_editGhostTargetRect);
+    m_editGhostRectInit = true;
     m_editGhostPulse = 0.f;
 
     m_editGhostIcon = ghost;
@@ -284,6 +286,7 @@ void WiiUMenuApp::stopEditGhost() {
 
     m_editGhostIcon.reset();
     m_editGhostTexture.reset();
+    m_editGhostRectInit = false;
     m_editGhostPulse = 0.f;
 }
 #endif
@@ -295,6 +298,22 @@ void WiiUMenuApp::detachEditSourceIcon() {
     m_editSourceIcon = nullptr;
     if (m_editGhostIcon && !m_editGhostTexture && !m_editMode)
         m_editGhostIcon->setTexture(nullptr);
+    syncEditJiggle();
+}
+
+// PoloNX #106: every tile except the one being moved wiggles while in edit
+// mode, as on the Wii U. The phase is offset per index so they do not move in
+// step.
+void WiiUMenuApp::syncEditJiggle() {
+    if (!m_grid)
+        return;
+    const auto& icons = m_grid->allIcons();
+    for (std::size_t i = 0; i < icons.size(); ++i) {
+        if (!icons[i])
+            continue;
+        const bool on = m_editMode && icons[i].get() != m_editSourceIcon;
+        icons[i]->setJiggle(on, static_cast<float>(i) * 1.7f);
+    }
 }
 
 void WiiUMenuApp::reattachEditSourceIcon() {
@@ -311,6 +330,7 @@ void WiiUMenuApp::reattachEditSourceIcon() {
     m_editSourceIndex = index;
     m_editSourceIcon = icon.get();
     m_editSourceIcon->setOpacity(0.10f);
+    syncEditJiggle();
     m_iconStreamer.setPinnedIndex(index);
     if (m_editGhostIcon && !m_editGhostTexture)
         m_editGhostIcon->setTexture(m_editSourceIcon->texture());
@@ -321,11 +341,13 @@ void WiiUMenuApp::updateEditGhost(float dt) {
     if (!m_editMode || !m_editGhostIcon)
         return;
 
+    bool discreteTarget = false;
     if (m_grid && m_editTargetIndex >= 0) {
         const int target = m_editTargetIndex;
         m_editGhostTargetRect = m_grid->gridSpanRect(
             target, m_editGhostIcon->gridSpanColumns(),
             m_editGhostIcon->gridSpanRows());
+        discreteTarget = !m_grid->isLayoutMorphing();
     } else if (m_cursor && m_cursor->isVisible()) {
         m_editGhostTargetRect = m_cursor->currentRect();
     } else if (auto* cur = focusManager().current()) {
@@ -339,7 +361,32 @@ void WiiUMenuApp::updateEditGhost(float dt) {
     m_editGhostIcon->setPanelOpacity(std::min(1.f, pulse + 0.12f));
     m_editGhostIcon->setScale(1.07f + 0.025f * std::sin(m_editGhostPulse * 7.f));
 
-    m_editGhostIcon->setRect(m_editGhostTargetRect);
+    // PoloNX #106: the ghost glides to a new slot instead of jumping there,
+    // taking longer over longer distances. Continuous targets (the cursor, a
+    // layout morph) are followed directly.
+    if (!m_editGhostRectInit) {
+        m_editGhostRect.setImmediate(m_editGhostTargetRect);
+        m_editGhostRectInit = true;
+    } else if (!discreteTarget) {
+        m_editGhostRect.setImmediate(m_editGhostTargetRect);
+    } else {
+        const nxui::Rect cur = m_editGhostRect.target();
+        constexpr float eps = 0.5f;
+        if (std::abs(cur.x - m_editGhostTargetRect.x) >= eps ||
+            std::abs(cur.y - m_editGhostTargetRect.y) >= eps ||
+            std::abs(cur.width - m_editGhostTargetRect.width) >= eps ||
+            std::abs(cur.height - m_editGhostTargetRect.height) >= eps) {
+            constexpr float kEditGhostMoveDuration = 0.20f;
+            const nxui::Vec2 from = m_editGhostRect.value().center();
+            const nxui::Vec2 to = m_editGhostTargetRect.center();
+            const float dist = (to - from).length();
+            const float dur = kEditGhostMoveDuration
+                            * (1.f + std::clamp(dist / 320.f, 0.f, 2.4f) * 0.50f);
+            m_editGhostRect.set(m_editGhostTargetRect, dur, nxui::Easing::outCubic);
+        }
+    }
+
+    m_editGhostIcon->setRect(m_editGhostRect.value());
 }
 #endif
 
@@ -411,6 +458,7 @@ void WiiUMenuApp::enterEditMode() {
     m_editHeldTitle = icon->title();
     startEditGhost(icon);
     bindEditActions(icon);
+    syncEditJiggle();
     m_titlePill->setText(nxui::I18n::instance().tr("game.move_prefix", "Move: ") + m_editHeldTitle);
     m_titlePill->setVisible(true);
     m_accessibility.announce(nxui::I18n::instance().tr(
@@ -434,6 +482,7 @@ void WiiUMenuApp::exitEditMode() {
     m_editHeldTitleId = 0;
     m_editHeldTitle.clear();
     stopEditGhost();
+    syncEditJiggle();
 
     auto* cur = focusManager().current();
     if (isEditableIcon(cur)) {
@@ -1808,7 +1857,7 @@ void WiiUMenuApp::handleTouch() {
             // Tap anywhere that isn't an icon (dimmed margins left/right/above/below,
             // and empty gaps) to leave — mirrors B, including edit-mode keep-move.
             // From PoloNX/SwitchU#108.
-            closeFolder(m_editMode);
+            closeFolder(m_editMode, true);
         } else if (m_touchHitIndex >= 0 && !m_editMode &&
                    std::abs(dx) < 20.f && std::abs(dy) < 20.f && input.touchDuration() <= 0.40f) {
             if (m_touchOnFocused) {
@@ -1915,7 +1964,8 @@ void WiiUMenuApp::updateCursor() {
         if (m_cursor) m_cursor->setVisible(false);
         return;
     }
-    if (m_grid && m_grid->isTransitioning()) {
+    if ((m_grid && m_grid->isTransitioning()) ||
+        (m_folderZoom && m_folderZoom->isPlaying())) {
         if (m_cursor) m_cursor->setVisible(false); // it would sit at the landing spot
         return;
     }
@@ -1937,7 +1987,9 @@ void WiiUMenuApp::updateCursor() {
             m_cursor->setVisible(false);
             return;
         }
-        const bool movingLineFocus = m_grid && m_grid->isDynamicLine()
+        const bool morphing = m_grid && m_grid->isLayoutMorphing();
+        const bool movingLineFocus = m_grid
+                                  && (m_grid->isDynamicLine() || morphing)
                                   && cur->tag() == "glossy_icon";
         // XMB places its own rects every time the selection moves, and its
         // focused tile is scaled, so the ring must come from the view rather
@@ -1962,7 +2014,8 @@ void WiiUMenuApp::updateCursor() {
         // its contents. The ring alone marks the selection there.
         m_cursor->setBloomEnabled(!(cur->tag() == "glossy_icon" &&
             static_cast<GlossyIcon*>(cur)->entryKind() == GridEntryKind::Folder));
-        const bool carouselScrolling = movingLineFocus && m_grid->isDynamicLineScrolling();
+        const bool carouselScrolling = movingLineFocus
+                                    && (morphing || m_grid->isDynamicLineScrolling());
         const float targetRadius = xmbFocus ? 18.f :
             (cur->tag() == "glossy_icon" ? static_cast<GlossyIcon*>(cur)->cornerRadius() + 4.f : 18.f);
         m_cursor->moveTo(fr.expanded(4.f), targetRadius, carouselScrolling ? 0.f : 0.2f);

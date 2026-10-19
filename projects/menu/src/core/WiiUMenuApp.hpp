@@ -27,6 +27,7 @@
 #include "widgets/UserAvatarButton.hpp"
 #include "widgets/FolderBackdrop.hpp"
 #include "widgets/SteamGridDbBackdrop.hpp"
+#include "widgets/FolderZoom.hpp"
 #include "steamgriddb/SteamGridDbManager.hpp"
 #include "steamgriddb/ArtworkCache.hpp"
 #include "settings/SettingsScreen.hpp"
@@ -34,6 +35,7 @@
 #include "settings/SteamGridDbPickerScreen.hpp"
 #include "settings/PlatformPickerScreen.hpp"
 #include "settings/FolderOptionsScreen.hpp"
+#include "settings/AutoThemeScreen.hpp"
 #include "settings/ControllerTestScreen.hpp"
 #include "settings/TextEntryScreen.hpp"
 #include "themeshop/ThemeShopScreen.hpp"
@@ -65,6 +67,7 @@
 #include "core/SystemMessages.hpp"
 #include "navigation/MenuNavigator.hpp"
 #include "services/ClockService.hpp"
+#include "services/AutoThemeService.hpp"
 #ifdef SWITCHU_DEBUG_UI
 #include "debug/DebugImGuiOverlay.hpp"
 #endif
@@ -187,7 +190,11 @@ private:
     void composeRootPending(std::vector<PendingApp>& apps);
     GridModel buildRootFolderModel();
     GridModel buildOpenFolderModel(std::uint32_t folderId) const;
-    void applyDisplayModel(GridModel model, std::uint64_t focusId, bool animate);
+    void applyDisplayModel(GridModel model, std::uint64_t focusId, bool animate,
+                           const IconAppearOptions& appear = {});
+    nxui::Rect folderTileRect(std::uint32_t folderId) const;
+    void snapCursorToFocus();
+    void syncEditJiggle();
     void updateGridXmbContext();
     void updateGridListContext();
     void updateGridMetroContext();
@@ -213,10 +220,16 @@ private:
     void flipPageFromEdge(int dir);
     void requestOpenFolder(std::uint32_t folderId, std::uint64_t focusTitleId = 0);
     void openCapturedFolder();
-    void closeFolder(bool preserveEditMode = false);
+    // `animated` plays the mirrored close (icons fly back into the tile, then
+    // the root grid is rebuilt); otherwise the root grid is rebuilt right away.
+    void closeFolder(bool preserveEditMode = false, bool animated = false);
+    void finishCloseFolder(std::uint32_t oldId, bool preserveEditMode);
     void showFolderAssignment(std::uint64_t titleId, const std::string& title);
     void assignTitleToFolder(std::uint32_t folderId, std::uint64_t titleId);
     void removeTitleFromFolder(std::uint64_t titleId);
+    nxui::Rect folderPanelRect() const;
+    void placeFolderHeader(const nxui::Rect& panel);
+    void syncFolderHeader();
     void createFolder(int targetSlot = -1);
     void finishCreateFolder(int targetSlot, const std::string& typed);
     void showAddContextMenu(int targetSlot, const nxui::Rect& anchor);
@@ -459,6 +472,10 @@ private:
     void createThemeShop();
     void createGameOptions();
     void createFolderOptions();
+    void createAutoThemeScreen();
+    void openAutoThemeSettings();
+    void refreshAutoThemeSummary();
+    void pushGeoDisplayToScreen();
     void createControllerTest();
     void createGameGallery();
     void createGameDetails();
@@ -479,6 +496,10 @@ private:
     // (codec, resolution, frame rate, unreadable file). `reason` is human-readable.
     bool themeWallpaperPlayable(const ThemePreset& preset, std::string& reason) const;
     void showThemeRejectedDialog(const ThemePreset& preset, const std::string& reason);
+    void applyAutoThemeConfig();
+    void evaluateAutoTheme(bool force);
+    void maybeFetchGeoLocation();
+    void pollGeoLocationFetch();
     std::string resolveSoundPresetId(const std::string& preset) const;
     void loadSoundPreset(const std::string& preset);
     void changeSoundPreset(const std::string& preset);
@@ -559,6 +580,18 @@ private:
     GridModel    m_model;
     nxui::Theme  m_theme;
     switchu::services::ClockService m_clockService;
+    switchu::services::AutoThemeService m_autoTheme;
+    float                    m_autoThemeCheckTimer = 0.f;
+
+    struct GeoFetchResult {
+        bool ok = false;
+        double lat = 0.0;
+        double lon = 0.0;
+        std::string city;
+    };
+    std::future<void>        m_geoFetchFuture;
+    std::shared_ptr<GeoFetchResult> m_geoFetchResult;
+    bool                     m_geoFetchInFlight = false;
 
     // Drawn last and outside the widget tree: while it is up focusRoot()
     // hands back nothing, so no widget can be navigated or activated
@@ -603,6 +636,7 @@ private:
     std::uint64_t m_platformPickerTitleId = 0;
     std::string m_platformPickerTitle;
     std::shared_ptr<FolderOptionsScreen> m_folderOptions;
+    std::shared_ptr<AutoThemeScreen>   m_autoThemeScreen;
     std::shared_ptr<ControllerTestScreen> m_controllerTest;
     std::shared_ptr<TextEntryScreen>      m_textEntry;
     std::shared_ptr<ActivityLogScreen>    m_activityLog;
@@ -663,8 +697,12 @@ private:
     std::shared_ptr<nxui::Box> m_userAvatarBar;
     std::shared_ptr<FolderBackdrop> m_folderBackdrop;
     std::shared_ptr<SteamGridDbBackdrop> m_steamGridDbBackdrop;
+    std::shared_ptr<FolderZoom>     m_folderZoom;
+    nxui::Rect                      m_folderZoomOriginRect{};
     std::shared_ptr<nxui::GlassPanel> m_folderHeader;
     std::shared_ptr<nxui::Label> m_folderHeaderLabel;
+    nxui::AnimatedFloat m_folderHeaderAnim{0.f};
+    nxui::Rect m_folderHeaderRest{410.f, 78.f, 460.f, 58.f};
     std::vector<std::shared_ptr<UserAvatarButton>> m_userAvatarButtons;
 
     AudioManager m_audio;
@@ -751,6 +789,8 @@ private:
     std::shared_ptr<GlossyIcon> m_editGhostIcon;
     std::unique_ptr<nxui::Texture> m_editGhostTexture;
     nxui::Rect m_editGhostTargetRect {0.f, 0.f, 0.f, 0.f};
+    nxui::AnimatedRect m_editGhostRect;
+    bool m_editGhostRectInit = false;
     float m_editGhostPulse = 0.f;
     std::vector<uint64_t> m_layoutSlots;
     std::unordered_map<std::uint64_t, switchu::widgets::WidgetSize> m_gameSizes;
@@ -812,6 +852,8 @@ private:
     std::uint64_t m_folderOpenFocusTitleId = 0;
     bool m_folderCaptureRequested = false;
     bool m_folderCaptureReady = false;
+    bool m_folderClosing = false;
+    bool m_folderOriginStale = false;
     bool m_gridSliding = false;
     // Frames the log stays unbuffered for after the run loop starts, so a hang
     // in early-frame work (deferred asset uploads) still reaches the SD card.

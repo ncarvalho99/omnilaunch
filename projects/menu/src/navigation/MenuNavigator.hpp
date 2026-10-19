@@ -13,6 +13,7 @@ enum class Route : std::uint8_t {
     ControllerTest,
     ActivityLog,
     WaraWaraPlaza,
+    AutoTheme,
 };
 
 // Authoritative owner of primary-screen input. Visual exit animations may

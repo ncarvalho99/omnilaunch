@@ -254,6 +254,8 @@ void WiiUMenuApp::startEditGhost(GlossyIcon* sourceIcon) {
 
     m_editGhostTargetRect = sourceIcon->focusRect().expanded(4.f);
     ghost->setRect(m_editGhostTargetRect);
+    m_editGhostRect.setImmediate(m_editGhostTargetRect);
+    m_editGhostRectInit = true;
     m_editGhostPulse = 0.f;
 
     m_editGhostIcon = ghost;
@@ -287,7 +289,28 @@ void WiiUMenuApp::updateEditGhost(float dt) {
     m_editGhostIcon->setPanelOpacity(std::min(1.f, pulse + 0.12f));
     m_editGhostIcon->setScale(1.07f + 0.025f * std::sin(m_editGhostPulse * 7.f));
 
-    m_editGhostIcon->setRect(m_editGhostTargetRect);
+    if (!m_editGhostRectInit) {
+        m_editGhostRect.setImmediate(m_editGhostTargetRect);
+        m_editGhostRectInit = true;
+    } else if (!discreteTarget) {
+        m_editGhostRect.setImmediate(m_editGhostTargetRect);
+    } else {
+        const nxui::Rect cur = m_editGhostRect.target();
+        constexpr float eps = 0.5f;
+        if (std::abs(cur.x - m_editGhostTargetRect.x) >= eps ||
+            std::abs(cur.y - m_editGhostTargetRect.y) >= eps ||
+            std::abs(cur.width - m_editGhostTargetRect.width) >= eps ||
+            std::abs(cur.height - m_editGhostTargetRect.height) >= eps) {
+            const nxui::Vec2 from = m_editGhostRect.value().center();
+            const nxui::Vec2 to = m_editGhostTargetRect.center();
+            const float dist = (to - from).length();
+            const float dur = kEditGhostMoveDuration
+                            * (1.f + std::clamp(dist / 320.f, 0.f, 2.4f) * 0.50f);
+            m_editGhostRect.set(m_editGhostTargetRect, dur, nxui::Easing::outCubic);
+        }
+    }
+
+    m_editGhostIcon->setRect(m_editGhostRect.value());
 }
 
 void WiiUMenuApp::unbindEditActions() {
@@ -324,6 +347,7 @@ void WiiUMenuApp::enterEditMode() {
     m_editHeldTitle = icon->title();
     startEditGhost(icon);
     bindEditActions(icon);
+    syncEditJiggle();
     m_titlePill->setText(nxui::I18n::instance().tr("game.move_prefix", "Move: ") + m_editHeldTitle);
     m_titlePill->setVisible(true);
     m_accessibility.announce(nxui::I18n::instance().tr(
@@ -340,6 +364,7 @@ void WiiUMenuApp::exitEditMode() {
     m_editSourceIndex = -1;
     m_editHeldTitle.clear();
     stopEditGhost();
+    syncEditJiggle();
 
     auto* cur = focusManager().current();
     if (isEditableIcon(cur)) {
@@ -795,7 +820,7 @@ nxui::Widget* WiiUMenuApp::focusRoot() {
     if (m_leaveCapturePending) return nullptr;
     if (leaveSplashActive()) return nullptr;
     if (m_launchAnim && m_launchAnim->isPlaying()) return nullptr;
-    if (m_folderCaptureRequested) return nullptr;
+    if (m_folderCaptureRequested || m_folderClosing) return nullptr;
     if (m_progressDialog && m_progressDialog->isActive()) return m_progressDialog.get();
     // The on-screen keyboard is a modal overlay that can be opened from dialogs or
     // context menus. It must take precedence over context menus and dialogs so it
@@ -815,6 +840,8 @@ nxui::Widget* WiiUMenuApp::focusRoot() {
     if (m_gameDetails && m_gameDetails->isActive()) return m_gameDetails.get();
     if (m_activityLog && m_activityLog->isActive()) return m_activityLog.get();
     if (m_plazaScreen && m_plazaScreen->isActive()) return m_plazaScreen.get();
+    // Opened from the Theme Shop (PoloNX #106), so it has to win over it.
+    if (m_autoThemeScreen && m_autoThemeScreen->isActive()) return m_autoThemeScreen.get();
     if (m_themeShop && m_themeShop->isActive()) return m_themeShop.get();
     if (m_settings && m_settings->isActive()) return m_settings.get();
     if (m_quickSettings && m_quickSettings->isActive()) return m_quickSettings.get();
@@ -1260,7 +1287,7 @@ void WiiUMenuApp::wireGlobalActions() {
         if (focusRoot() != &rootBox())
             return;
         if (m_openFolderId != 0)
-            closeFolder();
+            closeFolder(false, true);
     });
 
     root.addAction(static_cast<uint64_t>(nxui::Button::L), [this]() {

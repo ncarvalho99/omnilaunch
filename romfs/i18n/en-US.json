@@ -1034,6 +1034,10 @@
     "animated": {
       "title": "Animated Themes",
       "subtitle": "Moving wallpapers, with sound when the theme brings it."
+    },
+    "options": {
+      "auto_theme": "Automatic theme",
+      "auto_theme_desc": "Switches between a day and a night theme by itself."
     }
   },
   "dialog": {
@@ -1243,5 +1247,37 @@
     "hint_shortcut": "Daily Log",
     "hint_step": "Change Date",
     "hint_today": "Today"
+  },
+  "autotheme": {
+    "day_starts": "Day Starts At",
+    "day_theme": "Day Theme",
+    "day_theme_desc": "Applied during the day.",
+    "geo_locating": "Locating via internet...",
+    "geo_location": "Location",
+    "geo_midnight_sun": "Midnight sun",
+    "geo_polar_night": "Polar night",
+    "geo_sunrise": "Sunrise",
+    "geo_sunset": "Sunset",
+    "header": "Automatic Theme",
+    "header_mode": "Mode: ",
+    "mode": "Switching",
+    "mode_geo": "Geolocation (IP)",
+    "mode_manual": "Manual hours",
+    "mode_off": "Off",
+    "night_starts": "Night Starts At",
+    "night_theme": "Night Theme",
+    "night_theme_desc": "Applied during the night.",
+    "section": {
+      "geo": "Geolocation",
+      "mode": "Mode",
+      "schedule": "Schedule",
+      "themes": "Themes"
+    },
+    "summary": {
+      "geo": "Geolocation (IP)",
+      "manual": "Manual hours",
+      "off": "Off"
+    },
+    "title": "Auto Theme"
   }
 }

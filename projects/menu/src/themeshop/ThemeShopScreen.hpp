@@ -117,6 +117,7 @@ public:
         }
     }
     AppLayoutMode layoutModeState() const { return m_layoutMode; }
+    void onAutoThemeOpen(VoidCb cb) { m_autoThemeOpenCb = std::move(cb); }
     void onNextTrack(VoidCb cb)          { m_nextTrackCb = std::move(cb); }
     void onThemeShopApply(StringCb cb)   { m_themeShopApplyCb = std::move(cb); }
     void onThemeShopDelete(StringCb cb)  { m_themeShopDeleteCb = std::move(cb); }
@@ -149,6 +150,10 @@ public:
     }
     void setSteamGridDbOpacity(float v) {
         m_steamGridDbOpacity = std::clamp(v, 0.f, 1.f);
+    }
+
+    void setAutoThemeSummary(std::string summary) {
+        m_autoThemeSummary = std::move(summary);
     }
 
     void setThreadPool(nxui::ThreadPool* pool);
@@ -362,6 +367,7 @@ private:
     BoolCb m_dynamicPagesCb;
     LayoutModeCb m_layoutModeCb;
     AppLayoutMode m_layoutMode = AppLayoutMode::Grid;
+    VoidCb m_autoThemeOpenCb;
     VoidCb m_nextTrackCb;
     StringCb m_themeShopApplyCb;
     StringCb m_themeShopDeleteCb;
@@ -402,6 +408,7 @@ private:
     int m_gridColumns = 5;
     int m_gridRows = 3;
     bool m_dynamicPages = true;
+    std::string m_autoThemeSummary;
     std::string m_searchQuery;
     std::vector<ThemeShopEntry> m_allThemeShopEntries;
     std::vector<ThemeShopEntry> m_themeShopEntries;

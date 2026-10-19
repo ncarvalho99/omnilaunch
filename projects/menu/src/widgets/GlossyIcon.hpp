@@ -131,7 +131,16 @@ public:
     int gridSpanRows() const { return m_widgetRows; }
 
     void startAppear(float delay);
+    // Reverse of a tile appear: fly back into `target` while shrinking out.
+    void startDisappear(const nxui::Rect& target, float delay, float dur);
     void forceVisible();
+
+    void setAppearOrigin(const nxui::Rect& origin) {
+        m_appearOrigin = origin; m_hasAppearOrigin = true;
+    }
+
+    void setJiggle(bool on, float phaseSeed = 0.f);
+    bool isJiggling() const { return m_jiggle; }
 
     void setFocusable(bool f) { m_focusable = f; }
     bool isFocusable() const override { return m_focusable; }
@@ -179,9 +188,16 @@ private:
     nxui::AnimatedFloat m_appearOpacity;
     nxui::AnimatedFloat m_focusScale;
     nxui::AnimatedFloat m_focusGlow;
+    nxui::AnimatedFloat m_jiggleAmount;
+    bool          m_jiggle      = false;
+    float         m_jigglePhase = 0.f;
+    float         m_jiggleSeed  = 0.f;
     float         m_appearDelay = 0.f;
     float         m_appearTimer = 0.f;
     bool          m_appearing   = false;
+    nxui::Rect    m_appearOrigin{};
+    bool          m_hasAppearOrigin = false;
+    bool          m_disappearing = false;
     GridEntryKind m_entryKind = GridEntryKind::Application;
     int           m_folderPreviewCount = 0;
     std::vector<nxui::Texture*> m_folderPreview;
