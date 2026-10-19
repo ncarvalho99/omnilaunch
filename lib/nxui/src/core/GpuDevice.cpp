@@ -162,6 +162,7 @@ bool GpuDevice::initialize() {
     std::array<DkImage const*, NUM_FB> fbArray;
     for (int i = 0; i < NUM_FB; ++i) fbArray[i] = &m_fbImages[i];
     m_swapchain = dk::SwapchainMaker{m_dev, nwindowGetDefault(), fbArray}.create();
+    nwindowSetSwapInterval(nwindowGetDefault(), 1);
 
     std::printf("[GpuDevice] upload ring: %d slots, %u KiB staging each\n",
                 UPLOAD_SLOT_COUNT, UPLOAD_STAGING_SIZE / 1024u);

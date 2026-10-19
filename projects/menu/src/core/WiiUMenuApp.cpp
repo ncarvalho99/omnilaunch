@@ -8459,12 +8459,14 @@ void WiiUMenuApp::onUpdate(float dt) {
         // console was left in rather than leaving it to inference.
         const unsigned opMode = (unsigned)appletGetOperationMode();
         const unsigned perfMode = (unsigned)appletGetPerformanceMode();
-        DebugLog::log("[perf] %.1f fps  avg=%.1fms worst=%.1fms  vsync=%.1fms gpu=%.1fms  opmode=%u perf=%u  draws=%u binds=%u verts=%u blur=%u caps=%u uploads=%u batches=%u uploadwait=%.3fms  settings=%d(1=fullScene,2=sceneHidden) themeshop=%d",
+        DebugLog::log("[perf] %.1f fps  avg=%.1fms worst=%.1fms  vsync=%.1fms gpu=%.1fms cpu=%.1fms presInt=%.1fms  opmode=%u perf=%u  draws=%u binds=%u verts=%u blur=%u caps=%u uploads=%u batches=%u uploadwait=%.3fms  settings=%d(1=fullScene,2=sceneHidden) themeshop=%d",
                       m_perfFrames / m_perfAccumDt,
                       avgMs,
                       m_perfWorstDt * 1000.f,
                       gpu.lastAcquireNs() / 1000000.0,
                       gpu.lastFenceWaitNs() / 1000000.0,
+                      gpu.lastFrameCpuNs() / 1000000.0,
+                      gpu.lastPresentIntervalNs() / 1000000.0,
                       opMode,
                       perfMode,
                       ren.lastFrameDrawCalls(),
