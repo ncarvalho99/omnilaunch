@@ -247,6 +247,12 @@ public:
                                float radius, const Color& tint = Color::white());
     void drawText(const std::string& text, const Vec2& pos, Font* font, const Color& color, float scale = 1.f);
 
+    // 3D quads
+    static constexpr float kFocal = 900.f;   // pixels, over a 720-tall layout
+    static constexpr float kNearZ = 0.05f;
+
+    bool project3D(const Vec3& p, Vec2& out) const;
+
     void drawQuad3D(const Texture* tex, const Vec3 corners[4], const Color& tint,
                     float alphaTop = 1.f, float alphaBottom = 1.f,
                     bool flipV = false, int strips = 1, const float uv[4] = nullptr);
