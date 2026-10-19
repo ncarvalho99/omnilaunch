@@ -107,6 +107,8 @@ nxui::Rect SelectionCursor::currentRect() const {
 }
 
 void SelectionCursor::onUpdate(float dt) {
+    if (m_motionPaused)
+        return;
     m_time += dt;
 }
 

@@ -557,8 +557,9 @@ void GlossyIcon::onContentUpdate(float dt) {
             m_appearOpacity.set(1.f, 0.3f, nxui::Easing::outExpo);
         }
     }
-    m_suspendPulse += dt * 2.8f;
-    if (m_entryKind == GridEntryKind::Widget && m_widgetAnimation.hasFrames())
+    if (!m_motionPaused)
+        m_suspendPulse += dt * 2.8f;
+    if (!m_motionPaused && m_entryKind == GridEntryKind::Widget && m_widgetAnimation.hasFrames())
         m_widgetAnimation.update(dt, true);
 #ifdef SWITCHU_MENU
     if (m_entryKind == GridEntryKind::Widget &&

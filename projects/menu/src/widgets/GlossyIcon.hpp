@@ -38,6 +38,8 @@ public:
     bool isSuspended() const      { return m_suspended; }
     void setPlaytimeBadge(std::string text) { m_playtimeBadge = std::move(text); }
     const std::string& playtimeBadge() const { return m_playtimeBadge; }
+    void setMotionPaused(bool paused) { m_motionPaused = paused; }
+    bool motionPaused() const { return m_motionPaused; }
 
     void setIsGameCard(bool gc)     { m_isGameCard = gc; }
     bool isGameCard() const         { return m_isGameCard; }
@@ -146,6 +148,7 @@ private:
     bool        m_focused = false;
     bool        m_focusable = true;
     bool        m_suspended = false;
+    bool        m_motionPaused = false;
     bool        m_isGameCard = false;
     bool        m_notLaunchable = false;
     bool        m_isFavorite = false;

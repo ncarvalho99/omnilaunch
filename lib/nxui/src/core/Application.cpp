@@ -56,8 +56,11 @@ bool Application::initialize() {
 
     // Present one clean frame immediately so that stale framebuffer
     // content from a previous process is never visible on screen.
+    // Activities may replace the default black with a leave-frame splash.
     m_gpu.beginFrame();
     m_renderer->beginFrame();
+    if (m_activity)
+        m_activity->presentInitialFrame(*m_renderer);
     m_renderer->endFrame();
     m_gpu.endFrame();
     m_initializeTrace.blankFrameTick = armGetSystemTick();
@@ -303,6 +306,7 @@ void Application::run() {
                     auto callback = std::move(m_firstFrameCallback);
                     callback(m_firstInputTick, m_firstFrameTick);
                 }
+                m_activity->onAfterPresent(*m_renderer);
             } else {
                 // Yield CPU while another app owns the foreground.
                 svcSleepThread(100000000LL); // 100 ms

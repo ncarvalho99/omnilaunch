@@ -60,6 +60,10 @@ bool excludedDirectory(const std::string& relative, const char* name) {
 }
 
 bool excludedFile(const char* name) {
+    // leave_frame.bin (PoloNX #104) is a 3.6 MB screenshot rewritten at every
+    // launch; copying it would cost that at almost every boot, for a picture
+    // that is useless once the config it belongs to is gone.
+    if (std::strcmp(name, "leave_frame.bin") == 0) return true;
     return endsWith(name, ".log") || std::strncmp(name, "log.txt", 7) == 0
         || endsWith(name, ".tmp") || endsWith(name, ".part")
         || endsWith(name, ".switchu-part") || endsWith(name, kPartSuffix)

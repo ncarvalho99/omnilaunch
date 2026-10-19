@@ -66,4 +66,14 @@ bool GpuDevice::takeFrameDump(std::vector<std::uint8_t>& rgba) {
     return false;
 }
 
+bool GpuDevice::downloadFramebufferRgba(std::vector<uint8_t>& outRgba,
+                                        int& outW, int& outH,
+                                        bool halfRes) {
+    (void)outRgba;
+    (void)outW;
+    (void)outH;
+    (void)halfRes;
+    return false;
+}
+
 } // namespace nxui

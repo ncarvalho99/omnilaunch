@@ -117,6 +117,9 @@ public:
     // custa. 1/20 de segundo e o ponto de corte.
     static constexpr float kCrossFadeMaxInterval = 1.f / 20.f;
 
+    void setMotionPaused(bool paused) { m_motionPaused = paused; }
+    bool motionPaused() const { return m_motionPaused; }
+
     void regenerate(int count = 50) override;
 
     // Softens the whole wallpaper layer — the image and the drifting shapes
@@ -223,5 +226,6 @@ private:
     std::vector<std::unique_ptr<warawara::MiiFigure>> m_ambientMiis;
     nxui::Font* m_ambientFont = nullptr;
     nxui::Font* m_ambientSmallFont = nullptr;
+    bool m_motionPaused = false;
 };
 
