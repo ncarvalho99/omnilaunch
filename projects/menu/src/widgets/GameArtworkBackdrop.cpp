@@ -98,7 +98,7 @@ void GameArtworkBackdrop::onRender(nxui::Renderer& ren) {
         source.height = source.width / destAspect;
         source.y = (m_texture.height() - source.height) * 0.5f;
     }
-    ren.drawTextureSub(&m_texture, source, dest, nxui::Color::white().withAlpha(0.46f * opacity()));
+    ren.drawTextureSub(&m_texture, source, dest, nxui::Color::white().withAlpha(m_artworkOpacityScale * opacity()));
     ren.drawGradientRect(dest, nxui::Color(0.01f, 0.02f, 0.04f, 0.20f * opacity()),
                          nxui::Color(0.01f, 0.02f, 0.04f, 0.62f * opacity()));
 }

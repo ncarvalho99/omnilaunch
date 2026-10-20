@@ -1397,6 +1397,7 @@ void WiiUMenuApp::createThemeShop() {
     m_themeShop->setMusicState(m_audio.isPlaying(), m_audio.volume(), m_audio.sfxVolume(), m_config.themeMusicEnabled);
     m_themeShop->setGridLayoutState(m_config.gridColumns, m_config.gridRows);
     m_themeShop->setDynamicPagesState(m_config.dynamicPages);
+    m_themeShop->setViewSwitchButtonState(m_config.viewSwitchButton);
     m_themeShop->setAppearanceState(m_config.glassSharpness,
                                     m_config.backgroundSpeed,
                                     m_config.backgroundBlur);
@@ -1446,6 +1447,7 @@ void WiiUMenuApp::createThemeShop() {
     m_themeShop->onSteamGridDbOpacityChange([this](float v) {
         m_config.steamGridDbOpacity = v;
         if (m_steamGridDbBackdrop) m_steamGridDbBackdrop->setArtworkOpacityScale(v);
+        if (m_gameArtworkBackdrop) m_gameArtworkBackdrop->setArtworkOpacityScale(v);
     });
     m_themeShop->onSteamGridDbEnabledChange([this](bool enabled) {
         m_config.steamGridDbEnabled = enabled;
@@ -1480,6 +1482,10 @@ void WiiUMenuApp::createThemeShop() {
         m_config.dynamicPages = enabled;
         m_config.save();
         reflowHomeGrid();
+    });
+    m_themeShop->onViewSwitchButtonChange([this](const std::string& btn) {
+        m_config.viewSwitchButton = (btn == "Minus" || btn == "-") ? "Minus" : "R";
+        m_config.save();
     });
     m_themeShop->setLayoutModeState(m_appLayoutMode);
     m_themeShop->onLayoutModeChange([this](AppLayoutMode mode) {

@@ -620,6 +620,9 @@ void WiiUMenuApp::refreshGameArtworkBackdrop(std::uint64_t titleId) {
         return;
     const std::string path = gallery::GameArtworkStore::pathFor(
         titleId, gallery::ArtworkKind::Background);
+    const bool hasCustomBg = !path.empty();
+    if (m_steamGridDbBackdrop)
+        m_steamGridDbBackdrop->setCustomBackgroundActive(hasCustomBg);
     if (path == m_gameArtworkBackdrop->artworkPath())
         return;
     if (path.empty()) {
@@ -885,14 +888,17 @@ void WiiUMenuApp::toggleAccessibilitySpeech() {
 }
 
 void WiiUMenuApp::handleSortShortcutRelease(float dt) {
+    const bool sortOnR = (m_config.viewSwitchButton == "Minus" || m_config.viewSwitchButton == "-");
+    const auto sortBtn = sortOnR ? nxui::Button::R : nxui::Button::Minus;
+
     auto& input = app().input();
-    if (input.isDown(nxui::Button::Minus)) {
+    if (input.isDown(sortBtn)) {
         m_sortShortcutArmed = true;
         m_sortShortcutHeld = 0.f;
-    } else if (m_sortShortcutArmed && input.isHeld(nxui::Button::Minus)) {
+    } else if (m_sortShortcutArmed && input.isHeld(sortBtn)) {
         m_sortShortcutHeld += dt;
     }
-    if (!input.isUp(nxui::Button::Minus))
+    if (!input.isUp(sortBtn))
         return;
     const bool armed = m_sortShortcutArmed;
     const float held = m_sortShortcutHeld;

@@ -158,6 +158,25 @@ ThemeShopScreen::Tab themeshop::tabs::OptionsTab::build(ThemeShopScreen& screen)
         t.items.push_back(std::move(it));
     }
 
+    {
+        SettingItem it;
+        it.label = i18n.tr("settings.display.view_switch_button", "View Switch Button");
+        it.description = i18n.tr("settings.display.view_switch_button_desc",
+                                 "Choose the button used to cycle views. Sort button swaps automatically.");
+        it.type = ItemType::Selector;
+        it.options = {
+            "R",
+            "- (Minus)",
+        };
+        it.intVal = (screen.m_viewSwitchButton == "Minus" || screen.m_viewSwitchButton == "-") ? 1 : 0;
+        it.onChange = [&screen](SettingItem& self) {
+            std::string choice = (self.intVal == 1) ? "Minus" : "R";
+            screen.m_viewSwitchButton = choice;
+            if (screen.m_viewSwitchButtonCb) screen.m_viewSwitchButtonCb(choice);
+        };
+        t.items.push_back(std::move(it));
+    }
+
 
     {
         SettingItem it;

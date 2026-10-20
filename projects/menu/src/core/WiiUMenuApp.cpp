@@ -6549,6 +6549,7 @@ void WiiUMenuApp::buildGrid() {
     m_background->setRect({0, 0, 1280, 720});
     m_gameArtworkBackdrop = std::make_shared<GameArtworkBackdrop>();
     m_gameArtworkBackdrop->setRect({0, 0, 1280, 720});
+    m_gameArtworkBackdrop->setArtworkOpacityScale(m_config.steamGridDbOpacity);
     applyThemeResources(m_effectivePreset);
 
     // Compose the model the same way every later rebuild does. buildGrid() used
@@ -8916,8 +8917,11 @@ void WiiUMenuApp::onUpdate(float dt) {
     }
 #endif
 
+    const bool viewOnMinus = (m_config.viewSwitchButton == "Minus" || m_config.viewSwitchButton == "-");
+    const auto viewBtn = viewOnMinus ? nxui::Button::Minus : nxui::Button::R;
+
     if (!lockScreenUp &&
-        app().input().isDown(nxui::Button::R) &&
+        app().input().isDown(viewBtn) &&
         !app().input().isDown(nxui::Button::Plus) &&
         m_navigator.route() == switchu::navigation::Route::Home &&
         !m_editMode &&
@@ -9458,6 +9462,10 @@ std::vector<WiiUMenuApp::ActionHint> WiiUMenuApp::buildActionHints() {
     if (m_openFolderId != 0)
         add(buttonGlyph(nxui::Button::B), i18n.tr("hint.back", "Back"));
 
+    const bool viewOnMinus = (m_config.viewSwitchButton == "Minus" || m_config.viewSwitchButton == "-");
+    const auto viewBtn = viewOnMinus ? nxui::Button::Minus : nxui::Button::R;
+    const auto sortBtn = viewOnMinus ? nxui::Button::R : nxui::Button::Minus;
+
     if (m_appLayoutMode == AppLayoutMode::Metro && focusRoot() == &rootBox() && m_openFolderId == 0) {
         nxui::Widget* cur = focusManager().current();
         if (cur && cur->tag() == "glossy_icon") {
@@ -9471,7 +9479,7 @@ std::vector<WiiUMenuApp::ActionHint> WiiUMenuApp::buildActionHints() {
             }
             add(buttonGlyph(nxui::Button::Y), i18n.tr("hint.tile_size", "Tile Size"));
             add(buttonGlyph(nxui::Button::Plus), i18n.tr("hint.options", "Options"));
-            add(buttonGlyph(nxui::Button::R), i18n.tr("hint.switch_layout", "Switch view"));
+            add(buttonGlyph(viewBtn), i18n.tr("hint.switch_layout", "Switch view"));
             return hints;
         }
     }
@@ -9513,7 +9521,7 @@ std::vector<WiiUMenuApp::ActionHint> WiiUMenuApp::buildActionHints() {
             // a button that now does nothing there would be worse than not
             // having it.
             if (m_openFolderId == 0 && !isCarouselLayout())
-                add(buttonGlyph(nxui::Button::Minus), sortModeLabel());
+                add(buttonGlyph(sortBtn), sortModeLabel());
 #ifdef SWITCHU_MENU
             if (entry && entry->isApplication())
                 add(buttonGlyph(nxui::Button::RStick), i18n.tr("hint.favorite", "Favorite"));
@@ -9536,9 +9544,9 @@ std::vector<WiiUMenuApp::ActionHint> WiiUMenuApp::buildActionHints() {
                 add(buttonGlyph(nxui::Button::ZL), i18n.tr("folder.delete_page", "Delete page"));
             }
             if (!isCarouselLayout()) {
-                add(buttonGlyph(nxui::Button::Minus), sortModeLabel());
+                add(buttonGlyph(sortBtn), sortModeLabel());
             }
-            add(buttonGlyph(nxui::Button::R), i18n.tr("hint.switch_layout", "Switch view"));
+            add(buttonGlyph(viewBtn), i18n.tr("hint.switch_layout", "Switch view"));
         } else if (m_openFolderId != 0 && deletePageAvailable()) {
             add(buttonGlyph(nxui::Button::ZL), i18n.tr("folder.delete_page", "Delete page"));
         }
@@ -9564,11 +9572,11 @@ std::vector<WiiUMenuApp::ActionHint> WiiUMenuApp::buildActionHints() {
     }
 
     if (m_navigator.route() == switchu::navigation::Route::Home && !m_editMode) {
-        if (m_openFolderId == 0 && !hasIcon(buttonGlyph(nxui::Button::Minus)) && !isCarouselLayout()) {
-            add(buttonGlyph(nxui::Button::Minus), sortModeLabel());
+        if (m_openFolderId == 0 && !hasIcon(buttonGlyph(sortBtn)) && !isCarouselLayout()) {
+            add(buttonGlyph(sortBtn), sortModeLabel());
         }
-        if (m_openFolderId == 0 && !hasIcon(buttonGlyph(nxui::Button::R))) {
-            add(buttonGlyph(nxui::Button::R),
+        if (m_openFolderId == 0 && !hasIcon(buttonGlyph(viewBtn))) {
+            add(buttonGlyph(viewBtn),
                 i18n.tr("hint.switch_layout", "Switch view"));
         }
         if (!hasIcon(buttonGlyph(nxui::Button::LStick))) {

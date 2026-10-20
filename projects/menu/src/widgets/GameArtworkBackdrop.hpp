@@ -37,6 +37,11 @@ public:
     // the grid, so the release cannot be left to chance.
     void clearArtwork(nxui::GpuDevice* gpu = nullptr);
 
+    void setArtworkOpacityScale(float opacityScale) {
+        m_artworkOpacityScale = std::clamp(opacityScale, 0.f, 1.f);
+    }
+    float artworkOpacityScale() const { return m_artworkOpacityScale; }
+
     // What is on screen, or what is on its way there. Compared against by the
     // caller to avoid asking for the same image twice, so a request already in
     // flight has to count.
@@ -55,6 +60,7 @@ private:
     };
 
     nxui::Texture m_texture;
+    float m_artworkOpacityScale = 0.50f;
     // The image currently uploaded. Empty until a decode lands.
     std::string m_path;
     // What was last asked for. Differs from m_path while a decode is running.

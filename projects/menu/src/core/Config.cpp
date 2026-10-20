@@ -100,6 +100,9 @@ bool AppConfig::load() {
         }
     }
     readJsonOpt(j, "actionHintStyle", actionHintStyle);
+    readJsonOpt(j, "viewSwitchButton", viewSwitchButton);
+    if (viewSwitchButton != "Minus" && viewSwitchButton != "-")
+        viewSwitchButton = "R";
     readJsonOpt(j, "uiLanguageOverride", uiLanguageOverride);
     readJsonOpt(j, "soundPreset", soundPreset);
     readJsonOpt(j, "defaultProfileEnabled", defaultProfileEnabled);
@@ -286,6 +289,7 @@ bool AppConfig::save() const {
         j["metroTileSpans"] = spansObj;
     }
     j["actionHintStyle"] = actionHintStyle == "panel" ? "panel" : "capsules";
+    j["viewSwitchButton"] = (viewSwitchButton == "Minus" || viewSwitchButton == "-") ? "Minus" : "R";
     j["uiLanguageOverride"] = uiLanguageOverride;
     j["soundPreset"] = (m_safe && !m_touchedSound) ? m_savedSound : soundPreset;
     j["defaultProfileEnabled"] = defaultProfileEnabled;

@@ -365,6 +365,8 @@
       "background_speed_desc": "How fast the shapes drift. Centre is the theme's own pace.",
       "launcher_view": "Launcher View",
       "launcher_view_desc": "Choose between standard Grid, Dynamic Line carousel, or 3D Flow coverflow.",
+      "view_switch_button": "View Switch Button",
+      "view_switch_button_desc": "Choose the button used to cycle views. Sort button swaps automatically.",
       "grid_columns": "Home Grid Columns",
       "grid_rows": "Home Grid Rows",
       "dynamic_pages": "Dynamic Pages",

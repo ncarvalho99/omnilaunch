@@ -281,7 +281,7 @@ void SteamGridDbBackdrop::drawSet(nxui::Renderer& renderer,
     if (alpha <= 0.002f) return;
     const nxui::Rect screen = rect();
 
-    if (set.hasHero && set.hero.valid()) {
+    if (set.hasHero && set.hero.valid() && !m_customBackgroundActive) {
         // The per-layout ceilings are this fork's: the carousel views showcase the
         // hero, the paged grid keeps it as a faint wash. Upstream 2.6.5 added a
         // user-facing opacity slider, so the ceiling is scaled by it rather than

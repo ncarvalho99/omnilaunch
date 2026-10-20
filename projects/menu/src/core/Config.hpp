@@ -24,6 +24,7 @@ struct AppConfig {
     int   gridRows     = 3;
     bool  dynamicPages = true;
     AppLayoutMode appLayoutMode = AppLayoutMode::Grid;
+    std::string viewSwitchButton = "R";
     std::string actionHintStyle = "capsules";
     std::string uiLanguageOverride = "auto";
     std::string soundPreset = "wiiu";

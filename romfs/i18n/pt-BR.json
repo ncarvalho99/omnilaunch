@@ -365,6 +365,8 @@
       "background_speed_desc": "O quanto as formas se movem. O centro é o ritmo do próprio tema.",
       "launcher_view": "Modo do Inicializador",
       "launcher_view_desc": "Escolha entre a Grade padrão, o carrossel Linha Dinâmica ou o Flow 3D.",
+      "view_switch_button": "Botão de Troca de Vista",
+      "view_switch_button_desc": "Escolha o botão para alternar modos de visualização. O botão de ordenação inverte automaticamente.",
       "grid_columns": "Colunas da grade",
       "grid_rows": "Linhas da grade",
       "dynamic_pages": "Páginas dinâmicas",

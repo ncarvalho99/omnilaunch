@@ -117,6 +117,20 @@ public:
         }
     }
     AppLayoutMode layoutModeState() const { return m_layoutMode; }
+    using ViewSwitchButtonCb = std::function<void(const std::string&)>;
+    void onViewSwitchButtonChange(ViewSwitchButtonCb cb) { m_viewSwitchButtonCb = std::move(cb); }
+    void setViewSwitchButtonState(const std::string& btn) {
+        m_viewSwitchButton = (btn == "Minus" || btn == "-") ? "Minus" : "R";
+        const int val = m_viewSwitchButton == "Minus" ? 1 : 0;
+        for (auto& tab : m_tabs) {
+            for (auto& item : tab.items) {
+                if (item.type == ItemType::Selector && item.options.size() == 2) {
+                    item.intVal = val;
+                }
+            }
+        }
+    }
+    const std::string& viewSwitchButtonState() const { return m_viewSwitchButton; }
     void onAutoThemeOpen(VoidCb cb) { m_autoThemeOpenCb = std::move(cb); }
     void onNextTrack(VoidCb cb)          { m_nextTrackCb = std::move(cb); }
     void onThemeShopApply(StringCb cb)   { m_themeShopApplyCb = std::move(cb); }
@@ -367,6 +381,8 @@ private:
     BoolCb m_dynamicPagesCb;
     LayoutModeCb m_layoutModeCb;
     AppLayoutMode m_layoutMode = AppLayoutMode::Grid;
+    ViewSwitchButtonCb m_viewSwitchButtonCb;
+    std::string m_viewSwitchButton = "R";
     VoidCb m_autoThemeOpenCb;
     VoidCb m_nextTrackCb;
     StringCb m_themeShopApplyCb;
