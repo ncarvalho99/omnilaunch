@@ -220,6 +220,8 @@ public:
     std::shared_ptr<GlossyIcon> metroSharedIconAt(int globalIndex) const;
     GlossyIcon* metroIconAt(int globalIndex) const;
     int metroTotalCount() const;
+    const std::vector<MetroTileRect>& metroTiles() const { return m_metroTiles; }
+    float metroScrollY() const { return m_metroScrollY; }
     void setupMetroSystemIcons();
     const XmbContext& xmbContext() const { return m_xmbContext; }
 

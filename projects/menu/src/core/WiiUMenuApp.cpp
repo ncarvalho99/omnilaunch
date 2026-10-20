@@ -4071,7 +4071,15 @@ void WiiUMenuApp::pollRecentWidgetAssets() {
 }
 
 void WiiUMenuApp::ensureGameArtwork(std::uint64_t titleId) {
-    if (titleId == 0 || m_gameArtwork.count(titleId)) return;
+    if (titleId == 0) return;
+    auto it = m_gameArtwork.find(titleId);
+    if (it != m_gameArtwork.end()) {
+        if (it->second.hero != nullptr) return;
+        std::error_code ec;
+        if (!std::filesystem::is_regular_file(SteamGridDbManager::heroPath(titleId), ec))
+            return;
+        m_gameArtwork.erase(it);
+    }
     if ((m_gameArtworkDecode && m_gameArtworkDecode->titleId == titleId) ||
         (m_gameArtworkReady && m_gameArtworkReady->titleId == titleId) ||
         std::find(m_gameArtworkDecodeQueue.begin(), m_gameArtworkDecodeQueue.end(),
@@ -4115,7 +4123,6 @@ void WiiUMenuApp::startNextGameArtworkDecode() {
 void WiiUMenuApp::syncGameArtworkTextures(std::uint64_t titleId) {
     if (!m_grid) return;
     const auto artwork = m_gameArtwork.find(titleId);
-    if (artwork == m_gameArtwork.end()) return;
     for (const auto& icon : m_grid->allIcons()) {
         if (!icon || icon->entryKind() != GridEntryKind::Application || icon->titleId() != titleId)
             continue;
@@ -4127,8 +4134,12 @@ void WiiUMenuApp::syncGameArtworkTextures(std::uint64_t titleId) {
             }
         }
         if (isExpanded) {
-            icon->setWideGameTextures(artwork->second.hero.get(),
-                                      artwork->second.logo.get());
+            if (artwork != m_gameArtwork.end()) {
+                icon->setWideGameTextures(artwork->second.hero.get(),
+                                          artwork->second.logo.get());
+            }
+        } else {
+            icon->setWideGameTextures(nullptr, nullptr);
         }
     }
 }
@@ -4661,6 +4672,7 @@ void WiiUMenuApp::syncWidgetPageAssets() {
     auto& current = m_widgetAssetCurrentScratch;
     auto& keep = m_widgetAssetKeepScratch;
     const bool dynamicLine = isCarouselLayout();
+    const bool isMetro = (m_appLayoutMode == AppLayoutMode::Metro);
     const int page = dynamicLine
         ? std::max(0, m_grid->focusedGlobalIndex())
         : m_grid->currentPage();
@@ -4670,7 +4682,25 @@ void WiiUMenuApp::syncWidgetPageAssets() {
     m_widgetAssetPage = page;
     m_widgetAssetsWereSliding = sliding;
 
-    if (dynamicLine) {
+    if (isMetro) {
+        const float scrollY = m_grid->metroScrollY();
+        for (const auto& t : m_grid->metroTiles()) {
+            if (t.itemIndex < 6) continue;
+            const int iconIndex = t.itemIndex - 6;
+            if (iconIndex < 0 || iconIndex >= static_cast<int>(icons.size())) continue;
+            const float drawY = t.y - scrollY;
+            const bool visibleNow = (drawY + t.h >= IconGrid::kMetroWallTop - 40.f &&
+                                     drawY <= IconGrid::kMetroWallBot + 40.f);
+            const bool keepNearby = (drawY + t.h >= IconGrid::kMetroWallTop - 600.f &&
+                                     drawY <= IconGrid::kMetroWallBot + 600.f);
+            if (visibleNow) {
+                current[static_cast<std::size_t>(iconIndex)] = true;
+                keep[static_cast<std::size_t>(iconIndex)] = true;
+            } else if (keepNearby) {
+                keep[static_cast<std::size_t>(iconIndex)] = true;
+            }
+        }
+    } else if (dynamicLine) {
         // The visible row wraps: index zero is next to the last icon. Keep the
         // same five-neighbour window on each side across that seam as well.
         const int count = static_cast<int>(icons.size());
@@ -4708,13 +4738,21 @@ void WiiUMenuApp::syncWidgetPageAssets() {
     std::unordered_set<std::uint64_t> retainedGameArtwork;
     for (std::size_t i = 0; i < icons.size(); ++i) {
         const auto* icon = icons[i].get();
-        if (!icon || icon->entryKind() != GridEntryKind::Application ||
-            (icon->gridSpanColumns() <= 1 && icon->gridSpanRows() <= 1))
+        if (!icon || icon->entryKind() != GridEntryKind::Application)
+            continue;
+        bool isExpanded = (icon->gridSpanColumns() > 1 || icon->gridSpanRows() > 1);
+        if (isMetro) {
+            auto it = m_config.metroTileSpans.find(icon->titleId());
+            if (it != m_config.metroTileSpans.end() && (it->second.first > 1 || it->second.second > 1)) {
+                isExpanded = true;
+            }
+        }
+        if (!isExpanded)
             continue;
         if (current[i]) {
             currentGameArtwork.insert(icon->titleId());
             retainedGameArtwork.insert(icon->titleId());
-        } else if (sliding && keep[i]) {
+        } else if ((sliding || isMetro) && keep[i]) {
             retainedGameArtwork.insert(icon->titleId());
         }
         if (icon == m_editSourceIcon)
@@ -4763,8 +4801,16 @@ void WiiUMenuApp::syncWidgetPageAssets() {
     for (std::size_t i = 0; i < icons.size(); ++i) {
         auto* icon = icons[i].get();
         if (!icon || !current[i] ||
-            icon->entryKind() != GridEntryKind::Application ||
-            (icon->gridSpanColumns() <= 1 && icon->gridSpanRows() <= 1))
+            icon->entryKind() != GridEntryKind::Application)
+            continue;
+        bool isExpanded = (icon->gridSpanColumns() > 1 || icon->gridSpanRows() > 1);
+        if (isMetro) {
+            auto it = m_config.metroTileSpans.find(icon->titleId());
+            if (it != m_config.metroTileSpans.end() && (it->second.first > 1 || it->second.second > 1)) {
+                isExpanded = true;
+            }
+        }
+        if (!isExpanded)
             continue;
         const auto artwork = m_gameArtwork.find(icon->titleId());
         if (artwork != m_gameArtwork.end())
@@ -5162,12 +5208,7 @@ nxui::Rect WiiUMenuApp::folderTileRect(std::uint32_t folderId) const {
     if (!m_grid)
         return {};
     const std::uint64_t tid = folderTitleId(folderId);
-    const int perPage = m_grid->iconsPerPage();
-    const int start   = m_grid->currentPage() * perPage;
-    const int end     = std::min(start + perPage,
-                                 static_cast<int>(m_grid->allIcons().size()));
-    for (int i = start; i < end; ++i) {
-        const auto& icon = m_grid->allIcons()[static_cast<std::size_t>(i)];
+    for (const auto& icon : m_grid->allIcons()) {
         if (icon && icon->titleId() == tid)
             return icon->focusRect();
     }
@@ -5757,24 +5798,36 @@ void WiiUMenuApp::commitLaunchRecency(std::uint64_t titleId, const std::string& 
 #ifdef SWITCHU_MENU
 void WiiUMenuApp::resumeSuspendedApplication(std::uint64_t titleId,
                                              const std::string& launchTitle) {
-    // PoloNX #105: a suspended title comes back with a short fade instead of
-    // the cold-launch zoom.
     if (titleId == 0 || !m_launchAnim)
         return;
-    // PoloNX #104: the frame on screen is saved first, so the menu can show
-    // it the moment HOME brings it back, before it has rebuilt itself.
-    scheduleLeaveCapture([this, titleId, launchTitle]() {
+    GlossyIcon* source = nullptr;
+    if (m_grid) {
+        for (auto& icon : m_grid->allIcons()) {
+            if (icon && icon->titleId() == titleId) {
+                source = icon.get();
+                break;
+            }
+        }
+    }
+    const nxui::Rect frame = source ? source->focusRect() : nxui::Rect{640.0f - 64.0f, 360.0f - 64.0f, 128.0f, 128.0f};
+    const nxui::Texture* texture = source ? source->texture() : nullptr;
+    const float radius = source ? source->cornerRadius() : 18.0f;
+    const nxui::Color base = m_theme.panelBase;
+    const nxui::Color border = m_theme.panelBorder;
+
+    scheduleLeaveCapture([this, frame, texture, radius, base, border, titleId, launchTitle]() {
         switchu::smi::LaunchTransitionTrace transitionTrace{};
         transitionTrace.activation_tick = armGetSystemTick();
         transitionTrace.user_selected_tick = transitionTrace.activation_tick;
         commitLaunchRecency(titleId, launchTitle);
         m_audio.playSfx(Sfx::LaunchGame);
-        m_launchAnim->startResume([this, transitionTrace]() mutable {
-            transitionTrace.animation_complete_tick = armGetSystemTick();
-            transitionTrace.recency_commit_complete_tick =
-                transitionTrace.animation_complete_tick;
-            m_launcher.resumeApplication(transitionTrace);
-        });
+        m_launchAnim->start(frame, texture, radius, base, border, 0, {}, nullptr,
+            [this, transitionTrace]() mutable {
+                transitionTrace.animation_complete_tick = armGetSystemTick();
+                transitionTrace.recency_commit_complete_tick =
+                    transitionTrace.animation_complete_tick;
+                m_launcher.resumeApplication(transitionTrace);
+            });
     }, titleId);
 }
 #endif

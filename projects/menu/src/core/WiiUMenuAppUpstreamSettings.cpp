@@ -863,6 +863,7 @@ void WiiUMenuApp::syncSteamGridDb() {
         if (state.lastCompletedTitleId != 0
             && state.lastCompletedTitleId != m_steamGridDbLastCompletedTitleId) {
             m_steamGridDbLastCompletedTitleId = state.lastCompletedTitleId;
+            m_gameArtwork.erase(state.lastCompletedTitleId);
             ensureGameArtwork(state.lastCompletedTitleId);
             syncGameArtworkTextures(state.lastCompletedTitleId);
             if (m_grid && m_grid->focusManager().current()) {
@@ -884,13 +885,25 @@ void WiiUMenuApp::syncSteamGridDb() {
         // Any completed scan writes new files under steamgriddb/, and nothing in
         // the running menu re-reads them: the streamer keeps the textures it has
         // already uploaded, and ensureRecentWidgetAssets() refuses to look again
-        // at a title it has tried once. This was gated on the per-title icon
-        // picker, so the bulk scan from Settings finishes with selectedKind None
-        // and left every tile showing what it had before. Both caches are
+        // at a title it has tried once. Both caches and wide game artwork are
         // invalidated here so the artwork appears without restarting the menu.
         if (state.matched > 0) {
             m_recentWidgetAssetTitleId = 0;
+            m_gameArtwork.clear();
             if (m_grid) {
+                for (const auto& icon : m_grid->allIcons()) {
+                    if (!icon || icon->entryKind() != GridEntryKind::Application) continue;
+                    bool isExpanded = (icon->gridSpanColumns() > 1 || icon->gridSpanRows() > 1);
+                    if (m_appLayoutMode == AppLayoutMode::Metro) {
+                        auto it = m_config.metroTileSpans.find(icon->titleId());
+                        if (it != m_config.metroTileSpans.end() && (it->second.first > 1 || it->second.second > 1)) {
+                            isExpanded = true;
+                        }
+                    }
+                    if (isExpanded) {
+                        ensureGameArtwork(icon->titleId());
+                    }
+                }
                 // forceReload releases the pool texture used by the panel header;
                 // detach it first so the overlay never renders a stale pointer.
                 if (m_gameOptions) m_gameOptions->setGameIcon(nullptr);
