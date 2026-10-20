@@ -119,12 +119,14 @@ public:
         m_batteryJoyconRightIcon = joyconRight;
         m_batteryControllerIcon = controller;
     }
-    void setWideGameTextures(nxui::Texture* hero, nxui::Texture* logo) {
+    void setWideGameTextures(nxui::Texture* hero, nxui::Texture* logo, nxui::Texture* icon = nullptr) {
         m_wideGameHero = hero;
         m_wideGameLogo = logo;
+        m_wideGameIcon = icon;
     }
     nxui::Texture* wideGameHero() const { return m_wideGameHero; }
     nxui::Texture* wideGameLogo() const { return m_wideGameLogo; }
+    nxui::Texture* wideGameIcon() const { return m_wideGameIcon; }
     void setFavorite(bool fav) { m_isFavorite = fav; }
     bool isFavorite() const { return m_isFavorite; }
     int gridSpanColumns() const { return m_widgetColumns; }
@@ -159,6 +161,7 @@ private:
     nxui::Texture*    m_gameCardTex = nullptr;
     nxui::Texture*    m_wideGameHero = nullptr;
     nxui::Texture*    m_wideGameLogo = nullptr;
+    nxui::Texture*    m_wideGameIcon = nullptr;
     uint64_t    m_titleId = 0;
     bool        m_focused = false;
     bool        m_focusable = true;

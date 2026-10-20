@@ -382,6 +382,8 @@ bool prepareArtwork(SteamGridDbManager::ArtworkKind kind, const std::string& pat
         return steamgriddb::artwork::prepare(path, 1280, 720, true);
     if (kind == SteamGridDbManager::ArtworkKind::Logo)
         return steamgriddb::artwork::prepare(path, 640, 180, false);
+    if (kind == SteamGridDbManager::ArtworkKind::Icon)
+        return steamgriddb::artwork::prepare(path, 512, 512, true);
     return true;
 }
 
@@ -996,8 +998,14 @@ void SteamGridDbManager::scrape(std::string apiKey, std::vector<AppEntry> apps) 
                 ? true
                 : fetchArtwork("grids", true,
                                ArtworkKind::Cover, coverPath(app.titleId),
-                               0.60f, 0.35f);
-            matched = heroOk || logoOk || coverOk;
+                               0.60f, 0.20f);
+            std::error_code iconExistEc;
+            const bool iconOk = std::filesystem::exists(iconPath(app.titleId), iconExistEc)
+                ? true
+                : fetchArtwork("icons", false,
+                               ArtworkKind::Icon, iconPath(app.titleId),
+                               0.80f, 0.18f);
+            matched = heroOk || logoOk || coverOk || iconOk;
 
             nlohmann::json metadata;
             metadata["titleId"] = app.titleId;
@@ -1010,6 +1018,7 @@ void SteamGridDbManager::scrape(std::string apiKey, std::vector<AppEntry> apps) 
             metadata["hero"] = heroOk;
             metadata["logo"] = logoOk;
             metadata["cover"] = coverOk;
+            metadata["icon"] = iconOk;
             std::ofstream meta(dir + "/metadata.json", std::ios::trunc);
             if (meta.is_open()) meta << metadata.dump(2);
         } catch (const std::exception& ex) {

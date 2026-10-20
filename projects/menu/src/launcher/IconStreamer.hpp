@@ -140,7 +140,9 @@ private:
     // Last reported window state, so the diagnostic only speaks when it changes.
     mutable int m_lastWantedMissing = -1;
     mutable int m_lastNoData = -1;
-    static constexpr int kIconSize        = 160;
+    // Native Switch game icons from control data are 256x256. Keep full 256px
+    // resolution for crisp rendering on high-DPI displays and enlarged tiles.
+    static constexpr int kIconSize        = 256;
     // Two uploads and six decodes in flight. A mode switch evicts the whole
     // ring -- the grid model is a different size, so every icon leaves the
     // window and comes back -- and refilling sixteen icons one upload per frame

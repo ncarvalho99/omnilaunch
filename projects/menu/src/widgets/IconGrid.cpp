@@ -4323,8 +4323,9 @@ void IconGrid::renderMetro(nxui::Renderer& ren) {
                              fontSmall, nxui::Color::white().withAlpha(alpha), 0.78f);
             }
         } else {
-            // Artwork texture: wide banner (2x1) if available, or full square icon (1x1 and 2x2)
+            // Artwork texture: wide banner (2x1) if available, high-res icon (2x2), or standard square icon
             const bool isWide = (t.spanW == 2 && t.spanH == 1);
+            const bool isLarge = (t.spanW == 2 && t.spanH == 2);
             if (isWide && icon->wideGameHero() && icon->wideGameHero()->valid()) {
                 ren.drawTextureSubRounded(
                     icon->wideGameHero(), centeredCoverSource(*icon->wideGameHero(), tileRect), tileRect,
@@ -4350,6 +4351,8 @@ void IconGrid::renderMetro(nxui::Renderer& ren) {
                 GlossyIcon::drawFolderContent(ren, tileRect, icon->folderPreview(),
                                               icon->folderPreviewCount(), icon->folderColorIndex(),
                                               alpha, nullptr, "");
+            } else if (isLarge && icon->wideGameIcon() && icon->wideGameIcon()->valid()) {
+                ren.drawTextureRounded(icon->wideGameIcon(), tileRect, 4.f, nxui::Color::white().withAlpha(alpha));
             } else if (icon->texture() && icon->texture()->valid()) {
                 if (isWide) {
                     const float sqSize = tileRect.height - 12.f;

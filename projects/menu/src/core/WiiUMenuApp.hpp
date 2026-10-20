@@ -818,6 +818,7 @@ private:
     struct GameArtworkTextures {
         std::unique_ptr<nxui::Texture> hero;
         std::unique_ptr<nxui::Texture> logo;
+        std::unique_ptr<nxui::Texture> icon;
     };
     std::unordered_map<std::uint64_t, GameArtworkTextures> m_gameArtwork;
     std::unordered_map<std::uint64_t, nxui::Texture> m_plazaCommunityTextures;
@@ -825,6 +826,7 @@ private:
         std::uint64_t titleId = 0;
         steamgriddb::artwork::DecodedImage hero;
         steamgriddb::artwork::DecodedImage logo;
+        steamgriddb::artwork::DecodedImage icon;
         std::atomic<bool> cancelled{false};
         std::int64_t elapsedMs = 0;
     };
