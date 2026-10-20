@@ -1,3 +1,55 @@
+# OmniLaunch 1.2.0
+
+Major update for OmniLaunch: comprehensive system and hardware stability enhancements, extensive memory and performance optimizations, advanced settings, folder customization with new visual styles and animations, automatic Day/Night theme switching, full docked 1080p scaling, restored smooth launch and resume zoom animations, high-resolution square artwork downloads, and seamless Metro live tiles support.
+
+If you encounter any bugs, please report them directly to the developer on Telegram at https://t.me/ncarvalho99 with your console logs (`/config/OmniLaunch/menu.log`).
+
+## English
+
+### System & Performance
+- **Docked 1080p Full-Screen Scaling**: The managed display layer is now created at 1920x1080 when docked, eliminating black borders around the interface.
+- **Automatic CPU/GPU Clock Recovery**: Restores APM CPU boost to normal clock speeds upon application exit, keeping GPU clocks at 307.2 MHz and preventing menu render lag.
+- **VRAM Optimizations**: Defer offscreen render targets (-18 MB boot VRAM savings), load sound effects on demand, and optimize daemon heap and stack.
+- **Streamer Burst**: Temporarily raises decode and upload limits on fast return to HOME so visible tiles populate instantly.
+- **Forwarder & HOME Management**: Automatically terminates homebrew forwarders on HOME button press to avoid system hangs. Pressing physical HOME button on the home screen smoothly resumes the currently suspended game.
+
+### Views & Artwork
+- **Restored Smooth Launch Zoom**: Re-enabled the classic 0.36s cubic zoom animation with pulse and glowing borders on both cold launch and resume.
+- **Metro Live Tiles Enhancements**: 2x1 wide tiles display high-resolution SteamGridDB widescreen banners with title logos, and 2x2 large square tiles render full high-resolution square game icons without cropping distortion.
+- **High-Resolution Square Artwork**: SteamGridDB scrape now automatically downloads 1024x1024 square artwork, and IconStreamer decodes native game icons at full 256px resolution.
+
+### Settings & Customization
+- **Timezone & Language Pickers**: Searchable interactive dialogs in System settings to change location name and console language with instant filtering.
+- **Live Audio Controls**: Real-time speaker auto-mute toggle and TV audio output mode selection in Audio settings.
+- **Display & Nickname**: TV underscan slider in Display settings and editable console nickname via on-screen keyboard.
+- **Folder Customization**: 6 new folder visual styles and a "Show Cover" toggle to display the leading game's artwork as the folder miniature.
+- **Folder Zoom & Wiggle Animations**: Smooth spring zoom when entering and exiting folders, plus gentle icon wiggle animation while reordering tiles in edit mode.
+- **Automatic Day/Night Theme**: Automatically switches between dark and light themes based on custom schedules or real-time local sunrise/sunset calculations.
+- **Installation Repair & Auto-Backup**: OmniLaunch Manager includes an in-memory font loader and repair feature for Atmosphere pack updates, while the daemon maintains an automatic configuration backup in `/backup/OmniLaunch`.
+
+## Português
+
+### Sistema e Desempenho
+- **Escala 1080p Tela Cheia na Dock**: A camada de exibição agora é criada em 1920x1080 ao conectar na dock, eliminando bordas pretas ao redor da interface.
+- **Recuperação Automática de Clock**: Redefine o boost de CPU/GPU via APM ao sair de jogos, mantendo a GPU a 307.2 MHz e evitando lentidão no menu.
+- **Otimizações de Memória**: Alocação diferida de alvos offscreen (-18 MB de VRAM no boot), decodificação lazy de efeitos sonoros (SFX) e redução de heap/stack do daemon.
+- **Aceleração do Streamer**: Eleva temporariamente o limite de decodificação no retorno rápido à HOME para carregar as capas instantaneamente.
+- **Gerenciamento de Forwarders e HOME**: Encerra forwarders automaticamente ao pressionar o botão HOME para evitar congelamentos. Pressionar o botão HOME físico na tela inicial retoma suavemente o jogo suspenso.
+
+### Visualizações e Arte
+- **Zoom Suave de Lançamento Restaurado**: Reativada a clássica animação de 0.36s com zoom cúbico, pulso e borda brilhante tanto no lançamento frio quanto ao resumir jogos.
+- **Melhorias na Vista Metro**: Blocos 2x1 exibem banners widescreen 16:9 do SteamGridDB com logotipo, e blocos 2x2 exibem o ícone quadrado completo em alta resolução sem cortes.
+- **Artes Quadradas em Alta Resolução**: A busca do SteamGridDB agora baixa automaticamente artes quadradas de 1024x1024, e o IconStreamer decodifica ícones nativos na resolução total de 256px.
+
+### Configurações e Personalização
+- **Seletores de Fuso Horário e Idioma**: Caixas de diálogo interativas pesquisáveis nas configurações do sistema para trocar localização e idioma com filtro instantâneo.
+- **Controles de Áudio ao Vivo**: Silenciamento automático de alto-falantes e seleção de saída de áudio de TV nas configurações de áudio.
+- **Tela e Apelido**: Controle deslizante de underscan de TV e edição do apelido do console pelo teclado.
+- **Personalização de Pastas**: 6 novos estilos visuais de pasta e opção "Show Cover" para usar a capa do jogo principal na miniatura.
+- **Animações de Zoom e Balanço**: Abertura e fechamento de pastas com zoom suave e leve balanço dos ícones ao reordenar em modo de edição.
+- **Tema Automático Dia/Noite**: Troca automática de temas com base em horários definidos ou cálculo de nascer/pôr do sol local.
+- **Reparo de Instalação e Auto-Backup**: O OmniLaunch Manager agora conta com carregador de fontes em memória e botão de reparo de instalação, e o daemon mantém backup automático das configurações em `/backup/OmniLaunch`.
+
 # OmniLaunch 1.1.1
 
 Hotfix release for OmniLaunch: fixes theme preset scanning and auto-apply after fast return from games, preserves curated catalog ordering in Theme Shop, adds automatic background audio download and playback for video themes, and expands the animated theme store with soundtracks and new content.
