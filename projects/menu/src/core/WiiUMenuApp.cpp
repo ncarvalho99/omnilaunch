@@ -3230,7 +3230,7 @@ void WiiUMenuApp::updateGridMetroContext() {
     m_grid->onMetroTileSpanChanged([this](std::uint64_t titleId, int spanW, int spanH) {
         m_config.metroTileSpans[titleId] = {spanW, spanH};
         m_config.save();
-        if (spanW > 1 || spanH > 1) {
+        if (spanW == 2 && spanH == 1) {
             if (!SteamGridDbManager::hasArtwork(titleId) && !m_steamGridDb.running()) {
                 for (const auto& app : m_allApps) {
                     if (app.titleId == titleId) {
@@ -3241,10 +3241,12 @@ void WiiUMenuApp::updateGridMetroContext() {
             }
             ensureGameArtwork(titleId);
             syncGameArtworkTextures(titleId);
+        } else {
+            syncGameArtworkTextures(titleId);
         }
     });
     for (const auto& kv : m_config.metroTileSpans) {
-        if (kv.second.first > 1 || kv.second.second > 1) {
+        if (kv.second.first == 2 && kv.second.second == 1) {
             if (!SteamGridDbManager::hasArtwork(kv.first) && !m_steamGridDb.running()) {
                 for (const auto& app : m_allApps) {
                     if (app.titleId == kv.first) {
@@ -3265,18 +3267,30 @@ void WiiUMenuApp::cycleCurrentMetroTileSize() {
     if (focused >= 0) {
         auto icon = m_grid->metroSharedIconAt(focused);
         if (icon && icon->titleId() != 0 && icon->titleId() < 0xF000000000000000ULL) {
-            if (!SteamGridDbManager::hasArtwork(icon->titleId()) && !m_steamGridDb.running()) {
-                for (const auto& app : m_allApps) {
-                    if (app.titleId == icon->titleId()) {
-                        m_steamGridDb.start(m_config.steamGridDbApiKey, {app});
-                        break;
+            int nextW = 1, nextH = 1;
+            auto it = m_config.metroTileSpans.find(icon->titleId());
+            int curW = (it != m_config.metroTileSpans.end()) ? it->second.first : 1;
+            int curH = (it != m_config.metroTileSpans.end()) ? it->second.second : 1;
+            if (curW == 1 && curH == 1) { nextW = 2; nextH = 1; }
+            else if (curW == 2 && curH == 1) { nextW = 2; nextH = 2; }
+            else { nextW = 1; nextH = 1; }
+
+            if (nextW == 2 && nextH == 1) {
+                if (!SteamGridDbManager::hasArtwork(icon->titleId()) && !m_steamGridDb.running()) {
+                    for (const auto& app : m_allApps) {
+                        if (app.titleId == icon->titleId()) {
+                            m_steamGridDb.start(m_config.steamGridDbApiKey, {app});
+                            break;
+                        }
                     }
                 }
-            }
-            ensureGameArtwork(icon->titleId());
-            const auto artwork = m_gameArtwork.find(icon->titleId());
-            if (artwork != m_gameArtwork.end()) {
-                icon->setWideGameTextures(artwork->second.hero.get(), artwork->second.logo.get());
+                ensureGameArtwork(icon->titleId());
+                const auto artwork = m_gameArtwork.find(icon->titleId());
+                if (artwork != m_gameArtwork.end()) {
+                    icon->setWideGameTextures(artwork->second.hero.get(), artwork->second.logo.get());
+                }
+            } else {
+                icon->setWideGameTextures(nullptr, nullptr);
             }
         }
         m_grid->cycleMetroTileSize(focused);
@@ -4126,14 +4140,14 @@ void WiiUMenuApp::syncGameArtworkTextures(std::uint64_t titleId) {
     for (const auto& icon : m_grid->allIcons()) {
         if (!icon || icon->entryKind() != GridEntryKind::Application || icon->titleId() != titleId)
             continue;
-        bool isExpanded = (icon->gridSpanColumns() > 1 || icon->gridSpanRows() > 1);
+        bool isWide = (icon->gridSpanColumns() > 1 && icon->gridSpanRows() == 1);
         if (m_appLayoutMode == AppLayoutMode::Metro) {
             auto it = m_config.metroTileSpans.find(titleId);
-            if (it != m_config.metroTileSpans.end() && (it->second.first > 1 || it->second.second > 1)) {
-                isExpanded = true;
+            if (it != m_config.metroTileSpans.end()) {
+                isWide = (it->second.first == 2 && it->second.second == 1);
             }
         }
-        if (isExpanded) {
+        if (isWide) {
             if (artwork != m_gameArtwork.end()) {
                 icon->setWideGameTextures(artwork->second.hero.get(),
                                           artwork->second.logo.get());
@@ -4740,14 +4754,14 @@ void WiiUMenuApp::syncWidgetPageAssets() {
         const auto* icon = icons[i].get();
         if (!icon || icon->entryKind() != GridEntryKind::Application)
             continue;
-        bool isExpanded = (icon->gridSpanColumns() > 1 || icon->gridSpanRows() > 1);
+        bool isWide = (icon->gridSpanColumns() > 1 && icon->gridSpanRows() == 1);
         if (isMetro) {
             auto it = m_config.metroTileSpans.find(icon->titleId());
-            if (it != m_config.metroTileSpans.end() && (it->second.first > 1 || it->second.second > 1)) {
-                isExpanded = true;
+            if (it != m_config.metroTileSpans.end()) {
+                isWide = (it->second.first == 2 && it->second.second == 1);
             }
         }
-        if (!isExpanded)
+        if (!isWide)
             continue;
         if (current[i]) {
             currentGameArtwork.insert(icon->titleId());
@@ -4803,14 +4817,14 @@ void WiiUMenuApp::syncWidgetPageAssets() {
         if (!icon || !current[i] ||
             icon->entryKind() != GridEntryKind::Application)
             continue;
-        bool isExpanded = (icon->gridSpanColumns() > 1 || icon->gridSpanRows() > 1);
+        bool isWide = (icon->gridSpanColumns() > 1 && icon->gridSpanRows() == 1);
         if (isMetro) {
             auto it = m_config.metroTileSpans.find(icon->titleId());
-            if (it != m_config.metroTileSpans.end() && (it->second.first > 1 || it->second.second > 1)) {
-                isExpanded = true;
+            if (it != m_config.metroTileSpans.end()) {
+                isWide = (it->second.first == 2 && it->second.second == 1);
             }
         }
-        if (!isExpanded)
+        if (!isWide)
             continue;
         const auto artwork = m_gameArtwork.find(icon->titleId());
         if (artwork != m_gameArtwork.end())
@@ -6188,16 +6202,16 @@ std::shared_ptr<GlossyIcon> WiiUMenuApp::makeIcon(const AppEntry& entry) {
     icon->setFavorite(entry.isFavorite);
     icon->setPlaytimeBadge(playtimeBadgeFor(entry));
     icon->setGridSpan(entry.widgetColumns, entry.widgetRows);
-    bool isWideOrLarge = false;
+    bool isWide = false;
     if (m_appLayoutMode == AppLayoutMode::Grid && entry.widgetColumns > 1 && entry.widgetRows == 1) {
-        isWideOrLarge = true;
+        isWide = true;
     } else if (m_appLayoutMode == AppLayoutMode::Metro) {
         auto it = m_config.metroTileSpans.find(entry.titleId);
-        if (it != m_config.metroTileSpans.end() && (it->second.first > 1 || it->second.second > 1)) {
-            isWideOrLarge = true;
+        if (it != m_config.metroTileSpans.end()) {
+            isWide = (it->second.first == 2 && it->second.second == 1);
         }
     }
-    if (isWideOrLarge) {
+    if (isWide) {
         const auto artwork = m_gameArtwork.find(entry.titleId);
         if (artwork != m_gameArtwork.end())
             icon->setWideGameTextures(artwork->second.hero.get(),

@@ -893,14 +893,14 @@ void WiiUMenuApp::syncSteamGridDb() {
             if (m_grid) {
                 for (const auto& icon : m_grid->allIcons()) {
                     if (!icon || icon->entryKind() != GridEntryKind::Application) continue;
-                    bool isExpanded = (icon->gridSpanColumns() > 1 || icon->gridSpanRows() > 1);
+                    bool isWide = (icon->gridSpanColumns() > 1 && icon->gridSpanRows() == 1);
                     if (m_appLayoutMode == AppLayoutMode::Metro) {
                         auto it = m_config.metroTileSpans.find(icon->titleId());
-                        if (it != m_config.metroTileSpans.end() && (it->second.first > 1 || it->second.second > 1)) {
-                            isExpanded = true;
+                        if (it != m_config.metroTileSpans.end()) {
+                            isWide = (it->second.first == 2 && it->second.second == 1);
                         }
                     }
-                    if (isExpanded) {
+                    if (isWide) {
                         ensureGameArtwork(icon->titleId());
                     }
                 }
