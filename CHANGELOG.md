@@ -1,3 +1,29 @@
+# OmniLaunch 1.2.1
+
+Hotfix and ergonomics release for OmniLaunch: configurable view switch button (Minus vs R) to prevent conflicts with Homebrew Menu launching, custom manual background opacity scale and overlay fix, and improved Game Gallery tab layout.
+
+If you encounter any bugs, please report them directly to the developer on Telegram at https://t.me/ncarvalho99 with your console logs (`/config/OmniLaunch/menu.log`).
+
+## English
+
+### Controls & Navigation
+- **Configurable View Switch Button**: Added an option in OmniLaunch > Options to set the view cycling button to either **R** or **- (Minus)**. When set to Minus, the sort shortcut automatically swaps to R, keeping R free to hold on game launch for Homebrew Menu access (fixes #1).
+
+### Views & Artwork
+- **Custom Background Opacity**: Manually selected game backgrounds now honor the artwork opacity scale setting configured in OmniLaunch > SteamGridDB (fixes #2).
+- **Backdrop Overlay Fix**: When a custom game background is active, the automatic SteamGridDB hero backdrop is disabled, preventing double image overlay and visual clutter (fixes #2).
+- **Game Gallery Layout**: In the Game Gallery, the "Backgrounds / Heroes" tab is now positioned directly below "Covers / Grids" instead of being pinned to the bottom of the screen.
+
+## Português
+
+### Controles e Navegação
+- **Botão de Troca de Vista Configurável**: Adicionada opção em OmniLaunch > Opções para definir o botão de alternância de modos de visualização entre **R** e **- (Minus)**. Ao escolher Minus, o atalho de ordenação inverte automaticamente para R, permitindo segurar R ao abrir jogos para acessar o Homebrew Menu sem trocar de layout acidentalmente (corrige #1).
+
+### Visualizações e Arte
+- **Opacidade de Fundo Manual**: Imagens de fundo definidas manualmente agora respeitam o ajuste de opacidade configurado em OmniLaunch > SteamGridDB (corrige #2).
+- **Correção de Sobreposição de Fundo**: Quando um jogo possui fundo manual ativo, a imagem hero automática do SteamGridDB é desativada, eliminando a sobreposição de duas imagens (corrige #2).
+- **Layout da Galeria de Jogos**: Na Galeria de Jogos, a aba "Fundos" agora fica posicionada logo abaixo de "Capas", em vez de fixada no rodapé da tela.
+
 # OmniLaunch 1.2.0
 
 Major update for OmniLaunch: comprehensive system and hardware stability enhancements, extensive memory and performance optimizations, advanced settings, folder customization with new visual styles and animations, automatic Day/Night theme switching, full docked 1080p scaling, restored smooth launch and resume zoom animations, high-resolution square artwork downloads, and seamless Metro live tiles support.
