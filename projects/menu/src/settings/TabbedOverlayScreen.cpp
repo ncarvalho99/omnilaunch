@@ -418,7 +418,7 @@ void TabbedOverlayScreen::rebuildTabBar() {
     float tabW = std::max(0.f, tr.width - kTabRailInset * 2.f);
     float tabH = tabCardHeight((int)m_tabs.size(), tr);
 
-    const bool hasBottomPinnedTab = (m_mode == ScreenMode::ThemeShop && m_tabs.size() > 1);
+    const bool hasBottomPinnedTab = (m_mode == ScreenMode::ThemeShop && m_pinBottomTab && m_tabs.size() > 1);
 
     for (int i = 0; i < (int)m_tabs.size(); ++i) {
         auto tabBox = std::make_shared<SettingsTabWidget>(m_tabs[i].name);
@@ -653,7 +653,7 @@ void TabbedOverlayScreen::syncDebugWireframeRects(const nxui::Rect& panel) {
     float tabY = tr.y + kTabRailInset;
     float tabW = std::max(0.f, tr.width - kTabRailInset * 2.f);
     float tabH = tabCardHeight((int)tabChildren.size(), tr);
-    const bool hasBottomPinnedTab = (m_mode == ScreenMode::ThemeShop && tabChildren.size() > 1);
+    const bool hasBottomPinnedTab = (m_mode == ScreenMode::ThemeShop && m_pinBottomTab && tabChildren.size() > 1);
     for (int i = 0; i < (int)tabChildren.size(); ++i) {
         float currentY = (hasBottomPinnedTab && i == (int)tabChildren.size() - 1)
             ? (tr.bottom() - kTabRailInset - tabH)
@@ -724,7 +724,7 @@ void TabbedOverlayScreen::drawTabs(nxui::Renderer& ren, const nxui::Rect& panel,
     float rowOpacity = opacity * reveal;
     float rowYOffset = (1.f - reveal) * 6.f;
 
-    const bool hasBottomPinnedTab = (m_mode == ScreenMode::ThemeShop && tabChildren.size() > 1);
+    const bool hasBottomPinnedTab = (m_mode == ScreenMode::ThemeShop && m_pinBottomTab && tabChildren.size() > 1);
 
     for (int i = 0; i < (int)tabChildren.size() && i < (int)m_tabs.size(); ++i) {
         auto* tab = static_cast<SettingsTabWidget*>(tabChildren[i].get());

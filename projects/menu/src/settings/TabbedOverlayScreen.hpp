@@ -63,6 +63,9 @@ public:
     void setSceneHidden(bool hidden) { m_sceneHidden = hidden; }
     bool sceneHidden() const         { return m_sceneHidden; }
 
+    void setPinBottomTabEnabled(bool enabled) { m_pinBottomTab = enabled; }
+    bool isPinBottomTabEnabled() const { return m_pinBottomTab; }
+
     void rebuildCurrentTab();
     void refreshCurrentTabWidgets();
     void handleTouch(nxui::Input& input);
@@ -312,6 +315,7 @@ protected:
 
     std::vector<Tab> m_tabs;
     ScreenMode m_mode = ScreenMode::Settings;
+    bool              m_pinBottomTab = true;
     nxui::Font*       m_font      = nullptr;
     nxui::Font*       m_smallFont = nullptr;
     const nxui::Theme* m_theme    = nullptr;

@@ -34,6 +34,7 @@ const char* phaseLabel(GameGalleryClient::Phase phase) {
 
 GameGalleryScreen::GameGalleryScreen()
     : TabbedOverlayScreen(ScreenMode::ThemeShop) {
+    setPinBottomTabEnabled(false);
 }
 
 void GameGalleryScreen::openForGame(std::uint64_t titleId, std::string title) {
