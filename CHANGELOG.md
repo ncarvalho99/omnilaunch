@@ -1,3 +1,25 @@
+# OmniLaunch 1.2.2
+
+Hotfix release for OmniLaunch: unified manual and SteamGridDB game backdrop rendering, instant backdrop loading via pre-decoded raw cache, neighbor title prefetching for manual backgrounds, and identical opacity scaling (fixes #3).
+
+If you encounter any bugs, please report them directly to the developer on Telegram at https://t.me/ncarvalho99 with your console logs (`/config/OmniLaunch/menu.log`).
+
+## English
+
+### Views & Artwork
+- **Unified Backdrop Pipeline**: Custom manual game backgrounds are now handled directly inside the core `SteamGridDbBackdrop` pipeline instead of a separate legacy widget. This eliminates any disparity in opacity, shaders, or color between manual and automatic backgrounds (fixes #3).
+- **Instant Raw Backdrop Caching**: Manual backgrounds now generate and utilize fast `.1280x720.rgba-cache` files on the SD card (pre-generated immediately upon selecting an image in Game Gallery), reducing SD read latency from ~500ms to under 10ms (fixes #3).
+- **Neighbor Title Prefetching**: Games with custom backgrounds now participate in the home grid prefetch queue, loading adjacent titles into RAM before navigation occurs for instant, stutter-free transitions.
+- **Smooth Crossfades**: Custom backgrounds now transition with the same smooth 0.52s cubic crossfade curve as automatic artwork.
+
+## Português
+
+### Visualizações e Arte
+- **Pipeline Unificado de Fundos**: Imagens de fundo manuais agora são gerenciadas diretamente pelo renderizador principal `SteamGridDbBackdrop`, em vez de um widget legado separado. Isso elimina qualquer diferença de opacidade, shaders ou tonalidade entre fundos manuais e automáticos (corrige #3).
+- **Carregamento Instantâneo via Cache Bruto**: Fundos manuais agora geram e utilizam cache binário `.1280x720.rgba-cache` no cartão SD (criado em segundo plano no momento da escolha na Galeria), reduzindo o tempo de carregamento de ~500ms para menos de 10ms (corrige #3).
+- **Pré-carregamento de Vizinhos**: Jogos com fundos customizados agora entram na fila de prefetch da tela inicial, carregando títulos adjacentes na RAM antes da navegação para transições instantâneas e sem engasgos.
+- **Transições Suaves em Crossfade**: Fundos manuais agora alternam com a mesma curva cúbica suave de crossfade de 0.52s das artes automáticas.
+
 # OmniLaunch 1.2.1
 
 Hotfix and ergonomics release for OmniLaunch: configurable view switch button (Minus vs R) to prevent conflicts with Homebrew Menu launching, custom manual background opacity scale and overlay fix, and improved Game Gallery tab layout.

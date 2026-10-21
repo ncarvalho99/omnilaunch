@@ -1,17 +1,13 @@
 
-Controls & Navigation
-- Configurable View Switch Button: Added an option in OmniLaunch > Options to set the view cycling button to either R or - (Minus). When set to Minus, the sort shortcut automatically swaps to R, keeping R free to hold on game launch for Homebrew Menu access (fixes 1).
-
 Views & Artwork
-- Custom Background Opacity: Manually selected game backgrounds now honor the artwork opacity scale setting configured in OmniLaunch > SteamGridDB (fixes 2).
-- Backdrop Overlay Fix: When a custom game background is active, the automatic SteamGridDB hero backdrop is disabled, preventing double image overlay and visual clutter (fixes 2).
-- Game Gallery Layout: In the Game Gallery, the "Backgrounds / Heroes" tab is now positioned directly below "Covers / Grids" instead of being pinned to the bottom of the screen.
+- Unified Backdrop Pipeline: Custom manual game backgrounds are now handled directly inside the core SteamGridDbBackdrop pipeline instead of a separate legacy widget. This eliminates any disparity in opacity, shaders, or color between manual and automatic backgrounds (fixes 3).
+- Instant Raw Backdrop Caching: Manual backgrounds now generate and utilize fast .1280x720.rgba-cache files on the SD card (pre-generated immediately upon selecting an image in Game Gallery), reducing SD read latency from ~500ms to under 10ms (fixes 3).
+- Neighbor Title Prefetching: Games with custom backgrounds now participate in the home grid prefetch queue, loading adjacent titles into RAM before navigation occurs for instant, stutter-free transitions.
+- Smooth Crossfades: Custom backgrounds now transition with the same smooth 0.52s cubic crossfade curve as automatic artwork.
 --pt-BR--
 
-Controles e Navegação
-- Botão de Troca de Vista Configurável: Adicionada opção em OmniLaunch > Opções para definir o botão de alternância de modos de visualização entre R e - (Minus). Ao escolher Minus, o atalho de ordenação inverte automaticamente para R, permitindo segurar R ao abrir jogos para acessar o Homebrew Menu sem trocar de layout acidentalmente (corrige 1).
-
 Visualizações e Arte
-- Opacidade de Fundo Manual: Imagens de fundo definidas manualmente agora respeitam o ajuste de opacidade configurado em OmniLaunch > SteamGridDB (corrige 2).
-- Correção de Sobreposição de Fundo: Quando um jogo possui fundo manual ativo, a imagem hero automática do SteamGridDB é desativada, eliminando a sobreposição de duas imagens (corrige 2).
-- Layout da Galeria de Jogos: Na Galeria de Jogos, a aba "Fundos" agora fica posicionada logo abaixo de "Capas", em vez de fixada no rodapé da tela.
+- Pipeline Unificado de Fundos: Imagens de fundo manuais agora são gerenciadas diretamente pelo renderizador principal SteamGridDbBackdrop, em vez de um widget legado separado. Isso elimina qualquer diferença de opacidade, shaders ou tonalidade entre fundos manuais e automáticos (corrige 3).
+- Carregamento Instantâneo via Cache Bruto: Fundos manuais agora geram e utilizam cache binário .1280x720.rgba-cache no cartão SD (criado em segundo plano no momento da escolha na Galeria), reduzindo o tempo de carregamento de ~500ms para menos de 10ms (corrige 3).
+- Pré-carregamento de Vizinhos: Jogos com fundos customizados agora entram na fila de prefetch da tela inicial, carregando títulos adjacentes na RAM antes da navegação para transições instantâneas e sem engasgos.
+- Transições Suaves em Crossfade: Fundos manuais agora alternam com a mesma curva cúbica suave de crossfade de 0.52s das artes automáticas.
