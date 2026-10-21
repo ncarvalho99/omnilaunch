@@ -2,6 +2,7 @@
 
 #include "steamgriddb/ArtworkCache.hpp"
 #include "steamgriddb/SteamGridDbManager.hpp"
+#include "gallery/GameArtworkStore.hpp"
 #include "core/DebugLog.hpp"
 
 #include <nxui/core/Renderer.hpp>
@@ -46,6 +47,14 @@ void SteamGridDbBackdrop::invalidateArtworkCaches() {
         set.titleId = 0;
     m_decodedCache.clear();
     m_missingArtworkTitleIds.clear();
+}
+
+bool SteamGridDbBackdrop::hasArtwork(std::uint64_t titleId) const {
+    if (titleId == 0) return false;
+    const std::string manualPath = gallery::GameArtworkStore::pathFor(
+        titleId, gallery::ArtworkKind::Background);
+    if (!manualPath.empty()) return true;
+    return SteamGridDbManager::hasArtwork(titleId);
 }
 
 bool SteamGridDbBackdrop::hasGpuArtwork(std::uint64_t titleId) const {
@@ -109,8 +118,8 @@ void SteamGridDbBackdrop::showTitle(std::uint64_t titleId, bool forceReload) {
     auto missingArtwork = std::find(m_missingArtworkTitleIds.begin(),
                                     m_missingArtworkTitleIds.end(), titleId);
     if (!forceReload && missingArtwork != m_missingArtworkTitleIds.end()
-        && SteamGridDbManager::hasArtwork(titleId)) {
-        // A SteamGridDB download may have completed since this title was
+        && hasArtwork(titleId)) {
+        // A SteamGridDB download or manual selection may have completed since this title was
         // classified as missing. Revalidate the negative cache during the same
         // menu session instead of requiring a restart.
         m_missingArtworkTitleIds.erase(missingArtwork);
@@ -136,7 +145,7 @@ void SteamGridDbBackdrop::showTitle(std::uint64_t titleId, bool forceReload) {
     // A directory lookup is much cheaper than decoding an image and lets a
     // missing-artwork selection start fading immediately instead of retaining
     // the previous game's hero until the worker completes.
-    if (!forceReload && !SteamGridDbManager::hasArtwork(titleId)) {
+    if (!forceReload && !hasArtwork(titleId)) {
         if (m_pendingDecode && m_pendingDecode->state)
             m_pendingDecode->state->cancelled.store(true);
         m_readyArtwork.reset();
@@ -226,15 +235,22 @@ void SteamGridDbBackdrop::startPendingDecode(std::uint64_t titleId) {
 
     auto work = [state, titleId]() {
         const auto started = std::chrono::steady_clock::now();
-        if (titleId != 0 && SteamGridDbManager::hasArtwork(titleId)) {
+        if (titleId != 0) {
             // Fixed canvases let both double-buffer slots reuse their existing
             // MemBlocks. Variable source dimensions previously triggered a
             // free + waitIdle on the render thread during focus changes.
-            state->artwork.hero = decodeImage(
-                SteamGridDbManager::heroPath(titleId), 1280, 720, true);
-            if (!state->cancelled.load())
+            const std::string manualPath = gallery::GameArtworkStore::pathFor(
+                titleId, gallery::ArtworkKind::Background);
+            const std::string heroSource = !manualPath.empty()
+                ? manualPath
+                : (SteamGridDbManager::hasArtwork(titleId) ? SteamGridDbManager::heroPath(titleId) : std::string());
+            if (!heroSource.empty()) {
+                state->artwork.hero = decodeImage(heroSource, 1280, 720, true);
+            }
+            if (!state->cancelled.load() && SteamGridDbManager::hasArtwork(titleId)) {
                 state->artwork.logo = decodeImage(
                     SteamGridDbManager::logoPath(titleId), 640, 180, false);
+            }
         }
         state->artwork.decodeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - started).count();
@@ -281,7 +297,7 @@ void SteamGridDbBackdrop::drawSet(nxui::Renderer& renderer,
     if (alpha <= 0.002f) return;
     const nxui::Rect screen = rect();
 
-    if (set.hasHero && set.hero.valid() && !m_customBackgroundActive) {
+    if (set.hasHero && set.hero.valid()) {
         // The per-layout ceilings are this fork's: the carousel views showcase the
         // hero, the paged grid keeps it as a faint wash. Upstream 2.6.5 added a
         // user-facing opacity slider, so the ceiling is scaled by it rather than

@@ -1,4 +1,5 @@
 #include "GameArtworkStore.hpp"
+#include "steamgriddb/ArtworkCache.hpp"
 
 #include <cerrno>
 #include <cstdio>
@@ -146,6 +147,11 @@ gallery::ArtworkSaveResult gallery::GameArtworkStore::save(
         writeFile(stagedMetadata, reinterpret_cast<const std::uint8_t*>(serialized.data()), serialized.size());
         replaceFile(stagedMetadata, metadataPath);
 
+        if (kind == ArtworkKind::Background) {
+            steamgriddb::artwork::remove(alternatePath, 1280, 720);
+            steamgriddb::artwork::prepare(artworkPath, 1280, 720, true);
+        }
+
         result.ok = true;
         result.path = artworkPath;
     } catch (const std::exception& ex) {
@@ -174,6 +180,9 @@ gallery::ArtworkSaveResult gallery::GameArtworkStore::restoreDefault(
                 throw std::runtime_error("could not remove artwork file");
             std::filesystem::remove(path + ".previous", ec);
             std::filesystem::remove(path + ".new", ec);
+            if (kind == ArtworkKind::Background) {
+                steamgriddb::artwork::remove(path, 1280, 720);
+            }
         }
 
         const std::string metadataPath = directory + "/artwork.json";

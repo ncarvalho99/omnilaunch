@@ -618,23 +618,11 @@ void WiiUMenuApp::wireFocusCallback() {
 void WiiUMenuApp::refreshGameArtworkBackdrop(std::uint64_t titleId) {
     if (!m_gameArtworkBackdrop)
         return;
-    const std::string path = gallery::GameArtworkStore::pathFor(
-        titleId, gallery::ArtworkKind::Background);
-    const bool hasCustomBg = !path.empty();
+    // Manual artwork is now unified and decoded directly inside SteamGridDbBackdrop
+    // with raw caching and prefetching. Clear legacy GameArtworkBackdrop.
+    m_gameArtworkBackdrop->clearArtwork(&app().gpu());
     if (m_steamGridDbBackdrop)
-        m_steamGridDbBackdrop->setCustomBackgroundActive(hasCustomBg);
-    if (path == m_gameArtworkBackdrop->artworkPath())
-        return;
-    if (path.empty()) {
-        m_gameArtworkBackdrop->clearArtwork(&app().gpu());
-        return;
-    }
-    // Only asks. Reading the cover off the card and decoding it happens on a
-    // worker, and the image arrives a few frames later through
-    // pollPendingArtwork. Doing it here is what made every step onto a game
-    // with custom art stall for about half a second.
-    m_gameArtworkBackdrop->requestArtwork(m_threadPool, path);
-    DebugLog::log("[gallery] background requested: %s", path.c_str());
+        m_steamGridDbBackdrop->showTitle(titleId, false);
 }
 
 void WiiUMenuApp::raiseOverlay(const std::shared_ptr<nxui::Widget>& overlay) {
@@ -2061,6 +2049,8 @@ void WiiUMenuApp::restoreGameArtworkFromOptions(
         const StreamPump pump = gridStreamPump();
         m_iconStreamer.forceReload(pump.page, pump.perPage,
                                    app().gpu(), app().renderer(), m_grid->allIcons());
+    } else if (result.ok && !cover && m_steamGridDbBackdrop) {
+        m_steamGridDbBackdrop->showTitle(titleId, true);
     }
     DebugLog::log("[gallery] options restore %s: title=%016llX ok=%d error=%s",
                   cover ? "cover" : "background", static_cast<unsigned long long>(titleId),
@@ -2411,10 +2401,8 @@ void WiiUMenuApp::syncGameArtworkSave() {
             m_iconStreamer.forceReload(pump.page, pump.perPage,
                                        app().gpu(), app().renderer(), m_grid->allIcons());
         } else if (!cover) {
-            auto* focused = focusManager().current();
-            if (focused && focused->tag() == "glossy_icon" &&
-                static_cast<GlossyIcon*>(focused)->titleId() == result.titleId)
-                refreshGameArtworkBackdrop(result.titleId);
+            if (m_steamGridDbBackdrop)
+                m_steamGridDbBackdrop->showTitle(result.titleId, true);
         }
     } else {
         m_gameGallery->requestToast(i18n.tr("dialog.gallery_save_failed",
