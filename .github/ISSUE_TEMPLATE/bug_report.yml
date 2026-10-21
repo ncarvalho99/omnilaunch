@@ -1,0 +1,77 @@
+name: "Bug Report / Relato de Bug"
+description: "Report an issue, crash, or unexpected behavior in OmniLaunch"
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### ⚠️ Regra Obrigatória / Mandatory Requirement
+        **Todos os relatos de bug precisam obrigatoriamente incluir os logs do console.**
+        Relatos contendo apenas descrições, fotos ou vídeos sem o arquivo de log **serão fechados automaticamente**.
+        
+        **All bug reports must include the console log.**
+        Issues opened with only descriptions, screenshots, or videos without logs **will be automatically closed**.
+        
+        - 📄 **Caminho do log / Log file path:** `sdmc:/config/OmniLaunch/menu.log` (ou `sdmc:/config/OmniLaunch/log.txt`)
+        - 💥 **Em caso de crash / In case of crash:** anexe também o relatório em `sdmc:/atmosphere/crash_reports/`
+
+  - type: input
+    id: version
+    attributes:
+      label: "Versão do OmniLaunch / OmniLaunch Version"
+      description: "Qual versão você está usando? / What version are you running?"
+      placeholder: "ex: 1.2.2"
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: "Ambiente / Environment"
+      description: "Modelo do Switch, versão do Atmosphere e Firmware Horizon / Switch model, Atmosphere version, and Horizon OS Firmware"
+      placeholder: "ex: Switch V1 (Erista), Atmosphere 1.8.0, Firmware 19.0.1"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: "Descrição do Problema / Problem Description"
+      description: "Explique claramente o que aconteceu de errado. / Clearly explain what went wrong."
+      placeholder: "Descreva o comportamento inesperado..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: "Passos para Reproduzir / Steps to Reproduce"
+      description: "Quais passos exatos causam o problema? / What exact steps reproduce the issue?"
+      placeholder: |
+        1. Ir em '...'
+        2. Clicar em '...'
+        3. Observar o erro...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: "Logs do Console / Console Logs (OBRIGATÓRIO / MANDATORY)"
+      description: |
+        Cole o conteúdo do seu `sdmc:/config/OmniLaunch/menu.log` ou arraste e solte o arquivo `.log` / `.txt` aqui dentro desta caixa.
+        Paste the contents of your `sdmc:/config/OmniLaunch/menu.log` or drag & drop the log file into this field.
+      placeholder: |
+        Cole os logs aqui ou anexe o arquivo menu.log / Paste logs here or attach your menu.log file...
+    validations:
+      required: true
+
+  - type: textarea
+    id: media
+    attributes:
+      label: "Capturas de Tela ou Vídeo (Opcional) / Screenshots or Video (Optional)"
+      description: "Arraste imagens ou links para complementar a explicação. / Drag & drop images or links."
+      placeholder: "Anexe imagens ou vídeos adicionais aqui..."
+    validations:
+      required: false

@@ -1,0 +1,37 @@
+name: "Feature Request / Sugestão de Recurso"
+description: "Suggest an idea or enhancement for OmniLaunch"
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Obrigado por sugerir uma melhoria para o OmniLaunch!
+        Thank you for suggesting an improvement for OmniLaunch!
+
+  - type: textarea
+    id: feature
+    attributes:
+      label: "Descrição da Sugestão / Feature Description"
+      description: "Descreva a funcionalidade que gostaria de ver no OmniLaunch. / Describe the feature you would like to see."
+      placeholder: "Gostaria que o OmniLaunch pudesse..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: "Motivação ou Caso de Uso / Motivation & Use Case"
+      description: "Por que essa funcionalidade seria útil? / Why would this feature be useful?"
+      placeholder: "Isso facilitaria..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: "Alternativas Consideradas (Opcional) / Alternatives Considered (Optional)"
+      description: "Alguma outra solução ou ideia alternativa? / Any alternative solutions considered?"
+      placeholder: "Tentei fazer..."
+    validations:
+      required: false

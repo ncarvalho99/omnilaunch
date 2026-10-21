@@ -319,7 +319,7 @@ OmniLaunch is an active project following a comprehensive process of implementat
 
 If you encounter any issues:
 - **Telegram:** Reach out directly to the developer at [https://t.me/ncarvalho99](https://t.me/ncarvalho99)
-- **Logs:** When reporting a bug, please include your console log located at `sdmc:/config/OmniLaunch/menu.log` (or `sdmc:/config/OmniLaunch/log.txt`).
+- **GitHub Issues:** Open an issue following the template. **Console logs (`sdmc:/config/OmniLaunch/menu.log` or `log.txt`) are strictly required.** Issues opened without logs are automatically closed.
 
 ---
 
