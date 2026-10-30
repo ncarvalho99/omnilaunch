@@ -33,7 +33,11 @@ VECTEEZY_MAP = {
 }
 
 # Themes pinned to appear first in the catalog for OmniLaunch
-FEATURED_THEMES = ['ascension-of-christ', 'saving-peter', 'belisarius', 'gethsemane', 'golgotha', 'the-innocent', 'the-leper-king']
+FEATURED_THEMES = [
+    'the-large-jelling-runestone', 'st-ignatius-of-antioch', 'the-lord-is-my-shepherd',
+    'archangel-michael', 'ascension-of-christ', 'saving-peter', 'belisarius',
+    'gethsemane', 'golgotha', 'the-innocent', 'the-leper-king'
+]
 
 # Console playback limits. Mirror VideoPlayer.cpp wallpaperStreamRejection():
 # H.264, 8-bit 4:2:0, at most 1920x1080 and 60 fps. A file outside them is
@@ -274,11 +278,15 @@ def main():
         featured = []
         others = []
         by_id = {x.get('id'): x for x in item_list}
+        by_id_lower = {x.get('id', '').lower(): x for x in item_list}
+        featured_ids_lower = set()
         for fid in FEATURED_THEMES:
-            if fid in by_id:
-                featured.append(by_id[fid])
+            matched = by_id.get(fid) or by_id_lower.get(fid.lower())
+            if matched and matched.get('id', '').lower() not in featured_ids_lower:
+                featured.append(matched)
+                featured_ids_lower.add(matched.get('id', '').lower())
         for x in item_list:
-            if x.get('id') not in FEATURED_THEMES:
+            if x.get('id', '').lower() not in featured_ids_lower:
                 others.append(x)
         return featured + others
 
