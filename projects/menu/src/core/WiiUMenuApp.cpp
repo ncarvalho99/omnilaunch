@@ -3,6 +3,7 @@
 #include <cctype>
 #include <switchu/sd_commit.hpp>
 #include <switchu/control_cache.hpp>
+#include <switchu/hardware_status.hpp>
 #include "core/PlayTime.hpp"
 #include "widgets/GlossyIcon.hpp"
 #include "widgets/FolderPalette.hpp"
@@ -8559,7 +8560,9 @@ void WiiUMenuApp::onUpdate(float dt) {
         // console was left in rather than leaving it to inference.
         const unsigned opMode = (unsigned)appletGetOperationMode();
         const unsigned perfMode = (unsigned)appletGetPerformanceMode();
-        DebugLog::log("[perf] %.1f fps  avg=%.1fms worst=%.1fms  vsync=%.1fms gpu=%.1fms cpu=%.1fms presInt=%.1fms  opmode=%u perf=%u  draws=%u binds=%u verts=%u blur=%u caps=%u uploads=%u batches=%u uploadwait=%.3fms  settings=%d(1=fullScene,2=sceneHidden) themeshop=%d",
+        const auto thermals = switchu::getThermalReading();
+        const uint32_t gpuClockMhz = switchu::getGpuClockMhz();
+        DebugLog::log("[perf] %.1f fps  avg=%.1fms worst=%.1fms  vsync=%.1fms gpu=%.1fms cpu=%.1fms presInt=%.1fms  opmode=%u perf=%u gpuMhz=%u soc=%.1fC  draws=%u binds=%u verts=%u blur=%u caps=%u uploads=%u batches=%u uploadwait=%.3fms  settings=%d(1=fullScene,2=sceneHidden) themeshop=%d",
                       m_perfFrames / m_perfAccumDt,
                       avgMs,
                       m_perfWorstDt * 1000.f,
@@ -8569,6 +8572,8 @@ void WiiUMenuApp::onUpdate(float dt) {
                       gpu.lastPresentIntervalNs() / 1000000.0,
                       opMode,
                       perfMode,
+                      gpuClockMhz,
+                      thermals.soc,
                       ren.lastFrameDrawCalls(),
                       ren.lastFramePipelineBinds(),
                       ren.lastFrameVertices(),
