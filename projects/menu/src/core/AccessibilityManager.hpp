@@ -17,6 +17,8 @@ public:
     bool initialize(bool enabled, const std::string& voice = "fr",
                     const std::string& dataRoot = {});
     void shutdown();
+    /// Release view-specific speech without terminating the process engine.
+    void cancelAnnouncement();
 
     void setEnabled(bool enabled);
     bool enabled() const { return m_enabled; }

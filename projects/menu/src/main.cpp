@@ -365,8 +365,7 @@ int main(int argc, char* argv[]) {
         AppConfig startupConfig;
         startupConfig.load();
         auto makeMenuActivity = [startupConfig, &homeCore](bool fromTutorial = false) -> std::unique_ptr<nxui::Activity> {
-            auto activity = std::make_unique<WiiUMenuApp>();
-            activity->setHomeCore(&homeCore);
+            auto activity = std::make_unique<WiiUMenuApp>(homeCore);
             if (!fromTutorial)
                 activity->setStartupConfig(startupConfig);
             activity->setTutorialStartupFade(fromTutorial);
@@ -375,8 +374,7 @@ int main(int argc, char* argv[]) {
         if (startupConfig.tutorialCompleted)
             app.setActivity(makeMenuActivity(false));
         else {
-            auto tutorial = std::make_unique<TutorialActivity>(makeMenuActivity);
-            tutorial->setHomeCore(&homeCore);
+            auto tutorial = std::make_unique<TutorialActivity>(homeCore, makeMenuActivity);
             app.setActivity(std::move(tutorial));
         }
         DebugLog::log("[hb] app.initialize...");
@@ -400,8 +398,7 @@ int main(int argc, char* argv[]) {
         AppConfig startupConfig;
         startupConfig.load();
         auto makeMenuActivity = [sysStatus, startupConfig, menuMainTick, menuMainCore, &homeCore](bool fromTutorial = false) -> std::unique_ptr<nxui::Activity> {
-            auto activity = std::make_unique<WiiUMenuApp>();
-            activity->setHomeCore(&homeCore);
+            auto activity = std::make_unique<WiiUMenuApp>(homeCore);
             if (!fromTutorial)
                 activity->setStartupConfig(startupConfig);
             activity->setStartupStatus(sysStatus);
@@ -412,8 +409,7 @@ int main(int argc, char* argv[]) {
         if (startupConfig.tutorialCompleted)
             app.setActivity(makeMenuActivity(false));
         else {
-            auto tutorial = std::make_unique<TutorialActivity>(makeMenuActivity);
-            tutorial->setHomeCore(&homeCore);
+            auto tutorial = std::make_unique<TutorialActivity>(homeCore, makeMenuActivity);
             app.setActivity(std::move(tutorial));
         }
         DebugLog::log("[menu] app.initialize...");

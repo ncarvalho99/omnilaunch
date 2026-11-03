@@ -99,13 +99,11 @@ static constexpr const char* SD_ASSETS = "sdmc:/switch/OmniLaunch";
 
 class WiiUMenuApp : public nxui::Activity {
 public:
-    WiiUMenuApp();
+    explicit WiiUMenuApp(home::HomeCore& core);
     ~WiiUMenuApp();
 
     void setTutorialStartupFade(bool enabled);
     void setStartupConfig(const AppConfig& config);
-    /// Process-lifetime service owner; outlives this Activity (step C1).
-    void setHomeCore(home::HomeCore* core) { m_homeCore = core; }
 
 #ifdef SWITCHU_MENU
     void setStartupStatus(const switchu::smi::SystemStatus& status);
@@ -122,7 +120,7 @@ public:
     nxui::Widget* focusRoot() override;
 
 private:
-    home::HomeCore* m_homeCore = nullptr;
+    home::HomeCore& m_homeCore;
 
     struct GridLayoutMetrics {
         float cellW = 150.f;
@@ -357,8 +355,8 @@ private:
     // Faixas que o tema atual traz. O preset de som carrega em outra thread e
     // chegava depois, sobrescrevendo o que o tema tinha posto -- entao quem
     // carrega o preset precisa saber que nao deve tocar na musica.
-    std::vector<std::string> m_themeMusicTracks;
-    std::vector<TrackInfo> m_customBgmTracks;
+    std::vector<std::string>& m_themeMusicTracks;
+    std::vector<TrackInfo>& m_customBgmTracks;
     void applyUiLanguage();
     void rebuildThemeFromColors();
     ThemePreset buildEffectiveThemePreset();
@@ -507,9 +505,8 @@ private:
     void maybeFetchGeoLocation();
     void pollGeoLocationFetch();
     std::string resolveSoundPresetId(const std::string& preset) const;
-    void loadSoundPreset(const std::string& preset);
+    void finishAudioLoad(bool wait);
     void changeSoundPreset(const std::string& preset);
-    std::vector<std::string> scanAvailablePresets();
     std::vector<TrackInfo> scanCustomBgmTracks();
     void reloadMusicTracks();
     void loadMenuLayout();
@@ -715,9 +712,9 @@ private:
     nxui::Rect m_folderHeaderRest{410.f, 78.f, 460.f, 58.f};
     std::vector<std::shared_ptr<UserAvatarButton>> m_userAvatarButtons;
 
-    AudioManager m_audio;
-    AccessibilityManager m_accessibility;
-    std::future<void>    m_audioFuture;
+    AudioManager& m_audio;
+    AccessibilityManager& m_accessibility;
+    std::future<void>&   m_audioFuture;
     // The config save runs on the thread pool. A power request has to wait on
     // it: the corruption is intermittent at roughly one reboot in three, which
     // is what losing a race with an in-flight write looks like.
@@ -735,7 +732,7 @@ private:
     std::future<void>    m_playtimeFuture;
     bool                 m_playtimeRefreshQueued = false;
     bool                 m_playtimeResortPending = false;
-    bool                 m_audioStarted = false;
+    bool&                m_audioStarted;
     bool                 m_musicFadeActive = false;
 #ifdef SWITCHU_MENU
     uint64_t             m_transitionOriginTick = 0;
@@ -748,10 +745,10 @@ private:
     uint64_t             m_menuMainTick = 0;
     uint32_t             m_menuMainCore = 0;
 #endif
-    std::vector<std::string> m_availablePresets;
-    bool                 m_presetChangePending = false;
-    std::string          m_loadedSoundPreset;
-    std::string          m_pendingSoundPreset;
+    std::vector<std::string>& m_availablePresets;
+    bool&                m_presetChangePending;
+    std::string&         m_loadedSoundPreset;
+    std::string&         m_pendingSoundPreset;
 
     struct ThemePackageTransferShared {
         std::mutex mutex;

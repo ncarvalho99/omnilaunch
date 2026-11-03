@@ -18,11 +18,9 @@ class TutorialActivity : public nxui::Activity {
 public:
     using ActivityFactory = std::function<std::unique_ptr<nxui::Activity>(bool fromTutorial)>;
 
-    explicit TutorialActivity(ActivityFactory nextFactory);
+    TutorialActivity(home::HomeCore& core, ActivityFactory nextFactory);
     ~TutorialActivity() override = default;
 
-    /// Process-lifetime service owner; outlives this Activity (step C1).
-    void setHomeCore(home::HomeCore* core) { m_homeCore = core; }
 
     bool onCreate() override;
     void onDestroy() override;
@@ -31,7 +29,7 @@ public:
     nxui::Widget* focusRoot() override { return nullptr; }
 
 private:
-    home::HomeCore* m_homeCore = nullptr;
+    home::HomeCore& m_homeCore;
 
     enum class StepKind {
         AccessibilityChoice,
@@ -50,7 +48,6 @@ private:
     };
 
     void buildSteps();
-    void loadAnimaleseSfx();
     void buildUi();
     void playAnimaleseFor(char ch);
     void advanceStep();
@@ -76,8 +73,8 @@ private:
     void drawObjectivePanelContent(nxui::Renderer& ren, const Step& step);
 
     ActivityFactory m_nextFactory;
-    AudioManager m_audio;
-    AccessibilityManager m_accessibility;
+    AudioManager& m_audio;
+    AccessibilityManager& m_accessibility;
     nxui::Theme m_theme;
     nxui::Font m_fontTitle;
     nxui::Font m_fontBody;

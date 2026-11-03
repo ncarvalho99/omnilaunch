@@ -14,6 +14,12 @@ const char* shutdownPhaseName(ShutdownPhase phase) {
     return "unknown";
 }
 
+HomeCore::HomeCore() {
+    addShutdownHook(ShutdownPhase::Audio, "audio and accessibility", [this] {
+        m_audio.shutdown();
+    });
+}
+
 HomeCore::~HomeCore() {
     // A normal exit runs every phase explicitly from main(). This only covers
     // an early return; it never reorders work that already ran.

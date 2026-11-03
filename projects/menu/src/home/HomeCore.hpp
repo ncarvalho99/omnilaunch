@@ -4,10 +4,10 @@
 // nxui::Application and outlives it, so a frontend Activity can be replaced at
 // runtime without tearing the services down.
 //
-// Step C1 (integration/homenx_todo.md) only defines the shell and the ordered
-// shutdown phases. Services move in here one at a time in later steps, each
-// together with its owner, initialization, callbacks and finalization.
+// Services move in here one at a time with their initialization, callbacks and
+// finalization. C2 owns audio/accessibility and their preset/playback state.
 
+#include "home/HomeAudio.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -33,7 +33,9 @@ class HomeCore {
 public:
     using Hook = std::function<void()>;
 
-    HomeCore() = default;
+    HomeCore();
+
+    HomeAudio& audioServices() { return m_audio; }
     ~HomeCore();
 
     HomeCore(const HomeCore&) = delete;
@@ -56,6 +58,7 @@ private:
         Hook hook;
     };
 
+    HomeAudio m_audio;
     std::vector<NamedHook> m_hooks[kShutdownPhaseCount];
     int m_lastPhaseRun = -1;
 };

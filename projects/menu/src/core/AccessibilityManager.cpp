@@ -57,8 +57,9 @@ AccessibilityManager::~AccessibilityManager() {
 
 bool AccessibilityManager::initialize(bool enabled, const std::string& voice,
                                       const std::string& dataRoot) {
+    cancelAnnouncement();
     m_enabled = enabled;
-    m_voice = voiceForLanguageTag(voice);
+    setVoiceForLanguageTag(voice);
     m_dataRoot = dataRoot;
     m_speechRate = clampSpeechRate(m_speechRate);
     m_lastAnnouncement.clear();
@@ -120,6 +121,13 @@ bool AccessibilityManager::ensureEngine() {
                   joinPath(usedRoot, "espeak-ng-data").c_str());
 
     return true;
+}
+
+void AccessibilityManager::cancelAnnouncement() {
+    releaseCurrentSpeech();
+    if (m_initialized) espeak_Cancel();
+    m_lastAnnouncement.clear();
+    m_lastFocusContext.clear();
 }
 
 void AccessibilityManager::shutdown() {

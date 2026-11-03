@@ -9,7 +9,12 @@
 AudioManager::~AudioManager() { shutdown(); }
 
 bool AudioManager::initialize() {
-    if (SDL_Init(SDL_INIT_AUDIO) < 0) {
+    if (m_initialized) return true; // Shared across frontend Activities.
+
+    // main() already initializes audio. Do not acquire a second subsystem ref
+    // when reusing the process mixer across Activities.
+    if (!(SDL_WasInit(SDL_INIT_AUDIO) & SDL_INIT_AUDIO) &&
+        SDL_InitSubSystem(SDL_INIT_AUDIO) < 0) {
         std::fprintf(stderr, "[Audio] SDL_Init(AUDIO) failed: %s\n", SDL_GetError());
         return false;
     }

@@ -180,10 +180,6 @@ GridModel compactDynamicLineEntries(const GridModel& source, bool dropWidgets = 
     return compacted;
 }
 
-bool isPackageSoundPreset(const std::string& preset) {
-    return preset.rfind("package:", 0) == 0;
-}
-
 bool pathExists(const std::string& path) {
     std::error_code ec;
     return std::filesystem::exists(path, ec);
@@ -192,45 +188,6 @@ bool pathExists(const std::string& path) {
 bool directoryExists(const std::string& path) {
     std::error_code ec;
     return std::filesystem::is_directory(path, ec);
-}
-
-std::string resolveAudioOverridePath(const std::string& preferredBase,
-                                    const std::string& fallbackBase,
-                                    const char* relativePath) {
-    if (!preferredBase.empty()) {
-        const std::string preferredPath = preferredBase + "/" + relativePath;
-        if (pathExists(preferredPath))
-            return preferredPath;
-    }
-    return fallbackBase + "/" + relativePath;
-}
-
-std::string installedThemePathFromPackagePreset(const std::string& preset) {
-    if (!isPackageSoundPreset(preset))
-        return {};
-
-    const std::string slug = preset.substr(std::strlen("package:"));
-    if (slug.empty())
-        return {};
-
-    const std::string installPath = std::string("sdmc:/config/OmniLaunch/themes/") + slug;
-    return directoryExists(installPath) ? installPath : std::string();
-}
-
-std::string resolveThemeSoundBase(const std::string& installPath) {
-    if (installPath.empty())
-        return {};
-
-    const std::string directSfx = installPath + "/sfx";
-    const std::string directMusic = installPath + "/music";
-    const std::string soundsRoot = installPath + "/sounds";
-
-    const bool hasDirect = directoryExists(directSfx) || directoryExists(directMusic);
-    if (hasDirect)
-        return installPath;
-    if (directoryExists(soundsRoot))
-        return soundsRoot;
-    return {};
 }
 
 // Keep enough side/top clearance so large grids do not overlap HUD/side buttons.
@@ -404,7 +361,18 @@ bool gridModelsRefreshEquivalent(const GridModel& a, const GridModel& b) {
 }
 
 
-WiiUMenuApp::WiiUMenuApp() {}
+WiiUMenuApp::WiiUMenuApp(home::HomeCore& core)
+    : m_homeCore(core),
+      m_themeMusicTracks(core.audioServices().themeMusicTracks),
+      m_customBgmTracks(core.audioServices().customBgmTracks),
+      m_audio(core.audioServices().audio),
+      m_accessibility(core.audioServices().accessibility),
+      m_audioFuture(core.audioServices().loadFuture),
+      m_audioStarted(core.audioServices().started),
+      m_availablePresets(core.audioServices().availablePresets),
+      m_presetChangePending(core.audioServices().presetChangePending),
+      m_loadedSoundPreset(core.audioServices().loadedSoundPreset),
+      m_pendingSoundPreset(core.audioServices().pendingSoundPreset) {}
 WiiUMenuApp::~WiiUMenuApp() {
     m_animalesePlayer.clear();
     rootBox().clearChildren();
@@ -710,25 +678,15 @@ bool WiiUMenuApp::onCreate() {
 
     nxui::I18n::instance().initialize(std::string(SD_ASSETS) + "/i18n", "en-US");
     applyUiLanguage();
-    m_accessibility.initialize(m_config.accessibilityEnabled,
-                               nxui::I18n::instance().activeLanguageTag(),
-                               SD_ASSETS);
-    m_accessibility.setSpeakHints(m_config.accessibilitySpeakHints);
-    m_accessibility.setSpeakContextEveryFocus(m_config.accessibilitySpeakContextEveryFocus);
-    m_accessibility.setSpeechRate(m_config.accessibilitySpeechRate);
+    m_homeCore.audioServices().configureAccessibility(
+        m_config, nxui::I18n::instance().activeLanguageTag());
 
-    m_audioFuture = m_threadPool.submit([this]() {
-        m_audio.initialize();
-        m_availablePresets = scanAvailablePresets();
-        if (!isPackageSoundPreset(m_config.soundPreset) && m_config.soundPreset != kBuiltInSoundPreset) {
-            DebugLog::log("[audio] preset '%s' is no longer shipped, falling back to '%s'",
-                          m_config.soundPreset.c_str(),
-                          kBuiltInSoundPreset);
-            m_config.soundPreset = kBuiltInSoundPreset;
-        }
-        loadSoundPreset(resolveSoundPresetId(m_config.soundPreset));
-    });
-    DebugLog::log("[init] Audio loading started on background thread");
+    if (m_config.soundPreset.rfind("package:", 0) != 0 &&
+        m_config.soundPreset != kBuiltInSoundPreset)
+        m_config.soundPreset = kBuiltInSoundPreset;
+    // Service workers own immutable configuration/theme snapshots, never this view.
+    m_homeCore.audioServices().startClassic(m_threadPool, m_config, m_allPresets);
+    DebugLog::log("[init] Audio loading started or process audio reused");
 
     if (m_launcher.suspendedTitleId() != 0) {
         m_deferredBluetoothInitFrames = 120;
@@ -889,7 +847,7 @@ void WiiUMenuApp::onDestroy() {
     closingTrace.http_cancel_done_tick = armGetSystemTick();
 #endif
 
-    if (m_audioFuture.valid()) m_audioFuture.get();
+    finishAudioLoad(true);
 #ifdef SWITCHU_MENU
     if (m_playtimeRefresh)
         m_playtimeRefresh->cancelled.store(true);
@@ -960,8 +918,8 @@ void WiiUMenuApp::onDestroy() {
     if (m_layoutDirty)
         saveMenuLayout();
     m_animalesePlayer.clear();
-    m_accessibility.shutdown();
-    m_audio.shutdown();
+    // Stop only this view's speech; the engine and mixer belong to HomeCore.
+    m_accessibility.cancelAnnouncement();
 }
 
 void WiiUMenuApp::loadResources() {
@@ -7338,237 +7296,40 @@ void WiiUMenuApp::buildGrid() {
 }
 
 std::string WiiUMenuApp::resolveSoundPresetId(const std::string& preset) const {
-    std::string effectivePreset = preset;
-    if (!isPackageSoundPreset(effectivePreset) && effectivePreset != kBuiltInSoundPreset) {
-        DebugLog::log("[audio] preset '%s' blocked, using '%s' instead",
-                      effectivePreset.c_str(),
-                      kBuiltInSoundPreset);
-        return kBuiltInSoundPreset;
-    }
-
-    if (!isPackageSoundPreset(effectivePreset))
-        return effectivePreset;
-
-    if (!resolveThemeSoundBase(installedThemePathFromPackagePreset(effectivePreset)).empty()) {
-        DebugLog::log("[audio] package preset '%s' resolved from install directory", effectivePreset.c_str());
-        return effectivePreset;
-    }
-
-    for (const auto& themePreset : m_allPresets) {
-        if (themePreset.source != ThemePresetSource::InstalledPackage || themePreset.installPath.empty())
-            continue;
-        if (themePreset.id != effectivePreset && themePreset.soundPreset != effectivePreset)
-            continue;
-        return effectivePreset;
-    }
-
-    DebugLog::log("[audio] package preset '%s' unavailable, using '%s' instead",
-                  effectivePreset.c_str(),
-                  kBuiltInSoundPreset);
-    return kBuiltInSoundPreset;
+    return m_homeCore.audioServices().resolveSoundPresetId(preset, m_allPresets);
 }
 
-void WiiUMenuApp::loadSoundPreset(const std::string& preset) {
-    std::string effectivePreset = preset;
-    const bool useBuiltInBase = (effectivePreset == kBuiltInSoundPreset);
-    const std::string builtInBase = std::string(SD_ASSETS) + "/sounds/" + kBuiltInSoundPreset;
-
-    std::string base;
-    if (!useBuiltInBase) {
-        base = resolveThemeSoundBase(installedThemePathFromPackagePreset(effectivePreset));
-
-        for (const auto& themePreset : m_allPresets) {
-            if (!base.empty())
-                break;
-            if (themePreset.source != ThemePresetSource::InstalledPackage || themePreset.installPath.empty())
-                continue;
-            if (themePreset.id != effectivePreset && themePreset.soundPreset != effectivePreset)
-                continue;
-
-            base = resolveThemeSoundBase(themePreset.installPath);
-            break;
-        }
-    }
-
-    if (base.empty()) {
-        if (isPackageSoundPreset(effectivePreset)) {
-            base = installedThemePathFromPackagePreset(effectivePreset);
-        } else {
-            base = std::string(SD_ASSETS) + "/sounds/" + effectivePreset;
-        }
-    }
-    DebugLog::log("[audio] Loading preset '%s' from %s", effectivePreset.c_str(), base.c_str());
-
-    const bool hasCustomSfx = directoryExists(base + "/sfx");
-    const bool hasCustomMusic = directoryExists(base + "/music");
-    const std::string musicBase = hasCustomMusic ? base : builtInBase;
-    const std::string preferredSfxBase = (!useBuiltInBase && hasCustomSfx) ? base : std::string();
-    auto sfxPath = [&](const char* relativePath) {
-        return resolveAudioOverridePath(preferredSfxBase, builtInBase, relativePath);
-    };
-
-    if (!useBuiltInBase && !hasCustomSfx) {
-        DebugLog::log("[audio] preset '%s' has no custom SFX directory, using '%s' SFX fallback",
-                      effectivePreset.c_str(),
-                      kBuiltInSoundPreset);
-    }
-    if (!useBuiltInBase && !hasCustomMusic) {
-        DebugLog::log("[audio] preset '%s' has no custom music, using '%s' music fallback",
-                      effectivePreset.c_str(),
-                      kBuiltInSoundPreset);
-    }
-
-    m_audio.loadSfx(Sfx::Navigate,        sfxPath("sfx/navigation.wav"));
-    m_audio.loadSfx(Sfx::Activate,        sfxPath("sfx/activation.wav"));
-    m_audio.loadSfx(Sfx::PageChange,      sfxPath("sfx/tab_transition.wav"));
-    m_audio.loadSfx(Sfx::ModalShow,       sfxPath("sfx/show_modal.wav"));
-    m_audio.loadSfx(Sfx::ModalHide,       sfxPath("sfx/hide_modal.wav"));
-    m_audio.loadSfx(Sfx::LaunchGame,      sfxPath("sfx/launch_game.wav"));
-    m_audio.loadSfx(Sfx::ThemeToggle,     sfxPath("sfx/toggle_on.wav"));
-    m_audio.loadSfx(Sfx::ToggleOff,       sfxPath("sfx/toggle_off.wav"));
-    m_audio.loadSfx(Sfx::SliderUp,        sfxPath("sfx/slider_up.wav"));
-    m_audio.loadSfx(Sfx::SliderDown,      sfxPath("sfx/slider_down.wav"));
-    m_audio.loadSfx(Sfx::ConfirmPositive, sfxPath("sfx/confirm.wav"));
-    m_audio.loadSfx(Sfx::Volume,          sfxPath("sfx/volume.wav"));
-
-    m_loadedSoundPreset = effectivePreset;
-    reloadMusicTracks();
+void WiiUMenuApp::finishAudioLoad(bool wait) {
+    if (!m_audioFuture.valid()) return;
+    if (!wait && m_audioFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+        return;
+    m_homeCore.audioServices().waitForLoad();
+    m_audio.setVolume(m_config.musicVolume);
+    m_audio.setSfxVolume(m_config.sfxVolume);
+    if ((!m_audioStarted || m_presetChangePending) && m_config.musicEnabled &&
+        !m_lockScreen.isLocked())
+        m_audio.play();
+    m_audioStarted = true;
+    m_presetChangePending = false;
+    m_pendingSoundPreset.clear();
+    DebugLog::log("[audio] Load complete: %s", m_loadedSoundPreset.c_str());
 }
-
-constexpr const char* kCustomMusicDir = "sdmc:/config/OmniLaunch/music";
 
 std::vector<TrackInfo> WiiUMenuApp::scanCustomBgmTracks() {
-    if (m_config.safeMode())   // boot-guard safe mode: no third-party audio
-        return {};
-    std::vector<TrackInfo> tracks;
-    std::error_code ec;
-    std::filesystem::create_directories(kCustomMusicDir, ec);
-    ec.clear();
-
-    if (!std::filesystem::is_directory(kCustomMusicDir, ec)) {
-        return tracks;
-    }
-
-    for (const auto& entry : std::filesystem::directory_iterator(kCustomMusicDir, ec)) {
-        if (ec) {
-            ec.clear();
-            continue;
-        }
-        if (!entry.is_regular_file(ec))
-            continue;
-
-        std::error_code szEc;
-        auto sz = entry.file_size(szEc);
-        if (!szEc && sz < 1024)
-            continue;
-
-        std::string ext = entry.path().extension().string();
-        std::transform(ext.begin(), ext.end(), ext.begin(),
-                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-
-        if (ext == ".mp3" || ext == ".ogg" || ext == ".wav") {
-            tracks.push_back({entry.path().string(), entry.path().stem().string()});
-        }
-    }
-
-    std::sort(tracks.begin(), tracks.end(), [](const TrackInfo& a, const TrackInfo& b) {
-        return a.title < b.title;
-    });
-
-    return tracks;
+    finishAudioLoad(true);
+    return m_homeCore.audioServices().scanCustomBgmTracks(m_config);
 }
 
 void WiiUMenuApp::reloadMusicTracks() {
-    const bool wasPlaying = m_audio.isPlaying();
-    m_audio.stop();
-    m_audio.clearTracks();
-    m_audio.setShuffle(m_config.customBgmShuffle);
-
-    const std::string& pref = m_config.audioSourcePreference;
-    m_customBgmTracks = scanCustomBgmTracks();
-    bool loaded = false;
-
-    const bool themeMusicAllowed = m_config.themeMusicEnabled;
-
-    if (pref == "custom_only") {
-        if (!m_customBgmTracks.empty()) {
-            for (const auto& track : m_customBgmTracks)
-                m_audio.loadTrack(track.path, track.title);
-            loaded = true;
-            DebugLog::log("[audio] Custom Only: Loaded %zu custom track(s)", m_customBgmTracks.size());
-        }
-    } else if (pref == "theme_first") {
-        if (themeMusicAllowed && !m_themeMusicTracks.empty()) {
-            for (const auto& track : m_themeMusicTracks)
-                m_audio.loadTrack(track);
-            loaded = true;
-            DebugLog::log("[audio] Theme First: Loaded %zu theme track(s)", m_themeMusicTracks.size());
-        } else if (!m_customBgmTracks.empty()) {
-            for (const auto& track : m_customBgmTracks)
-                m_audio.loadTrack(track.path, track.title);
-            loaded = true;
-            DebugLog::log("[audio] Theme First (fallback): Loaded %zu custom track(s)", m_customBgmTracks.size());
-        }
-    } else if (pref == "theme_only") {
-        if (themeMusicAllowed && !m_themeMusicTracks.empty()) {
-            for (const auto& track : m_themeMusicTracks)
-                m_audio.loadTrack(track);
-            loaded = true;
-            DebugLog::log("[audio] Theme Only: Loaded %zu theme track(s)", m_themeMusicTracks.size());
-        }
-    } else { // "custom_first" (default)
-        if (!m_customBgmTracks.empty()) {
-            for (const auto& track : m_customBgmTracks)
-                m_audio.loadTrack(track.path, track.title);
-            loaded = true;
-            DebugLog::log("[audio] Custom First: Loaded %zu custom track(s)", m_customBgmTracks.size());
-        } else if (themeMusicAllowed && !m_themeMusicTracks.empty()) {
-            for (const auto& track : m_themeMusicTracks)
-                m_audio.loadTrack(track);
-            loaded = true;
-            DebugLog::log("[audio] Custom First (fallback): Loaded %zu theme track(s)", m_themeMusicTracks.size());
-        }
-    }
-
-    // Fallback to Preset Music if nothing loaded and mode allows it
-    if (!loaded && pref != "custom_only") {
-        const std::string effectivePreset = resolveSoundPresetId(m_loadedSoundPreset.empty() ? m_config.soundPreset : m_loadedSoundPreset);
-        std::string musicBase = std::string(SD_ASSETS) + "/sounds/" + effectivePreset;
-        std::string musicDir = musicBase + "/music";
-        std::error_code ec;
-        if (std::filesystem::is_directory(musicDir, ec)) {
-            std::vector<std::string> tracks;
-            ec.clear();
-            for (const auto& entry : std::filesystem::directory_iterator(musicDir, ec)) {
-                if (ec)
-                    break;
-
-                std::string name = entry.path().filename().string();
-                if (name.size() > 4 && name.substr(name.size() - 4) == ".mp3")
-                    tracks.push_back(name);
-            }
-            std::sort(tracks.begin(), tracks.end(), [](const std::string& left, const std::string& right) {
-                const bool leftIsHome = (left == "home.mp3");
-                const bool rightIsHome = (right == "home.mp3");
-                if (leftIsHome != rightIsHome)
-                    return leftIsHome;
-                return left < right;
-            });
-            for (const auto& t : tracks)
-                m_audio.loadTrack(musicDir + "/" + t);
-            DebugLog::log("[audio] Loaded %zu preset music tracks", tracks.size());
-        } else {
-            DebugLog::log("[audio] No music directory for preset '%s'", effectivePreset.c_str());
-        }
-    }
-
-    if (m_config.musicEnabled && !m_lockScreen.isLocked() && m_audioStarted) {
+    finishAudioLoad(true);
+    const bool changed = m_homeCore.audioServices().reloadMusicTracks(m_config, m_allPresets);
+    if (changed && m_config.musicEnabled && !m_lockScreen.isLocked() && m_audioStarted)
         m_audio.play();
-    }
     syncMediaCenterState();
 }
 
 void WiiUMenuApp::toggleMediaCenter() {
+    finishAudioLoad(true);
     if (!m_mediaCenterScreen) return;
     if (m_mediaCenterScreen->isActive()) {
         m_mediaCenterScreen->hide();
@@ -7582,6 +7343,7 @@ void WiiUMenuApp::toggleMediaCenter() {
 }
 
 void WiiUMenuApp::syncMediaCenterState() {
+    if (m_audioFuture.valid()) return; // Worker owns list publication until completion.
     if (!m_mediaCenterScreen) return;
     const bool isPl = m_audio.isPlaying();
     const bool isPa = m_audio.isPaused();
@@ -7597,6 +7359,7 @@ void WiiUMenuApp::syncMediaCenterState() {
 }
 
 void WiiUMenuApp::changeSoundPreset(const std::string& preset) {
+    finishAudioLoad(true);
     const std::string effectivePreset = resolveSoundPresetId(preset);
     if (m_presetChangePending && effectivePreset == m_pendingSoundPreset) {
         DebugLog::log("[audio] Preset change skipped; '%s' is already pending",
@@ -7610,43 +7373,13 @@ void WiiUMenuApp::changeSoundPreset(const std::string& preset) {
         return;
     }
 
-    m_audio.stop();
+    m_audio.stopAll();
     m_audio.clearTracks();
     m_audio.clearSfx();
 
     m_presetChangePending = true;
     m_pendingSoundPreset = effectivePreset;
-    m_audioFuture = m_threadPool.submit([this, effectivePreset]() {
-        loadSoundPreset(effectivePreset);
-    });
-}
-
-std::vector<std::string> WiiUMenuApp::scanAvailablePresets() {
-    std::vector<std::string> presets;
-    std::string soundsDir = std::string(SD_ASSETS) + "/sounds";
-    std::error_code ec;
-    for (const auto& entry : std::filesystem::directory_iterator(soundsDir, ec)) {
-        if (ec)
-            break;
-
-        std::string name = entry.path().filename().string();
-        if (name != kBuiltInSoundPreset) continue;
-
-        std::string sub = entry.path().string();
-        if (!entry.is_directory(ec)) {
-            ec.clear();
-            continue;
-        }
-
-        std::string sfxSub = sub + "/sfx";
-        std::string musicSub = sub + "/music";
-        bool hasSfx = directoryExists(sfxSub);
-        bool hasMusic = directoryExists(musicSub);
-        if (hasSfx || hasMusic)
-            presets.push_back(name);
-    }
-    std::sort(presets.begin(), presets.end());
-    return presets;
+    m_homeCore.audioServices().queuePreset(m_threadPool, effectivePreset, m_config, m_allPresets);
 }
 
 #ifdef SWITCHU_MENU
@@ -8724,34 +8457,7 @@ void WiiUMenuApp::onUpdate(float dt) {
         }
     }
 
-    if (!m_audioStarted && m_audioFuture.valid() &&
-        m_audioFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-        m_audioFuture.get();
-        m_audio.setVolume(m_config.musicVolume);
-        m_audio.setSfxVolume(m_config.sfxVolume);
-        if (m_config.musicEnabled && !m_lockScreen.isLocked()) m_audio.play();
-        m_loadedSoundPreset = resolveSoundPresetId(m_config.soundPreset);
-        m_audioStarted = true;
-        if (m_presetChangePending) {
-            m_pendingSoundPreset.clear();
-            m_presetChangePending = false;
-        }
-        DebugLog::log("[init] Audio ready (deferred)");
-    }
-
-    if (m_presetChangePending && m_audioFuture.valid() &&
-        m_audioFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-        m_audioFuture.get();
-        m_audio.setVolume(m_config.musicVolume);
-        m_audio.setSfxVolume(m_config.sfxVolume);
-        if (m_config.musicEnabled && !m_lockScreen.isLocked())
-            m_audio.play();
-        m_loadedSoundPreset = m_pendingSoundPreset.empty() ? resolveSoundPresetId(m_config.soundPreset)
-                                                           : m_pendingSoundPreset;
-        m_pendingSoundPreset.clear();
-        m_presetChangePending = false;
-        DebugLog::log("[audio] Preset change complete: %s", m_config.soundPreset.c_str());
-    }
+    finishAudioLoad(false);
 
     if (m_settingsNeedRefresh && m_settings) {
         m_settingsNeedRefresh = false;

@@ -96,8 +96,10 @@ void configureFlatPanel(const std::shared_ptr<nxui::GlassPanel>& panel,
 
 } // namespace
 
-TutorialActivity::TutorialActivity(ActivityFactory nextFactory)
-    : m_nextFactory(std::move(nextFactory)) {}
+TutorialActivity::TutorialActivity(home::HomeCore& core, ActivityFactory nextFactory)
+    : m_homeCore(core), m_nextFactory(std::move(nextFactory)),
+      m_audio(core.audioServices().audio),
+      m_accessibility(core.audioServices().accessibility) {}
 
 bool TutorialActivity::onCreate() {
     DebugLog::log("[tutorial] activity create");
@@ -111,10 +113,8 @@ bool TutorialActivity::onCreate() {
     else
         i18n.setLanguage(savedConfig.uiLanguageOverride);
     m_accessibilityEnabled = false;
-    m_accessibility.initialize(true, i18n.activeLanguageTag(), TUTORIAL_ASSETS);
-    m_accessibility.setSpeakHints(savedConfig.accessibilitySpeakHints);
-    m_accessibility.setSpeakContextEveryFocus(savedConfig.accessibilitySpeakContextEveryFocus);
-    m_accessibility.setSpeechRate(savedConfig.accessibilitySpeechRate);
+    m_homeCore.audioServices().configureAccessibility(
+        savedConfig, i18n.activeLanguageTag(), true);
 
     const std::string fontPath = std::string(TUTORIAL_ASSETS) + "/fonts/DejaVuSans.ttf";
     m_fontTitle.load(app().gpu(), app().renderer(), fontPath, 34);
@@ -122,12 +122,7 @@ bool TutorialActivity::onCreate() {
     m_fontSmall.load(app().gpu(), app().renderer(), fontPath, 18);
     m_fontIcons.load(app().gpu(), app().renderer(), std::string(TUTORIAL_ASSETS) + "/fonts/switch_icons.ttf", 24);
 
-    m_audio.initialize();
-    m_audio.setVolume(0.34f);
-    m_audio.loadTrack(std::string(TUTORIAL_ASSETS) + "/sounds/wiiu/music/bg4.mp3");
-    m_audio.play();
-    m_audio.setSfxVolume(0.52f);
-    loadAnimaleseSfx();
+    m_homeCore.audioServices().startTutorial();
 
     // Dark, to match the preset a fresh install now boots into. The tutorial is
     // the very first thing anyone sees, and it appearing white before the menu
@@ -150,8 +145,7 @@ bool TutorialActivity::onCreate() {
 }
 
 void TutorialActivity::onDestroy() {
-    m_accessibility.shutdown();
-    m_audio.shutdown();
+    m_homeCore.audioServices().endTutorial();
     DebugLog::log("[tutorial] activity destroy");
 }
 
@@ -214,16 +208,6 @@ void TutorialActivity::buildSteps() {
         },
     };
     m_steps.insert(m_steps.end(), rest.begin(), rest.end());
-}
-
-void TutorialActivity::loadAnimaleseSfx() {
-    static constexpr char kChars[] = "abcdefghijklmnopqrstuvwxyz0123456789";
-    const std::string base = std::string(TUTORIAL_ASSETS) + "/sounds/animalese/";
-    for (const char* p = kChars; *p; ++p) {
-        std::string id = "animalese_";
-        id.push_back(*p);
-        m_audio.loadNamedSfx(id, base + std::string(1, *p) + ".wav", 0.45f);
-    }
 }
 
 void TutorialActivity::buildUi() {

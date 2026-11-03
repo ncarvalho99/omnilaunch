@@ -2435,20 +2435,7 @@ void WiiUMenuApp::showThemeRejectedDialog(const ThemePreset& preset, const std::
 // duas coisas nao andam juntas: o preset governa os efeitos e continua valendo,
 // enquanto as faixas passam a ser propriedade do tema.
 void WiiUMenuApp::applyThemeMusic(const std::vector<std::string>& tracks) {
-    if (m_audioFuture.valid())
-        m_audioFuture.get();   // o audio carrega em outra linha; sem isto as
-                               // faixas do preset chegariam depois destas
-    if (!m_audioStarted) {
-        m_audio.setVolume(m_config.musicVolume);
-        m_audio.setSfxVolume(m_config.sfxVolume);
-        m_loadedSoundPreset = resolveSoundPresetId(m_config.soundPreset);
-        m_audioStarted = true;
-        if (m_presetChangePending) {
-            m_pendingSoundPreset.clear();
-            m_presetChangePending = false;
-        }
-        DebugLog::log("[init] Audio ready (via applyThemeMusic)");
-    }
+    finishAudioLoad(true);
     if (tracks.empty()) {
         DebugLog::log("[audio] theme declared music but none of it exists");
         return;
@@ -2655,6 +2642,8 @@ ThemePreset WiiUMenuApp::buildEffectiveThemePreset() {
 }
 
 void WiiUMenuApp::applyThemeResources(const ThemePreset& preset) {
+    // Theme hydration mutates Core playlist inputs; finish the prior snapshot first.
+    finishAudioLoad(true);
     // A trilha do tema decidida aqui, e nao no caminho de aplicar manualmente.
     // Este e o unico ponto por onde os dois passam: no boot o tema e carregado
     // direto por aqui, entao a musica so trocava quando alguem aplicava a mao,
