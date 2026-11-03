@@ -3197,6 +3197,26 @@ void WiiUMenuApp::updateGridCardsContext() {
     IconGrid::CardsContext ctx;
     ctx.fontNormal = &m_fontNormal;
     ctx.fontSmall = &m_fontSmall;
+    ctx.onOptions = [this]() {
+        showIconOptions();
+    };
+    ctx.onSort = [this]() {
+        cycleSortMode();
+    };
+    ctx.onApplet = [this]() {
+        m_launcher.launchAlbum();
+    };
+    ctx.onPlay = [this]() {
+        if (auto* cur = focusManager().current()) {
+            if (cur->tag() == "glossy_icon") {
+                auto* icon = static_cast<GlossyIcon*>(cur);
+                icon->activate();
+            }
+        }
+    };
+    ctx.onSfxNavigate = [this]() {
+        m_audio.playSfx(Sfx::Navigate);
+    };
     m_grid->setCardsContext(ctx);
     m_grid->setGameDetailProvider([this](std::uint64_t titleId) {
         return getGameDetailInfo(titleId, false);

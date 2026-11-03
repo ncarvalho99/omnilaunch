@@ -166,9 +166,19 @@ public:
     void syncListChildRects();
     void renderList(nxui::Renderer& ren);
 
+    enum class CardsZone : std::uint8_t {
+        Cards,
+        Bottom,
+    };
+
     struct CardsContext {
         nxui::Font* fontNormal = nullptr;
         nxui::Font* fontSmall = nullptr;
+        std::function<void()> onOptions;
+        std::function<void()> onSort;
+        std::function<void()> onApplet;
+        std::function<void()> onPlay;
+        std::function<void()> onSfxNavigate;
     };
     static constexpr float kCardW       = 240.0f;
     static constexpr float kCardH       = 340.0f;
@@ -181,6 +191,11 @@ public:
 
     void setCardsContext(const CardsContext& ctx) { m_cardsContext = ctx; }
     const CardsContext& cardsContext() const { return m_cardsContext; }
+    CardsZone cardsZone() const { return m_cardsZone; }
+    void setCardsZone(CardsZone zone) { m_cardsZone = zone; }
+    int cardsBottomSel() const { return m_cardsBottomSel; }
+    void setCardsBottomSel(int sel) { m_cardsBottomSel = std::clamp(sel, 0, 3); }
+    void layoutCards();
     nxui::Rect cardsIconRect(int idx) const;
     void renderCards(nxui::Renderer& ren);
 
@@ -468,6 +483,8 @@ private:
     std::uint64_t m_cardsCachedDetailTitleId = 0;
     GameDetailInfo m_cardsCachedDetail;
     float m_cardsClock = 0.f;
+    CardsZone m_cardsZone = CardsZone::Cards;
+    int m_cardsBottomSel = 0;
     GameDetailProvider m_gameDetailProvider;
     float m_listScrollOffset = 0.0f;
     float m_listTargetScroll = 0.0f;

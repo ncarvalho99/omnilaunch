@@ -306,23 +306,21 @@ void IconGrid::setLayoutMode(AppLayoutMode mode) {
     // other views use, so leaving XMB without putting them back would carry the
     // non-focusable state into Grid or Flow and make most of the library
     // unreachable there. Restoring is cheap and only runs on the way out.
-    if (previous == AppLayoutMode::Xmb) {
+    if (previous == AppLayoutMode::Xmb || previous == AppLayoutMode::Cards) {
         for (auto& icon : m_allIcons) {
             if (!icon) continue;
             // addDirectionAction stores one callback per d-pad/stick button.
-            // Repeated XMB layouts overwrite those map entries (they do not
+            // Repeated XMB/Cards layouts overwrite those map entries (they do not
             // accumulate), but leaving them installed would make another view
-            // consume every direction press and call stepXmb(), which now
-            // returns immediately because the mode is no longer XMB -- a new
-            // navigation freeze. Remove precisely the twelve actions XMB owns;
-            // normal layouts navigate through FocusManager/customNavigation.
+            // consume every direction press. Remove precisely the actions they own.
             for (nxui::Button button : {
                      nxui::Button::DLeft, nxui::Button::DRight,
                      nxui::Button::DUp, nxui::Button::DDown,
                      nxui::Button::LStickL, nxui::Button::LStickR,
                      nxui::Button::LStickU, nxui::Button::LStickD,
                      nxui::Button::RStickL, nxui::Button::RStickR,
-                     nxui::Button::RStickU, nxui::Button::RStickD}) {
+                     nxui::Button::RStickU, nxui::Button::RStickD,
+                     nxui::Button::A, nxui::Button::B}) {
                 icon->removeAction(static_cast<uint64_t>(button));
             }
             switch (icon->entryKind()) {
@@ -380,10 +378,14 @@ void IconGrid::setLayoutMode(AppLayoutMode mode) {
         if (cur >= 0) {
             focusGlobalIndex(cur);
         }
+    } else if (m_layoutMode == AppLayoutMode::Cards) {
+        m_lineScrollOffset.setImmediate(cur >= 0 ? static_cast<float>(cur) : 0.f);
+        layoutCards();
+        preloadFlowCoversAround(cur >= 0 ? cur : 0);
     } else if (isCarousel()) {
         m_lineScrollOffset.setImmediate(cur >= 0 ? static_cast<float>(cur) : 0.f);
         layoutLine();
-        if (is3D() || isCards()) {
+        if (is3D()) {
             preloadFlowCoversAround(cur >= 0 ? cur : 0);
         }
     } else {
@@ -466,6 +468,8 @@ void IconGrid::reconfigureLayout(int cols, int rows,
         layoutMetro();
         syncMetroChildRects();
     }
+    else if (m_layoutMode == AppLayoutMode::Cards)
+        layoutCards();
     else if (isCarousel())
         layoutLine();
     else
@@ -724,6 +728,100 @@ void IconGrid::layoutLine() {
                 break;
             }
         }
+    }
+}
+
+void IconGrid::layoutCards() {
+    m_cardsZone = CardsZone::Cards;
+    m_cardsBottomSel = 0;
+
+    layoutLine();
+
+    auto wrapFocusable = [this](int from, int step) -> int {
+        const int count = static_cast<int>(m_allIcons.size());
+        if (count <= 0) return -1;
+        for (int i = 1; i <= count; ++i) {
+            int candidate = (from + i * step) % count;
+            if (candidate < 0) candidate += count;
+            if (m_allIcons[(size_t)candidate] &&
+                m_allIcons[(size_t)candidate]->isFocusable())
+                return candidate;
+        }
+        return -1;
+    };
+
+    for (size_t i = 0; i < m_allIcons.size(); ++i) {
+        auto& icon = m_allIcons[i];
+        if (!icon) continue;
+
+        icon->addDirectionAction(nxui::FocusDirection::DOWN, [this]() {
+            if (m_cardsZone == CardsZone::Cards) {
+                m_cardsZone = CardsZone::Bottom;
+                m_cardsBottomSel = 0;
+                if (m_cardsContext.onSfxNavigate) m_cardsContext.onSfxNavigate();
+            }
+        });
+
+        icon->addDirectionAction(nxui::FocusDirection::UP, [this]() {
+            if (m_cardsZone == CardsZone::Bottom) {
+                m_cardsZone = CardsZone::Cards;
+                if (m_cardsContext.onSfxNavigate) m_cardsContext.onSfxNavigate();
+            } else if (m_lineUpTarget) {
+                m_focus.setFocus(m_lineUpTarget);
+            }
+        });
+
+        icon->addDirectionAction(nxui::FocusDirection::LEFT, [this, i, wrapFocusable]() {
+            if (m_cardsZone == CardsZone::Bottom) {
+                if (m_cardsBottomSel > 0) {
+                    --m_cardsBottomSel;
+                    if (m_cardsContext.onSfxNavigate) m_cardsContext.onSfxNavigate();
+                }
+            } else {
+                const int prev = wrapFocusable((int)i, -1);
+                if (prev >= 0 && prev < static_cast<int>(m_allIcons.size())) {
+                    focusGlobalIndex(prev);
+                }
+            }
+        });
+
+        icon->addDirectionAction(nxui::FocusDirection::RIGHT, [this, i, wrapFocusable]() {
+            if (m_cardsZone == CardsZone::Bottom) {
+                if (m_cardsBottomSel < 3) {
+                    ++m_cardsBottomSel;
+                    if (m_cardsContext.onSfxNavigate) m_cardsContext.onSfxNavigate();
+                }
+            } else {
+                const int next = wrapFocusable((int)i, +1);
+                if (next >= 0 && next < static_cast<int>(m_allIcons.size())) {
+                    focusGlobalIndex(next);
+                }
+            }
+        });
+
+        auto* rawIcon = icon.get();
+        icon->addAction(static_cast<uint64_t>(nxui::Button::A), [this, rawIcon]() {
+            if (m_cardsZone == CardsZone::Bottom) {
+                if (m_cardsBottomSel == 0) {
+                    rawIcon->activate();
+                } else if (m_cardsBottomSel == 1) {
+                    if (m_cardsContext.onOptions) m_cardsContext.onOptions();
+                } else if (m_cardsBottomSel == 2) {
+                    if (m_cardsContext.onSort) m_cardsContext.onSort();
+                } else if (m_cardsBottomSel == 3) {
+                    if (m_cardsContext.onApplet) m_cardsContext.onApplet();
+                }
+            } else {
+                rawIcon->activate();
+            }
+        });
+
+        icon->addAction(static_cast<uint64_t>(nxui::Button::B), [this]() {
+            if (m_cardsZone == CardsZone::Bottom) {
+                m_cardsZone = CardsZone::Cards;
+                if (m_cardsContext.onSfxNavigate) m_cardsContext.onSfxNavigate();
+            }
+        });
     }
 }
 
@@ -1450,6 +1548,52 @@ nxui::Widget* IconGrid::findTopHit(float x, float y) {
         if (hit >= 0) {
             auto icon = metroSharedIconAt(hit);
             if (icon && icon->isFocusable()) return icon.get();
+        }
+        return nullptr;
+    }
+    if (m_layoutMode == AppLayoutMode::Cards) {
+        const nxui::Rect playBtnRect{186.f + 24.f, 503.f + 116.f, 190.f, 62.f};
+        if (playBtnRect.contains(x, y)) {
+            m_cardsZone = CardsZone::Bottom;
+            m_cardsBottomSel = 0;
+            const int focused = focusedGlobalIndex();
+            if (focused >= 0 && focused < static_cast<int>(m_allIcons.size()))
+                return m_allIcons[static_cast<size_t>(focused)].get();
+            return nullptr;
+        }
+
+        const float optR = 31.f;
+        const float optX = playBtnRect.right() + 16.f + optR;
+        const float optY = playBtnRect.y + optR;
+        if (std::hypot(x - optX, y - optY) <= optR + 4.f) {
+            m_cardsZone = CardsZone::Bottom;
+            m_cardsBottomSel = 1;
+            if (m_cardsContext.onOptions) m_cardsContext.onOptions();
+            return nullptr;
+        }
+
+        const float btn2X = 186.f + 907.f - 28.f - optR;
+        const float btn2Y = optY;
+        if (std::hypot(x - btn2X, y - btn2Y) <= optR + 4.f) {
+            m_cardsZone = CardsZone::Bottom;
+            m_cardsBottomSel = 3;
+            if (m_cardsContext.onApplet) m_cardsContext.onApplet();
+            return nullptr;
+        }
+
+        const float btn1X = btn2X - optR * 2.f - 14.f;
+        const float btn1Y = optY;
+        if (std::hypot(x - btn1X, y - btn1Y) <= optR + 4.f) {
+            m_cardsZone = CardsZone::Bottom;
+            m_cardsBottomSel = 2;
+            if (m_cardsContext.onSort) m_cardsContext.onSort();
+            return nullptr;
+        }
+
+        int hit = hitTest(x, y);
+        if (hit >= 0 && hit < static_cast<int>(m_allIcons.size())) {
+            m_cardsZone = CardsZone::Cards;
+            return m_allIcons[static_cast<size_t>(hit)].get();
         }
         return nullptr;
     }
@@ -3115,7 +3259,9 @@ void IconGrid::renderCards(nxui::Renderer& ren) {
 
         // Focus accent outline (C-VIS-2)
         if (c.chosen > 0.05f) {
-            const float pulse = 0.85f + 0.15f * std::sin(m_cardsClock * 5.0f);
+            const float pulse = (m_cardsZone == CardsZone::Bottom)
+                ? 0.35f
+                : (0.85f + 0.15f * std::sin(m_cardsClock * 5.0f));
             const nxui::Color accentColor(0.36f, 0.68f, 1.0f, 1.0f);
             ren.drawRoundedRectOutline(c.rect.expanded(3.f),
                                        accentColor.withAlpha(c.chosen * 0.40f * pulse * alpha),
@@ -3124,7 +3270,7 @@ void IconGrid::renderCards(nxui::Renderer& ren) {
                                        accentColor.withAlpha(c.chosen * pulse * alpha),
                                        kCardRadius + 1.f, 2.5f);
             ren.drawRoundedRectOutline(c.rect,
-                                       nxui::Color::white().withAlpha(c.chosen * 0.75f * alpha),
+                                       nxui::Color::white().withAlpha(c.chosen * (m_cardsZone == CardsZone::Bottom ? 0.35f : 0.75f) * alpha),
                                        kCardRadius, 1.0f);
         }
     }
@@ -3214,10 +3360,25 @@ void IconGrid::renderCards(nxui::Renderer& ren) {
                 ren.drawText(i18n.tr("hint.running", "RUNNING"), {runPill.x + 14.f, runPill.y + 5.f}, fontSmall, nxui::Color::white().withAlpha(panelAlpha), 0.55f);
             }
 
+            const bool isBottom = (m_cardsZone == CardsZone::Bottom);
+            const float btnPulse = 0.85f + 0.15f * std::sin(m_cardsClock * 5.0f);
+            const nxui::Color accentColor(0.36f, 0.68f, 1.0f, 1.0f);
+
             // 1. Play / Resume Button (A)
             const nxui::Rect playBtnRect{kPanel.x + 24.f, kPanel.y + 116.f, 190.f, 62.f};
             ren.drawRoundedRect(playBtnRect, nxui::Color(1.f, 1.f, 1.f, 0.95f * panelAlpha), playBtnRect.height * 0.5f);
-            ren.drawRoundedRectOutline(playBtnRect.expanded(2.f), nxui::Color(0.36f, 0.68f, 1.0f, 0.6f * panelAlpha), playBtnRect.height * 0.5f + 2.f, 2.f);
+            if (isBottom && m_cardsBottomSel == 0) {
+                ren.drawRoundedRectOutline(playBtnRect.expanded(3.f),
+                                           accentColor.withAlpha(btnPulse * panelAlpha),
+                                           playBtnRect.height * 0.5f + 3.f, 3.5f);
+                ren.drawRoundedRectOutline(playBtnRect.expanded(1.f),
+                                           nxui::Color::white().withAlpha(0.85f * panelAlpha),
+                                           playBtnRect.height * 0.5f + 1.f, 1.5f);
+            } else {
+                ren.drawRoundedRectOutline(playBtnRect.expanded(1.5f),
+                                           nxui::Color(1.f, 1.f, 1.f, 0.30f * panelAlpha),
+                                           playBtnRect.height * 0.5f + 1.5f, 1.5f);
+            }
 
             const nxui::Color inkColor(0.08f, 0.10f, 0.16f, panelAlpha);
             const std::string actionWord = std::string("▶  ") + (active->isSuspended() ? i18n.tr("button.resume", "Resume") : i18n.tr("button.play", "Play"));
@@ -3236,12 +3397,23 @@ void IconGrid::renderCards(nxui::Renderer& ren) {
                                  nxui::Color(1.f, 1.f, 1.f, 0.22f * panelAlpha),
                                  nxui::Color(1.f, 1.f, 1.f, 0.18f * panelAlpha),
                                  optR, panelAlpha);
-            ren.drawRoundedRectOutline(optRect, nxui::Color(1.f, 1.f, 1.f, 0.25f * panelAlpha), optR, 1.5f);
+            if (isBottom && m_cardsBottomSel == 1) {
+                ren.drawRoundedRectOutline(optRect.expanded(3.f),
+                                           accentColor.withAlpha(btnPulse * panelAlpha),
+                                           optR + 3.f, 3.5f);
+                ren.drawRoundedRectOutline(optRect.expanded(1.f),
+                                           nxui::Color::white().withAlpha(0.85f * panelAlpha),
+                                           optR + 1.f, 1.5f);
+            } else {
+                ren.drawRoundedRectOutline(optRect,
+                                           nxui::Color(1.f, 1.f, 1.f, 0.25f * panelAlpha),
+                                           optR, 1.5f);
+            }
             ren.drawCircle({optX - 8.f, optY}, 2.8f, nxui::Color::white().withAlpha(0.95f * panelAlpha));
             ren.drawCircle({optX, optY}, 2.8f, nxui::Color::white().withAlpha(0.95f * panelAlpha));
             ren.drawCircle({optX + 8.f, optY}, 2.8f, nxui::Color::white().withAlpha(0.95f * panelAlpha));
 
-            // 3. Right-side circular buttons: Layers/Pages and Homebrew/App
+            // 3. Right-side circular buttons: Layers/Pages (Sort) and Homebrew/App
             const float btn2X = kPanel.right() - 28.f - optR;
             const float btn2Y = optY;
             const nxui::Rect btn2Rect{btn2X - optR, btn2Y - optR, optR * 2.f, optR * 2.f};
@@ -3250,7 +3422,18 @@ void IconGrid::renderCards(nxui::Renderer& ren) {
                                  nxui::Color(1.f, 1.f, 1.f, 0.22f * panelAlpha),
                                  nxui::Color(1.f, 1.f, 1.f, 0.18f * panelAlpha),
                                  optR, panelAlpha);
-            ren.drawRoundedRectOutline(btn2Rect, nxui::Color(1.f, 1.f, 1.f, 0.25f * panelAlpha), optR, 1.5f);
+            if (isBottom && m_cardsBottomSel == 3) {
+                ren.drawRoundedRectOutline(btn2Rect.expanded(3.f),
+                                           accentColor.withAlpha(btnPulse * panelAlpha),
+                                           optR + 3.f, 3.5f);
+                ren.drawRoundedRectOutline(btn2Rect.expanded(1.f),
+                                           nxui::Color::white().withAlpha(0.85f * panelAlpha),
+                                           optR + 1.f, 1.5f);
+            } else {
+                ren.drawRoundedRectOutline(btn2Rect,
+                                           nxui::Color(1.f, 1.f, 1.f, 0.25f * panelAlpha),
+                                           optR, 1.5f);
+            }
             ren.drawCircle({btn2X, btn2Y}, 11.f, nxui::Color(0.18f, 0.68f, 0.95f, 0.85f * panelAlpha));
             ren.drawCircle({btn2X, btn2Y}, 4.5f, nxui::Color::white().withAlpha(panelAlpha));
 
@@ -3262,7 +3445,18 @@ void IconGrid::renderCards(nxui::Renderer& ren) {
                                  nxui::Color(1.f, 1.f, 1.f, 0.22f * panelAlpha),
                                  nxui::Color(1.f, 1.f, 1.f, 0.18f * panelAlpha),
                                  optR, panelAlpha);
-            ren.drawRoundedRectOutline(btn1Rect, nxui::Color(1.f, 1.f, 1.f, 0.25f * panelAlpha), optR, 1.5f);
+            if (isBottom && m_cardsBottomSel == 2) {
+                ren.drawRoundedRectOutline(btn1Rect.expanded(3.f),
+                                           accentColor.withAlpha(btnPulse * panelAlpha),
+                                           optR + 3.f, 3.5f);
+                ren.drawRoundedRectOutline(btn1Rect.expanded(1.f),
+                                           nxui::Color::white().withAlpha(0.85f * panelAlpha),
+                                           optR + 1.f, 1.5f);
+            } else {
+                ren.drawRoundedRectOutline(btn1Rect,
+                                           nxui::Color(1.f, 1.f, 1.f, 0.25f * panelAlpha),
+                                           optR, 1.5f);
+            }
             ren.drawRoundedRectOutline({btn1X - 9.f, btn1Y - 9.f, 16.f, 16.f}, nxui::Color::white().withAlpha(0.6f * panelAlpha), 4.f, 1.5f);
             ren.drawRoundedRectOutline({btn1X - 5.f, btn1Y - 5.f, 16.f, 16.f}, nxui::Color::white().withAlpha(0.95f * panelAlpha), 4.f, 1.5f);
 
