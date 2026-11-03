@@ -5,13 +5,22 @@
 // runtime without tearing the services down.
 //
 // Services move in here one at a time with their initialization, callbacks and
-// finalization. C2 owns audio/accessibility and their preset/playback state.
+// finalization.
+// C1: ordered shutdown phases and GPU teardown hook.
+// C2: audio, accessibility, preset resolution, playlist management.
+// C3: AppletLauncher, ThreadPool, AppConfig, daemon SystemStatus & trace state.
 
 #include "home/HomeAudio.hpp"
+#include "launcher/AppletLauncher.hpp"
+#include "core/Config.hpp"
+#include <nxui/core/ThreadPool.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <vector>
+#ifdef SWITCHU_MENU
+#include <switchu/smi_protocol.hpp>
+#endif
 
 namespace home {
 
@@ -34,12 +43,33 @@ public:
     using Hook = std::function<void()>;
 
     HomeCore();
-
-    HomeAudio& audioServices() { return m_audio; }
     ~HomeCore();
 
     HomeCore(const HomeCore&) = delete;
     HomeCore& operator=(const HomeCore&) = delete;
+
+    HomeAudio& audioServices() { return m_audio; }
+    AppConfig& config() { return m_config; }
+    const AppConfig& config() const { return m_config; }
+    nxui::ThreadPool& threadPool() { return m_threadPool; }
+    AppletLauncher& launcher() { return m_launcher; }
+
+    void setRequestExit(std::function<void()> cb);
+    void setFrontendQuiesce(std::function<void()> quiesce) { m_frontendQuiesce = std::move(quiesce); }
+    void quiesceWriters();
+
+#ifdef SWITCHU_MENU
+    void setStartupStatus(const switchu::smi::SystemStatus& status);
+    void setMenuMainTrace(uint64_t tick, uint32_t core) { m_menuMainTick = tick; m_menuMainCore = core; }
+    const switchu::smi::SystemStatus& systemStatus() const { return m_systemStatus; }
+    switchu::smi::MenuTransitionReason transitionReason() const { return m_transitionReason; }
+    void setTransitionReason(switchu::smi::MenuTransitionReason reason) { m_transitionReason = reason; }
+    uint64_t transitionOriginTick() const { return m_systemStatus.transition_origin_tick; }
+    bool safeModeRequested() const { return m_safeModeRequested; }
+    bool safeModeNotice() const { return m_safeModeNotice; }
+    uint64_t menuMainTick() const { return m_menuMainTick; }
+    uint32_t menuMainCore() const { return m_menuMainCore; }
+#endif
 
     /// Register work for a phase. Hooks of one phase run in reverse
     /// registration order, like destructors. Registering into a phase that
@@ -59,6 +89,21 @@ private:
     };
 
     HomeAudio m_audio;
+    AppConfig m_config;
+    nxui::ThreadPool m_threadPool{2};
+    AppletLauncher m_launcher;
+    std::function<void()> m_requestExit;
+    std::function<void()> m_frontendQuiesce;
+
+#ifdef SWITCHU_MENU
+    switchu::smi::SystemStatus m_systemStatus{};
+    switchu::smi::MenuTransitionReason m_transitionReason = switchu::smi::MenuTransitionReason::Unknown;
+    uint64_t m_menuMainTick = 0;
+    uint32_t m_menuMainCore = 0;
+    bool m_safeModeRequested = false;
+    bool m_safeModeNotice = false;
+#endif
+
     std::vector<NamedHook> m_hooks[kShutdownPhaseCount];
     int m_lastPhaseRun = -1;
 };

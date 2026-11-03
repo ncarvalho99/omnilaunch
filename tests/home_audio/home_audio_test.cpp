@@ -63,5 +63,16 @@ int main() {
  assert(speechReleasedBeforeMixer);
  core.runShutdownPhase(ShutdownPhase::ProcessExit);
  assert(audio.closes==1 && speechShutdowns==1);
- std::cout<<"PASS tutorial reuse, unchanged/changed playlist, serialized snapshots, drain/shutdown order\n";
+
+ // C3 HomeCore launcher, pool, config, and quiesce routing contracts
+ bool quiesceCalled = false;
+ core.setFrontendQuiesce([&quiesceCalled] { quiesceCalled = true; });
+ core.quiesceWriters();
+ assert(quiesceCalled);
+ core.setFrontendQuiesce(nullptr);
+
+ assert(core.config().soundPreset == "wiiu");
+ assert(!core.threadPool().acceptingTasks()); // Pool was shut down in Services phase above
+
+ std::cout<<"PASS tutorial reuse, unchanged/changed playlist, serialized snapshots, drain/shutdown order, C3 launcher/pool contracts\n";
 }

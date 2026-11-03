@@ -372,7 +372,10 @@ WiiUMenuApp::WiiUMenuApp(home::HomeCore& core)
       m_availablePresets(core.audioServices().availablePresets),
       m_presetChangePending(core.audioServices().presetChangePending),
       m_loadedSoundPreset(core.audioServices().loadedSoundPreset),
-      m_pendingSoundPreset(core.audioServices().pendingSoundPreset) {}
+      m_pendingSoundPreset(core.audioServices().pendingSoundPreset),
+      m_threadPool(core.threadPool()),
+      m_launcher(core.launcher()),
+      m_config(core.config()) {}
 WiiUMenuApp::~WiiUMenuApp() {
     m_animalesePlayer.clear();
     rootBox().clearChildren();
@@ -615,6 +618,19 @@ void WiiUMenuApp::updateLeaveSplashHandoff(float dt) {
 }
 
 bool WiiUMenuApp::onCreate() {
+    m_homeCore.setFrontendQuiesce([this]() {
+        quiesceWritersForPowerAction();
+    });
+
+#ifdef SWITCHU_MENU
+    m_transitionOriginTick = m_homeCore.transitionOriginTick();
+    m_transitionReason = m_homeCore.transitionReason();
+    m_safeModeRequested = m_homeCore.safeModeRequested();
+    m_safeModeNotice = m_homeCore.safeModeNotice();
+    m_menuMainTick = m_homeCore.menuMainTick();
+    m_menuMainCore = m_homeCore.menuMainCore();
+#endif
+
     const uint64_t activityCreateStartTick = armGetSystemTick();
     auto initElapsedMs = [activityCreateStartTick]() -> unsigned long {
         return static_cast<unsigned long>(
@@ -697,12 +713,6 @@ bool WiiUMenuApp::onCreate() {
 
     DebugLog::log("[init] Config loaded (theme=%s, musicVol=%.2f, sfxVol=%.2f)",
                   m_config.themePreset.c_str(), m_config.musicVolume, m_config.sfxVolume);
-
-    m_launcher.init({
-        .playSfxModalHide = [this]() { m_audio.playSfx(Sfx::ModalHide); },
-        .requestExit = [this]() { app().requestExit(); },
-        .quiesceWriters = [this]() { quiesceWritersForPowerAction(); },
-    });
 
 
 
@@ -833,6 +843,7 @@ void WiiUMenuApp::quiesceWritersForPowerAction() {
 
 
 void WiiUMenuApp::onDestroy() {
+    m_homeCore.setFrontendQuiesce(nullptr);
 #ifdef SWITCHU_MENU
     switchu::smi::MenuClosingArgs closingTrace{};
     const auto& shutdownTrace = app().shutdownTrace();

@@ -104,8 +104,7 @@ TutorialActivity::TutorialActivity(home::HomeCore& core, ActivityFactory nextFac
 bool TutorialActivity::onCreate() {
     DebugLog::log("[tutorial] activity create");
 
-    AppConfig savedConfig;
-    savedConfig.load();
+    const auto& savedConfig = m_homeCore.config();
     auto& i18n = nxui::I18n::instance();
     i18n.initialize(std::string(TUTORIAL_ASSETS) + "/i18n", "en-US");
     if (savedConfig.uiLanguageOverride == "auto" || savedConfig.uiLanguageOverride.empty())
@@ -392,10 +391,8 @@ void TutorialActivity::toggleAccessibility() {
 
     m_accessibilityEnabled = true;
 
-    AppConfig config;
-    config.load();
-    config.accessibilityEnabled = m_accessibilityEnabled;
-    config.save();
+    m_homeCore.config().accessibilityEnabled = m_accessibilityEnabled;
+    m_homeCore.config().save();
 
     m_accessibility.setEnabled(true);
     m_accessibility.announce(nxui::I18n::instance().tr(
@@ -441,11 +438,9 @@ void TutorialActivity::finish() {
     m_finishing = true;
     m_finishTimer = 0.f;
 
-    AppConfig config;
-    config.load();
-    config.tutorialCompleted = true;
-    config.accessibilityEnabled = m_accessibilityEnabled;
-    config.save();
+    m_homeCore.config().tutorialCompleted = true;
+    m_homeCore.config().accessibilityEnabled = m_accessibilityEnabled;
+    m_homeCore.config().save();
 }
 
 void TutorialActivity::completeFinish() {

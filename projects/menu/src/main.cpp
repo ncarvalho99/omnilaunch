@@ -358,20 +358,18 @@ int main(int argc, char* argv[]) {
         // Declared before the Application so it is destroyed after it.
         home::HomeCore homeCore;
         nxui::Application app;
+        homeCore.setRequestExit([&app] { app.requestExit(); });
+        homeCore.config().load();
         app.setBeforeGpuShutdown([&homeCore] {
             homeCore.runShutdownPhase(home::ShutdownPhase::GpuResources);
         });
 #ifdef SWITCHU_HOMEBREW
-        AppConfig startupConfig;
-        startupConfig.load();
-        auto makeMenuActivity = [startupConfig, &homeCore](bool fromTutorial = false) -> std::unique_ptr<nxui::Activity> {
+        auto makeMenuActivity = [&homeCore](bool fromTutorial = false) -> std::unique_ptr<nxui::Activity> {
             auto activity = std::make_unique<WiiUMenuApp>(homeCore);
-            if (!fromTutorial)
-                activity->setStartupConfig(startupConfig);
             activity->setTutorialStartupFade(fromTutorial);
             return activity;
         };
-        if (startupConfig.tutorialCompleted)
+        if (homeCore.config().tutorialCompleted)
             app.setActivity(makeMenuActivity(false));
         else {
             auto tutorial = std::make_unique<TutorialActivity>(homeCore, makeMenuActivity);
@@ -395,18 +393,14 @@ int main(int argc, char* argv[]) {
         homeCore.runShutdownPhase(home::ShutdownPhase::Audio);
         homeCore.runShutdownPhase(home::ShutdownPhase::ProcessExit);
 #else
-        AppConfig startupConfig;
-        startupConfig.load();
-        auto makeMenuActivity = [sysStatus, startupConfig, menuMainTick, menuMainCore, &homeCore](bool fromTutorial = false) -> std::unique_ptr<nxui::Activity> {
+        homeCore.setStartupStatus(sysStatus);
+        homeCore.setMenuMainTrace(menuMainTick, menuMainCore);
+        auto makeMenuActivity = [&homeCore](bool fromTutorial = false) -> std::unique_ptr<nxui::Activity> {
             auto activity = std::make_unique<WiiUMenuApp>(homeCore);
-            if (!fromTutorial)
-                activity->setStartupConfig(startupConfig);
-            activity->setStartupStatus(sysStatus);
-            activity->setMenuMainTrace(menuMainTick, menuMainCore);
             activity->setTutorialStartupFade(fromTutorial);
             return activity;
         };
-        if (startupConfig.tutorialCompleted)
+        if (homeCore.config().tutorialCompleted)
             app.setActivity(makeMenuActivity(false));
         else {
             auto tutorial = std::make_unique<TutorialActivity>(homeCore, makeMenuActivity);

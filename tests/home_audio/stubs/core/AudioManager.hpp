@@ -30,6 +30,7 @@ class AudioManager {
   playlist.push_back({path,title.empty()?stem:title});
  }
  void loadNamedSfx(const std::string&,const std::string&,float) {}
+ void playSfx(Sfx) {}
  void loadSfx(Sfx id,const std::string&) {
   if(id!=Sfx::Navigate) return;
   std::unique_lock<std::mutex> lk(gateMutex);

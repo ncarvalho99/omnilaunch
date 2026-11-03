@@ -770,9 +770,9 @@ private:
         std::uint64_t revision = 0;
     };
 
-    nxui::ThreadPool m_threadPool{2};
-    SidebarManager  m_sidebar;
-    AppletLauncher  m_launcher;
+    nxui::ThreadPool& m_threadPool;
+    SidebarManager   m_sidebar;
+    AppletLauncher&  m_launcher;
     AppListLoader   m_appLoader;
     IconStreamer    m_iconStreamer;
     SystemMessages  m_sysMsg;
@@ -890,7 +890,7 @@ private:
     bool m_asyncRefreshPending   = false;
     int  m_refreshPrevPage       = 0;
 
-    AppConfig m_config;
+    AppConfig& m_config;
     SteamGridDbManager m_steamGridDb;
     std::future<SteamGridDbManager::BrowseResult> m_steamGridDbBrowseFuture;
     std::future<SteamGridDbManager::ApplyResult> m_steamGridDbApplyFuture;
