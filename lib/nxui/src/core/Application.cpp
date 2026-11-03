@@ -346,6 +346,12 @@ void Application::shutdown() {
         m_activity.reset();
     }
     m_pendingActivity.reset();
+    if (m_beforeGpuShutdown) {
+        // One-shot: the destructor calls shutdown() a second time.
+        auto callback = std::move(m_beforeGpuShutdown);
+        m_beforeGpuShutdown = nullptr;
+        callback();
+    }
     m_renderer.reset();
     m_gpu.shutdown();
 }

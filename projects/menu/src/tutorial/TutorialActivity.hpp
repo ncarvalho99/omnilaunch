@@ -8,6 +8,7 @@
 #include "widgets/WaraWaraBackground.hpp"
 #include "core/AudioManager.hpp"
 #include "core/AccessibilityManager.hpp"
+#include "home/HomeCore.hpp"
 #include <functional>
 #include <memory>
 #include <string>
@@ -20,6 +21,9 @@ public:
     explicit TutorialActivity(ActivityFactory nextFactory);
     ~TutorialActivity() override = default;
 
+    /// Process-lifetime service owner; outlives this Activity (step C1).
+    void setHomeCore(home::HomeCore* core) { m_homeCore = core; }
+
     bool onCreate() override;
     void onDestroy() override;
     void onUpdate(float dt) override;
@@ -27,6 +31,8 @@ public:
     nxui::Widget* focusRoot() override { return nullptr; }
 
 private:
+    home::HomeCore* m_homeCore = nullptr;
+
     enum class StepKind {
         AccessibilityChoice,
         AccessibilitySettings,

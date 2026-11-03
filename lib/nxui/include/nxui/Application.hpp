@@ -62,6 +62,13 @@ public:
     /// Shutdown: activity->onDestroy(), then GPU/Renderer cleanup.
     void shutdown();
 
+    /// One-shot callback run by shutdown() after the last Activity has been
+    /// destroyed and before the Renderer and GPU are torn down. Owners of GPU
+    /// resources that outlive an Activity release them here.
+    void setBeforeGpuShutdown(std::function<void()> callback) {
+        m_beforeGpuShutdown = std::move(callback);
+    }
+
     // Accessors used by Activity
     GpuDevice& gpu()       { return m_gpu; }
     Renderer&  renderer()  { return *m_renderer; }
@@ -109,6 +116,7 @@ private:
     std::unique_ptr<Activity> m_pendingActivity;
     bool m_running = true;
     std::function<void(const char*)> m_logSink;
+    std::function<void()> m_beforeGpuShutdown;
     bool m_renderEnabled = true;
     ApplicationInitializeTrace m_initializeTrace{};
     ApplicationShutdownTrace m_shutdownTrace{};

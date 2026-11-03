@@ -4,6 +4,7 @@
 #include "core/Config.hpp"
 #include "core/NsService.hpp"
 #include "tutorial/TutorialActivity.hpp"
+#include "home/HomeCore.hpp"
 #include "services/NtpClient.hpp"
 #include "usb/Mtp.hpp"
 #include <nxui/Application.hpp>
@@ -354,12 +355,18 @@ int main(int argc, char* argv[]) {
 
     DebugLog::log("[main] creating app...");
     {
+        // Declared before the Application so it is destroyed after it.
+        home::HomeCore homeCore;
         nxui::Application app;
+        app.setBeforeGpuShutdown([&homeCore] {
+            homeCore.runShutdownPhase(home::ShutdownPhase::GpuResources);
+        });
 #ifdef SWITCHU_HOMEBREW
         AppConfig startupConfig;
         startupConfig.load();
-        auto makeMenuActivity = [startupConfig](bool fromTutorial = false) -> std::unique_ptr<nxui::Activity> {
+        auto makeMenuActivity = [startupConfig, &homeCore](bool fromTutorial = false) -> std::unique_ptr<nxui::Activity> {
             auto activity = std::make_unique<WiiUMenuApp>();
+            activity->setHomeCore(&homeCore);
             if (!fromTutorial)
                 activity->setStartupConfig(startupConfig);
             activity->setTutorialStartupFade(fromTutorial);
@@ -367,8 +374,11 @@ int main(int argc, char* argv[]) {
         };
         if (startupConfig.tutorialCompleted)
             app.setActivity(makeMenuActivity(false));
-        else
-            app.setActivity(std::make_unique<TutorialActivity>(makeMenuActivity));
+        else {
+            auto tutorial = std::make_unique<TutorialActivity>(makeMenuActivity);
+            tutorial->setHomeCore(&homeCore);
+            app.setActivity(std::move(tutorial));
+        }
         DebugLog::log("[hb] app.initialize...");
         app.setLogSink([](const char* msg) { DebugLog::log("%s", msg); });
         nxui::GpuDevice::setDebugSink([](const char* msg) {
@@ -383,11 +393,15 @@ int main(int argc, char* argv[]) {
         }
         DebugLog::log("[hb] app.shutdown...");
         app.shutdown();
+        homeCore.runShutdownPhase(home::ShutdownPhase::Services);
+        homeCore.runShutdownPhase(home::ShutdownPhase::Audio);
+        homeCore.runShutdownPhase(home::ShutdownPhase::ProcessExit);
 #else
         AppConfig startupConfig;
         startupConfig.load();
-        auto makeMenuActivity = [sysStatus, startupConfig, menuMainTick, menuMainCore](bool fromTutorial = false) -> std::unique_ptr<nxui::Activity> {
+        auto makeMenuActivity = [sysStatus, startupConfig, menuMainTick, menuMainCore, &homeCore](bool fromTutorial = false) -> std::unique_ptr<nxui::Activity> {
             auto activity = std::make_unique<WiiUMenuApp>();
+            activity->setHomeCore(&homeCore);
             if (!fromTutorial)
                 activity->setStartupConfig(startupConfig);
             activity->setStartupStatus(sysStatus);
@@ -397,8 +411,11 @@ int main(int argc, char* argv[]) {
         };
         if (startupConfig.tutorialCompleted)
             app.setActivity(makeMenuActivity(false));
-        else
-            app.setActivity(std::make_unique<TutorialActivity>(makeMenuActivity));
+        else {
+            auto tutorial = std::make_unique<TutorialActivity>(makeMenuActivity);
+            tutorial->setHomeCore(&homeCore);
+            app.setActivity(std::move(tutorial));
+        }
         DebugLog::log("[menu] app.initialize...");
         {
             u64 total = 0;
@@ -433,6 +450,9 @@ int main(int argc, char* argv[]) {
         DebugLog::log("[menu] app.shutdown...");
         app.shutdown();
         switchu::services::NtpClient::cleanup();
+        homeCore.runShutdownPhase(home::ShutdownPhase::Services);
+        homeCore.runShutdownPhase(home::ShutdownPhase::Audio);
+        homeCore.runShutdownPhase(home::ShutdownPhase::ProcessExit);
 #endif
     }
 

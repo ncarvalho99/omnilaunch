@@ -8,6 +8,7 @@
 #include <nxui/Theme.hpp>
 #include "widgets/IconGrid.hpp"
 #include "core/GridModel.hpp"
+#include "home/HomeCore.hpp"
 #include "widgets/SelectionCursor.hpp"
 #include "widgets/WaraWaraBackground.hpp"
 #include "widgets/GameArtworkBackdrop.hpp"
@@ -103,6 +104,8 @@ public:
 
     void setTutorialStartupFade(bool enabled);
     void setStartupConfig(const AppConfig& config);
+    /// Process-lifetime service owner; outlives this Activity (step C1).
+    void setHomeCore(home::HomeCore* core) { m_homeCore = core; }
 
 #ifdef SWITCHU_MENU
     void setStartupStatus(const switchu::smi::SystemStatus& status);
@@ -119,6 +122,8 @@ public:
     nxui::Widget* focusRoot() override;
 
 private:
+    home::HomeCore* m_homeCore = nullptr;
+
     struct GridLayoutMetrics {
         float cellW = 150.f;
         float cellH = 150.f;
