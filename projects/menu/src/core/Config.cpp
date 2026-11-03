@@ -86,6 +86,8 @@ bool AppConfig::load() {
             appLayoutMode = AppLayoutMode::List;
         else if (mode == "metro" || mode == "tiles")
             appLayoutMode = AppLayoutMode::Metro;
+        else if (mode == "cards")
+            appLayoutMode = AppLayoutMode::Cards;
         else if (mode == "grid")
             appLayoutMode = AppLayoutMode::Grid;
     }
@@ -278,6 +280,7 @@ bool AppConfig::save() const {
                        : appLayoutMode == AppLayoutMode::Xmb         ? "xmb"
                        : appLayoutMode == AppLayoutMode::List        ? "list"
                        : appLayoutMode == AppLayoutMode::Metro       ? "metro"
+                       : appLayoutMode == AppLayoutMode::Cards       ? "cards"
                                                                      : "grid";
     if (!metroTileSpans.empty()) {
         nlohmann::json spansObj = nlohmann::json::object();

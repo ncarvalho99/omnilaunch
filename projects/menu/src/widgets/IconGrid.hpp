@@ -49,6 +49,7 @@ public:
     bool isXmb() const { return m_layoutMode == AppLayoutMode::Xmb; }
     bool isList() const { return m_layoutMode == AppLayoutMode::List; }
     bool isMetro() const { return m_layoutMode == AppLayoutMode::Metro; }
+    bool isCards() const { return m_layoutMode == AppLayoutMode::Cards; }
     bool is3D() const {
         return m_layoutMode == AppLayoutMode::Flow
             || m_layoutMode == AppLayoutMode::Shelf
@@ -65,7 +66,8 @@ public:
             || m_layoutMode == AppLayoutMode::Flow
             || m_layoutMode == AppLayoutMode::Shelf
             || m_layoutMode == AppLayoutMode::Deck
-            || m_layoutMode == AppLayoutMode::Cover;
+            || m_layoutMode == AppLayoutMode::Cover
+            || m_layoutMode == AppLayoutMode::Cards;
     }
     bool isDynamicLineScrolling() const;
     bool isLayoutMorphing() const { return m_layoutMorphing; }
@@ -163,6 +165,24 @@ public:
     void layoutList();
     void syncListChildRects();
     void renderList(nxui::Renderer& ren);
+
+    struct CardsContext {
+        nxui::Font* fontNormal = nullptr;
+        nxui::Font* fontSmall = nullptr;
+    };
+    static constexpr float kCardW       = 240.0f;
+    static constexpr float kCardH       = 340.0f;
+    static constexpr float kCardGrowW   = 10.0f;
+    static constexpr float kCardGrowH   = 14.0f;
+    static constexpr float kCardPitch   = 250.0f;
+    static constexpr float kCardFirstX  = 136.0f;
+    static constexpr float kCardMidY    = 291.0f;
+    static constexpr float kCardRadius  = 26.0f;
+
+    void setCardsContext(const CardsContext& ctx) { m_cardsContext = ctx; }
+    const CardsContext& cardsContext() const { return m_cardsContext; }
+    nxui::Rect cardsIconRect(int idx) const;
+    void renderCards(nxui::Renderer& ren);
 
     struct MetroContext {
         nxui::Font* fontNormal = nullptr;
@@ -444,6 +464,10 @@ private:
 
     // List (Niagara) state
     ListContext m_listContext;
+    CardsContext m_cardsContext;
+    std::uint64_t m_cardsCachedDetailTitleId = 0;
+    GameDetailInfo m_cardsCachedDetail;
+    float m_cardsClock = 0.f;
     GameDetailProvider m_gameDetailProvider;
     float m_listScrollOffset = 0.0f;
     float m_listTargetScroll = 0.0f;

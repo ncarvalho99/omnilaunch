@@ -8,6 +8,7 @@
 #include <nxui/core/Animation.hpp>
 #include <nxui/core/Input.hpp>
 #include <nxui/core/ThreadPool.hpp>
+#include <nxui/core/I18n.hpp>
 #include <algorithm>
 #include <cmath>
 #include <ctime>
@@ -237,7 +238,7 @@ void IconGrid::clearFlowCovers() {
 }
 
 void IconGrid::preloadFlowCoversAround(int centerIdx) {
-    if (!is3D() || m_allIcons.empty() || !m_threadPool)
+    if ((!is3D() && !isCards()) || m_allIcons.empty() || !m_threadPool)
         return;
     const int count = static_cast<int>(m_allIcons.size());
     for (int offset = -3; offset <= 3; ++offset) {
@@ -382,7 +383,7 @@ void IconGrid::setLayoutMode(AppLayoutMode mode) {
     } else if (isCarousel()) {
         m_lineScrollOffset.setImmediate(cur >= 0 ? static_cast<float>(cur) : 0.f);
         layoutLine();
-        if (is3D()) {
+        if (is3D() || isCards()) {
             preloadFlowCoversAround(cur >= 0 ? cur : 0);
         }
     } else {
@@ -623,6 +624,8 @@ nxui::Rect IconGrid::gridSpanRect(int globalIndex, int columns, int rows) const 
     // The single-row carousel has its own fixed metrics and animation. Edit
     // ghosts/cursors must follow that displayed rect instead of reconstructing
     // a cell from the configurable grid dimensions.
+    if (isCards())
+        return cardsIconRect(globalIndex);
     if (isCarousel())
         return dynamicIconRect(globalIndex);
     if (m_layoutMode == AppLayoutMode::List)
@@ -948,6 +951,8 @@ nxui::Rect IconGrid::focusedDisplayRect() const {
         if (focused >= 0) {
             if (is3D())
                 return projected3DIconRect(focused);
+            if (isCards())
+                return cardsIconRect(focused);
             return dynamicIconRect(focused);
         }
     }
@@ -992,7 +997,7 @@ bool IconGrid::focusGlobalIndex(int idx) {
 
     if (isCarousel()) {
         m_focus.setFocus(m_allIcons[idx].get());
-        if (is3D()) {
+        if (is3D() || isCards()) {
             preloadFlowCoversAround(idx);
         }
         // Target the congruent value nearest the current offset, so a wrap moves
@@ -1337,6 +1342,21 @@ nxui::Rect IconGrid::projected3DIconRect(int index) const {
     return nxui::Rect{minX, minY, std::max(1.f, maxX - minX), std::max(1.f, maxY - minY)};
 }
 
+nxui::Rect IconGrid::cardsIconRect(int index) const {
+    if (index < 0 || index >= static_cast<int>(m_allIcons.size()))
+        return {};
+
+    const float offset = m_lineScrollOffset.value();
+    const float d = lineRingDelta(offset, static_cast<float>(index));
+    const float x0 = kCardFirstX + d * kCardPitch;
+    const float chosen = clamp01(1.0f - std::abs(d));
+    const float grow = nxui::Easing::outBack(chosen);
+    const float w = kCardW + kCardGrowW * grow;
+    const float h = kCardH + kCardGrowH * grow;
+    const float lift = 7.0f * chosen;
+    return nxui::Rect{x0 + kCardW * 0.5f - w * 0.5f, kCardMidY - h * 0.5f - lift, w, h};
+}
+
 int IconGrid::hitTest(float screenX, float screenY) const {
     if (m_layoutMode == AppLayoutMode::Flow) {
         return hitTestFlow(screenX, screenY);
@@ -1349,6 +1369,20 @@ int IconGrid::hitTest(float screenX, float screenY) const {
     }
     if (m_layoutMode == AppLayoutMode::Cover) {
         return hitTestCover(screenX, screenY);
+    }
+    if (m_layoutMode == AppLayoutMode::Cards) {
+        for (int i = 0; i < (int)m_allIcons.size(); ++i) {
+            if (m_allIcons[i] && m_allIcons[i]->isFocusable()) {
+                const nxui::Rect r = cardsIconRect(i);
+                if (r.contains(screenX, screenY))
+                    return i;
+            }
+        }
+        const nxui::Rect playBtnRect{186.f + 28.f, 503.f + 114.f, 220.f, 62.f};
+        if (playBtnRect.contains(screenX, screenY)) {
+            return focusedGlobalIndex();
+        }
+        return -1;
     }
     // XMB touch is resolved in findTopHit(): a tap there changes the selected
     // category or row, which is a mutation, and hitTest() is const by contract
@@ -1658,6 +1692,9 @@ void IconGrid::onUpdate(float dt) {
         if (m_layoutMode == AppLayoutMode::Flow) {
             m_flowClock += dt;
             if (m_flowClock > 3600.f) m_flowClock -= 3600.f;
+        } else if (m_layoutMode == AppLayoutMode::Cards) {
+            m_cardsClock += dt;
+            if (m_cardsClock > 3600.f) m_cardsClock -= 3600.f;
         }
         m_lineScrollOffset.update(dt);
         int cur = focusedGlobalIndex();
@@ -1691,6 +1728,10 @@ void IconGrid::onUpdate(float dt) {
             if (is3D()) {
                 for (int i = 0; i < (int)m_allIcons.size(); ++i) {
                     m_allIcons[i]->setRect(projected3DIconRect(i));
+                }
+            } else if (isCards()) {
+                for (int i = 0; i < (int)m_allIcons.size(); ++i) {
+                    m_allIcons[i]->setRect(cardsIconRect(i));
                 }
             } else {
                 for (int i = 0; i < (int)m_allIcons.size(); ++i) {
@@ -2869,6 +2910,325 @@ void IconGrid::renderCover(nxui::Renderer& ren) {
                              icon->folderColorIndex(), artTint, 1.f, 1.f, false);
         } else if (icon->texture()) {
             ren.drawQuad3D(icon->texture(), quad, artTint);
+        }
+    }
+
+    ren.popClipRect();
+}
+
+namespace {
+
+static void drawAspectFillCover(nxui::Renderer& ren, const nxui::Texture* tex, const nxui::Rect& dst, float radius, const nxui::Color& tint) {
+    if (!tex || !tex->valid()) return;
+    const float tw = static_cast<float>(tex->width());
+    const float th = static_cast<float>(tex->height());
+    if (tw <= 0.f || th <= 0.f) return;
+    const float scale = std::max(dst.width / tw, dst.height / th);
+    const float sw = dst.width / scale;
+    const float sh = dst.height / scale;
+    const nxui::Rect src{(tw - sw) * 0.5f, (th - sh) * 0.5f, sw, sh};
+    if (radius > 0.f) {
+        ren.drawTextureSubRounded(tex, src, dst, radius, tint);
+    } else {
+        ren.drawTextureSub(tex, src, dst, tint);
+    }
+}
+
+} // namespace
+
+void IconGrid::renderCards(nxui::Renderer& ren) {
+    const int n = static_cast<int>(m_allIcons.size());
+    if (n <= 0) return;
+
+    ren.pushClipRect(nxui::Rect{0.f, 60.f, 1280.f, 660.f});
+
+    const float reveal = clamp01(m_layoutReveal.value());
+
+    // Harvest completed asynchronous cover decodes (up to 2 uploads per frame)
+    int uploads = 0;
+    for (auto it = m_pendingCoverDecodes.begin(); it != m_pendingCoverDecodes.end() && uploads < 2;) {
+        if (it->state && it->state->done.load()) {
+            try {
+                if (it->future.valid()) it->future.get();
+            } catch (...) {}
+            auto covIt = m_flowCovers.find(it->titleId);
+            if (covIt != m_flowCovers.end()) {
+                if (!it->state->failed.load() && it->state->decoded.valid()) {
+                    if (covIt->second.texture.loadFromDecoded(ren.gpu(), ren, it->state->decoded)) {
+                        covIt->second.available = true;
+                    }
+                }
+                covIt->second.loading = false;
+            }
+            it = m_pendingCoverDecodes.erase(it);
+            ++uploads;
+        } else {
+            ++it;
+        }
+    }
+
+    const float scroll = m_lineScrollOffset.value();
+    const int focusedIndex = focusedGlobalIndex();
+    const int centre = static_cast<int>(std::round(scroll));
+
+    // Bound cover cache in VRAM (<= 24 items, evicting entries distant from focus)
+    if (m_flowCovers.size() > 24) {
+        for (auto it = m_flowCovers.begin(); it != m_flowCovers.end();) {
+            bool nearFocus = false;
+            for (int off = -8; off <= 8; ++off) {
+                int checkIdx = flowWrap(centre + off, n);
+                if (checkIdx >= 0 && checkIdx < n && m_allIcons[checkIdx] && m_allIcons[checkIdx]->titleId() == it->first) {
+                    nearFocus = true;
+                    break;
+                }
+            }
+            if (!nearFocus && !it->second.loading) {
+                it = m_flowCovers.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
+    struct CardCandidate {
+        int index;
+        float d;
+        float chosen;
+        nxui::Rect rect;
+    };
+    std::vector<CardCandidate> candidates;
+    candidates.reserve(12);
+
+    for (int i = 0; i < n; ++i) {
+        const float d = lineRingDelta(scroll, static_cast<float>(i));
+        if (std::abs(d) > 5.5f && i != focusedIndex) continue;
+
+        const float x0 = kCardFirstX + d * kCardPitch;
+        if (x0 > 1290.f || x0 + kCardPitch < -10.f) continue;
+
+        const float chosen = clamp01(1.0f - std::abs(d));
+        const float grow = nxui::Easing::outBack(chosen);
+        const float w = kCardW + kCardGrowW * grow;
+        const float h = kCardH + kCardGrowH * grow;
+        const float lift = 7.0f * chosen;
+        const nxui::Rect cardRect{x0 + kCardW * 0.5f - w * 0.5f, kCardMidY - h * 0.5f - lift, w, h};
+
+        candidates.push_back({i, d, chosen, cardRect});
+    }
+
+    // Far to near: lower chosen (unfocused) drawn first, focused card drawn last on top
+    std::sort(candidates.begin(), candidates.end(), [](const CardCandidate& a, const CardCandidate& b) {
+        return a.chosen < b.chosen;
+    });
+
+    for (const auto& c : candidates) {
+        auto& icon = m_allIcons[static_cast<size_t>(c.index)];
+        if (!icon) continue;
+
+        const float alpha = m_opacity * icon->opacity() * reveal;
+        if (alpha <= 0.01f) continue;
+
+        // Elevation drop shadow (C-GEO-4)
+        const float shadowAlpha = (0.18f + 0.18f * c.chosen) * alpha;
+        ren.drawRoundedRect({c.rect.x - 3.f, c.rect.y + 6.f + 6.f * c.chosen, c.rect.width + 6.f, c.rect.height + 6.f},
+                            nxui::Color(0.f, 0.f, 0.f, shadowAlpha), kCardRadius + 3.f);
+
+        // Query 2:3 portrait cover art cache
+        const std::uint64_t tid = icon->titleId();
+        bool hasCover = false;
+        nxui::Texture* coverTex = nullptr;
+        if (tid != 0) {
+            auto& cov = m_flowCovers[tid];
+            if (!cov.checked) {
+                cov.checked = true;
+                cov.loading = true;
+                if (m_threadPool) {
+                    auto decodeState = std::make_shared<CoverDecodeState>();
+                    auto work = [decodeState, tid]() {
+                        try {
+                            const std::string coverPath = resolveFlowCoverPath(tid);
+                            if (!coverPath.empty()) {
+                                decodeState->decoded = nxui::Texture::decodeFile(coverPath, 720);
+                                decodeState->failed = !decodeState->decoded.valid();
+                            } else {
+                                decodeState->failed = true;
+                            }
+                        } catch (...) {
+                            decodeState->failed = true;
+                        }
+                        decodeState->done = true;
+                    };
+                    PendingCoverDecode pcd;
+                    pcd.titleId = tid;
+                    pcd.state = decodeState;
+                    pcd.future = m_threadPool->submit(std::move(work));
+                    m_pendingCoverDecodes.push_back(std::move(pcd));
+                }
+            }
+            if (cov.available && cov.texture.valid()) {
+                hasCover = true;
+                coverTex = &cov.texture;
+            }
+        }
+
+        // Card body / artwork
+        if (hasCover && coverTex) {
+            drawAspectFillCover(ren, coverTex, c.rect, kCardRadius, nxui::Color::white().withAlpha(alpha));
+        } else if (icon->entryKind() == GridEntryKind::Folder) {
+            GlossyIcon::drawFolderContent(ren, c.rect, icon->folderPreview(),
+                                          icon->folderPreviewCount(), icon->folderColorIndex(),
+                                          alpha, nullptr, "");
+        } else {
+            // Sleek card backing for square icon fallback
+            ren.drawRoundedRect(c.rect, nxui::Color(0.18f, 0.22f, 0.30f, 0.90f * alpha), kCardRadius);
+            if (icon->texture() && icon->texture()->valid()) {
+                constexpr float kIconSz = 140.f;
+                const nxui::Rect iconDst{c.rect.x + (c.rect.width - kIconSz) * 0.5f,
+                                         c.rect.y + (c.rect.height - kIconSz) * 0.5f - 18.f,
+                                         kIconSz, kIconSz};
+                ren.drawTextureRounded(icon->texture(), iconDst, 16.f, nxui::Color::white().withAlpha(alpha));
+            }
+            nxui::Font* fontSmall = m_cardsContext.fontSmall ? m_cardsContext.fontSmall : m_listContext.fontSmall;
+            if (fontSmall) {
+                std::string name = icon->title();
+                while (name.length() > 3 && fontSmall->measure(name).x * 0.8f > c.rect.width - 24.f) {
+                    name.pop_back();
+                }
+                if (name != icon->title() && name.length() > 3) name += "...";
+                const float tw = fontSmall->measure(name).x * 0.8f;
+                ren.drawText(name, {c.rect.x + (c.rect.width - tw) * 0.5f, c.rect.bottom() - 34.f},
+                             fontSmall, nxui::Color(0.85f, 0.88f, 0.94f, 0.85f * alpha), 0.8f);
+            }
+        }
+
+        // Game Card cartridge badge
+        if (icon->isGameCard() && icon->gameCardTexture() && icon->gameCardTexture()->valid()) {
+            ren.drawTextureRounded(icon->gameCardTexture(),
+                                   {c.rect.x + 12.f, c.rect.y + 12.f, 32.f, 32.f}, 6.f,
+                                   nxui::Color::white().withAlpha(alpha));
+        }
+
+        // Receding neighbor dimming (C-VIS-3)
+        if (c.chosen < 0.999f) {
+            ren.drawRoundedRect(c.rect, nxui::Color(0.f, 0.f, 0.f, 0.30f * (1.0f - c.chosen) * alpha), kCardRadius);
+        }
+
+        // Focus accent outline (C-VIS-2)
+        if (c.chosen > 0.05f) {
+            const float pulse = 0.85f + 0.15f * std::sin(m_cardsClock * 5.0f);
+            const nxui::Color accentColor(0.36f, 0.68f, 1.0f, 1.0f);
+            ren.drawRoundedRectOutline(c.rect.expanded(2.f),
+                                       accentColor.withAlpha(c.chosen * pulse * alpha),
+                                       kCardRadius + 2.f, 3.0f);
+            ren.drawRoundedRectOutline(c.rect,
+                                       nxui::Color::white().withAlpha(c.chosen * 0.6f * alpha),
+                                       kCardRadius, 1.0f);
+        }
+    }
+
+    // Glass Details Panel (C-VIS-4)
+    const nxui::Rect kPanel{186.f, 503.f, 907.f, 207.f};
+    constexpr float kPanelRadius = 35.f;
+    const float panelAlpha = m_opacity * reveal;
+
+    ren.drawFrostedInset(kPanel,
+                         nxui::Color(0.04f, 0.06f, 0.11f, 0.72f * panelAlpha),
+                         nxui::Color(0.24f, 0.35f, 0.52f, 0.40f * panelAlpha),
+                         nxui::Color(1.f, 1.f, 1.f, 0.22f * panelAlpha),
+                         kPanelRadius,
+                         panelAlpha);
+    ren.drawRoundedRectOutline(kPanel, nxui::Color(1.f, 1.f, 1.f, 0.18f * panelAlpha), kPanelRadius, 1.5f);
+
+    if (focusedIndex >= 0 && focusedIndex < n) {
+        auto* active = m_allIcons[static_cast<size_t>(focusedIndex)].get();
+        if (active) {
+            nxui::Font* fontNormal = m_cardsContext.fontNormal ? m_cardsContext.fontNormal : m_listContext.fontNormal;
+            nxui::Font* fontSmall = m_cardsContext.fontSmall ? m_cardsContext.fontSmall : m_listContext.fontSmall;
+            auto& i18n = nxui::I18n::instance();
+
+            // Small icon on panel left
+            const nxui::Rect iconRect{kPanel.x + 28.f, kPanel.y + 24.f, 72.f, 72.f};
+            if (active->texture() && active->texture()->valid()) {
+                ren.drawTextureRounded(active->texture(), iconRect, 14.f, nxui::Color::white().withAlpha(panelAlpha));
+                ren.drawRoundedRectOutline(iconRect, nxui::Color(1.f, 1.f, 1.f, 0.25f * panelAlpha), 14.f, 1.f);
+            }
+
+            const float textX = iconRect.right() + 18.f;
+            const float maxTitleW = kPanel.right() - textX - 140.f;
+
+            if (fontNormal) {
+                std::string titleStr = active->title();
+                if (titleStr.empty()) titleStr = (active->entryKind() == GridEntryKind::Folder ? "Folder" : "Application");
+                while (titleStr.length() > 3 && fontNormal->measure(titleStr).x * 1.05f > maxTitleW) {
+                    titleStr.pop_back();
+                }
+                if (titleStr != active->title() && titleStr.length() > 3) titleStr += "...";
+                ren.drawText(titleStr, {textX, kPanel.y + 26.f}, fontNormal, nxui::Color::white().withAlpha(panelAlpha), 1.05f);
+            }
+
+            const std::uint64_t tid = active->titleId();
+            if (tid != m_cardsCachedDetailTitleId) {
+                m_cardsCachedDetailTitleId = tid;
+                if (m_gameDetailProvider && tid != 0) {
+                    m_cardsCachedDetail = m_gameDetailProvider(tid);
+                } else {
+                    m_cardsCachedDetail = {};
+                }
+            }
+            const GameDetailInfo& details = m_cardsCachedDetail;
+
+            if (fontSmall) {
+                std::string metaStr;
+                if (active->entryKind() == GridEntryKind::Folder) {
+                    metaStr = i18n.tr("folder.name_default", "Game Folder");
+                } else {
+                    if (!details.publisher.empty()) metaStr += details.publisher;
+                    if (!details.version.empty()) {
+                        if (!metaStr.empty()) metaStr += "  •  ";
+                        metaStr += "v" + details.version;
+                    }
+                    if (!details.playtime.empty()) {
+                        if (!metaStr.empty()) metaStr += "  •  ";
+                        metaStr += details.playtime;
+                    }
+                }
+                if (!metaStr.empty()) {
+                    ren.drawText(metaStr, {textX, kPanel.y + 60.f}, fontSmall,
+                                 nxui::Color(0.72f, 0.78f, 0.88f, 0.85f * panelAlpha), 0.80f);
+                }
+            }
+
+            if (active->isSuspended() && fontSmall) {
+                const nxui::Rect runPill{kPanel.right() - 126.f, kPanel.y + 24.f, 96.f, 24.f};
+                ren.drawRoundedRect(runPill, nxui::Color(0.18f, 0.76f, 0.38f, 0.85f * panelAlpha), 8.f);
+                ren.drawText(i18n.tr("hint.running", "RUNNING"), {runPill.x + 14.f, runPill.y + 5.f}, fontSmall, nxui::Color::white().withAlpha(panelAlpha), 0.55f);
+            }
+
+            // Play / Resume Button (A)
+            const nxui::Rect playBtnRect{kPanel.x + 28.f, kPanel.y + 114.f, 220.f, 62.f};
+            ren.drawRoundedRect(playBtnRect, nxui::Color(1.f, 1.f, 1.f, 0.95f * panelAlpha), playBtnRect.height * 0.5f);
+            ren.drawRoundedRectOutline(playBtnRect.expanded(2.f), nxui::Color(0.36f, 0.68f, 1.0f, 0.6f * panelAlpha), playBtnRect.height * 0.5f + 2.f, 2.f);
+
+            const nxui::Color inkColor(0.08f, 0.10f, 0.16f, panelAlpha);
+            const std::string actionWord = active->isSuspended() ? i18n.tr("button.resume", "Resume") : i18n.tr("button.play", "Play");
+            if (fontNormal) {
+                ren.drawText(actionWord, {playBtnRect.x + 50.f, playBtnRect.y + 18.f}, fontNormal, inkColor, 1.0f);
+            }
+            const float aCircleRadius = 14.f;
+            const nxui::Vec2 aCenter{playBtnRect.right() - 32.f, playBtnRect.y + playBtnRect.height * 0.5f};
+            ren.drawCircle(aCenter, aCircleRadius, nxui::Color(0.85f, 0.88f, 0.94f, panelAlpha));
+            if (fontSmall) {
+                ren.drawText("A", {aCenter.x - 5.f, aCenter.y - 8.f}, fontSmall, inkColor, 0.85f);
+            }
+
+            if (fontSmall) {
+                const float rightActionsX = kPanel.right() - 210.f;
+                const float hintY = kPanel.y + 130.f;
+                const std::string sortHint = "Y  " + i18n.tr("hint.sort", "Sort");
+                const std::string optHint = "+  " + i18n.tr("hint.options", "Options");
+                ren.drawText(sortHint, {rightActionsX, hintY}, fontSmall, nxui::Color(0.65f, 0.72f, 0.85f, 0.75f * panelAlpha), 0.75f);
+                ren.drawText(optHint, {rightActionsX + 90.f, hintY}, fontSmall, nxui::Color(0.65f, 0.72f, 0.85f, 0.75f * panelAlpha), 0.75f);
+            }
         }
     }
 
@@ -4482,6 +4842,11 @@ void IconGrid::render(nxui::Renderer& ren) {
 
     if (m_layoutMode == AppLayoutMode::Xmb) {
         renderXmb(ren);
+        return;
+    }
+
+    if (m_layoutMode == AppLayoutMode::Cards) {
+        renderCards(ren);
         return;
     }
 

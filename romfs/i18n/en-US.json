@@ -103,6 +103,9 @@
       "deck": "Deck mode",
       "cover": "Cover mode",
       "xmb": "XMB mode",
+      "list": "List mode",
+      "metro": "Metro live tiles mode",
+      "cards": "Cards mode",
       "grid": "Grid mode"
     }
   },
@@ -207,7 +210,10 @@
       "shelf": "Shelf (3D)",
       "deck": "Deck (3D)",
       "cover": "Cover",
-      "xmb": "XMB"
+      "xmb": "XMB",
+      "list": "List (Niagara)",
+      "metro": "Metro (Live Tiles)",
+      "cards": "Cards"
     },
     "tabs": {
       "system": "System",

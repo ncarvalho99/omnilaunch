@@ -103,6 +103,9 @@
       "deck": "Modo deck",
       "cover": "Modo capa",
       "xmb": "Modo XMB",
+      "list": "Modo lista",
+      "metro": "Modo blocos dinâmicos",
+      "cards": "Modo cards",
       "grid": "Modo de grade"
     }
   },
@@ -207,7 +210,10 @@
       "shelf": "Shelf (3D)",
       "deck": "Deck (3D)",
       "cover": "Capa",
-      "xmb": "XMB"
+      "xmb": "XMB",
+      "list": "Lista (Niagara)",
+      "metro": "Metro (Blocos)",
+      "cards": "Cards"
     },
     "tabs": {
       "system": "Sistema",

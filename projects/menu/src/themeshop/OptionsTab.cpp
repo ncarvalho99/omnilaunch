@@ -133,8 +133,10 @@ ThemeShopScreen::Tab themeshop::tabs::OptionsTab::build(ThemeShopScreen& screen)
             i18n.tr("settings.layout.xmb", "XMB"),
             i18n.tr("settings.layout.list", "List (Niagara)"),
             i18n.tr("settings.layout.metro", "Metro (Live Tiles)"),
+            i18n.tr("settings.layout.cards", "Cards"),
         };
-        it.intVal = screen.m_layoutMode == AppLayoutMode::Metro ? 8
+        it.intVal = screen.m_layoutMode == AppLayoutMode::Cards ? 9
+                  : screen.m_layoutMode == AppLayoutMode::Metro ? 8
                   : screen.m_layoutMode == AppLayoutMode::List  ? 7
                   : screen.m_layoutMode == AppLayoutMode::Xmb   ? 6
                   : screen.m_layoutMode == AppLayoutMode::Cover ? 5
@@ -143,7 +145,8 @@ ThemeShopScreen::Tab themeshop::tabs::OptionsTab::build(ThemeShopScreen& screen)
                   : screen.m_layoutMode == AppLayoutMode::Flow  ? 2
                   : screen.m_layoutMode == AppLayoutMode::DynamicLine ? 1 : 0;
         it.onChange = [&screen](SettingItem& self) {
-            AppLayoutMode mode = self.intVal == 8 ? AppLayoutMode::Metro
+            AppLayoutMode mode = self.intVal == 9 ? AppLayoutMode::Cards
+                               : self.intVal == 8 ? AppLayoutMode::Metro
                                : self.intVal == 7 ? AppLayoutMode::List
                                : self.intVal == 6 ? AppLayoutMode::Xmb
                                : self.intVal == 5 ? AppLayoutMode::Cover

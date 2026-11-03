@@ -14,4 +14,5 @@ enum class AppLayoutMode : std::uint8_t {
     Xmb,
     List,
     Metro,
+    Cards,
 };

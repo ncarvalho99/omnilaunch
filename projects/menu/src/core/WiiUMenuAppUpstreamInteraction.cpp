@@ -1350,6 +1350,11 @@ void WiiUMenuApp::wireGlobalActions() {
             return;
         }
 
+        if (m_appLayoutMode == AppLayoutMode::Cards) {
+            cycleSortMode();
+            return;
+        }
+
         auto* cur = focusManager().current();
         if (m_editMode)
             return;
@@ -1692,7 +1697,7 @@ void WiiUMenuApp::handleTouch() {
                     m_editGhostIcon->gridSpanRows());
             m_cursor->moveTo(cursorRect.expanded(4.f), 0.f);
             m_cursor->setVisible(!m_grid->is3D() && !m_grid->isMetro() && !isListLayout() &&
-                                 !m_grid->isXmb() && m_appLayoutMode != AppLayoutMode::Metro);
+                                 !m_grid->isXmb() && !m_grid->isCards() && m_appLayoutMode != AppLayoutMode::Metro);
         } else {
             updateCursor();
         }
@@ -1978,8 +1983,8 @@ void WiiUMenuApp::updateCursor() {
     if (cur) {
         const bool isGameInCustomView = (cur->tag() == "glossy_icon" && m_openFolderId == 0);
         if (isGameInCustomView && m_grid &&
-            (m_grid->is3D() || m_appLayoutMode == AppLayoutMode::Metro || m_grid->isMetro())) {
-            // Metro and the 3D views draw their own highlight. XMB and List do
+            (m_grid->is3D() || m_grid->isCards() || m_appLayoutMode == AppLayoutMode::Metro || m_grid->isMetro())) {
+            // Metro, Cards and the 3D views draw their own highlight. XMB and List do
             // not: they rely on the shared cursor (xmbFocus below), so it must
             // stay visible. List used to draw a private pill next to the
             // cursor, which stayed lit on the game after focus moved to a HUD

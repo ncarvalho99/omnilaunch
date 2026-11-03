@@ -1425,6 +1425,11 @@ void WiiUMenuApp::wireGlobalActions() {
             return;
         }
 
+        if (m_appLayoutMode == AppLayoutMode::Cards) {
+            cycleSortMode();
+            return;
+        }
+
         if (m_editMode) {
             const std::string movedTitle = m_editHeldTitle;
             bool changed = commitEditModePlacement();

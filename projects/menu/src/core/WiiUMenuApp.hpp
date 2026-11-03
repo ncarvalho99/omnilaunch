@@ -198,9 +198,10 @@ private:
     void updateGridXmbContext();
     void updateGridListContext();
     void updateGridMetroContext();
+    void updateGridCardsContext();
     void applyMetroPowerButton(bool isMetro);
     void cycleCurrentMetroTileSize();
-    IconGrid::GameDetailInfo getGameDetailInfo(std::uint64_t titleId);
+    IconGrid::GameDetailInfo getGameDetailInfo(std::uint64_t titleId, bool includeSummary = true);
     std::string getOrFetchSummary(std::uint64_t titleId);
     void triggerSummaryFetchIfNeeded(std::uint64_t titleId);
     // The streamer thinks in pages. Each view has to say which "page" it is on
@@ -545,7 +546,11 @@ private:
             || m_appLayoutMode == AppLayoutMode::Flow
             || m_appLayoutMode == AppLayoutMode::Shelf
             || m_appLayoutMode == AppLayoutMode::Deck
-            || m_appLayoutMode == AppLayoutMode::Cover;
+            || m_appLayoutMode == AppLayoutMode::Cover
+            || m_appLayoutMode == AppLayoutMode::Cards;
+    }
+    bool isCardsLayout() const {
+        return m_appLayoutMode == AppLayoutMode::Cards;
     }
     bool isXmbLayout() const {
         return m_appLayoutMode == AppLayoutMode::Xmb;
