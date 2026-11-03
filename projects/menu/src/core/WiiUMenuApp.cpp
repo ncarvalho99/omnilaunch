@@ -7085,8 +7085,8 @@ void WiiUMenuApp::buildGrid() {
     if (m_battery)       m_battery->setVisible(!isMetro);
     if (m_leftSidebar)   m_leftSidebar->setVisible(!isMetro);
     if (m_rightSidebar)  m_rightSidebar->setVisible(!isMetro);
-    if (m_pageIndicator) m_pageIndicator->setVisible(m_appLayoutMode != AppLayoutMode::Xmb && m_appLayoutMode != AppLayoutMode::List && !isMetro);
-    const bool hidePill = (m_openFolderId == 0) && (m_appLayoutMode == AppLayoutMode::Xmb || m_appLayoutMode == AppLayoutMode::List || isMetro);
+    if (m_pageIndicator) m_pageIndicator->setVisible(m_appLayoutMode != AppLayoutMode::Xmb && m_appLayoutMode != AppLayoutMode::List && m_appLayoutMode != AppLayoutMode::Cards && !isMetro);
+    const bool hidePill = (m_openFolderId == 0) && (m_appLayoutMode == AppLayoutMode::Xmb || m_appLayoutMode == AppLayoutMode::List || m_appLayoutMode == AppLayoutMode::Cards || isMetro);
     if (m_titlePill && hidePill) m_titlePill->setVisible(false);
     if (m_screenSwapButton) m_screenSwapButton->setMetroStyle(isMetro);
     if (m_mediaCenterButton) m_mediaCenterButton->setMetroStyle(isMetro);
@@ -7782,7 +7782,7 @@ void WiiUMenuApp::finalizeRefresh() {
         focusManager().setFocus(currentIcon);
         if (currentIcon->tag() == "glossy_icon") {
             auto* icon = static_cast<GlossyIcon*>(currentIcon);
-            const bool showTitle = (m_openFolderId != 0) || (m_appLayoutMode != AppLayoutMode::Xmb && m_appLayoutMode != AppLayoutMode::List && m_appLayoutMode != AppLayoutMode::Metro);
+            const bool showTitle = (m_openFolderId != 0) || (m_appLayoutMode != AppLayoutMode::Xmb && m_appLayoutMode != AppLayoutMode::List && m_appLayoutMode != AppLayoutMode::Cards && m_appLayoutMode != AppLayoutMode::Metro);
             if (icon->titleId() != 0 && showTitle) {
                 m_titlePill->setText(icon->title());
                 m_titlePill->setVisible(true);
@@ -8309,11 +8309,15 @@ void WiiUMenuApp::onUpdate(float dt) {
         openCapturedFolder();
 
     if (m_titlePill) {
-        const float targetPillY = (m_openFolderId != 0) ? 620.f
-                                : (m_appLayoutMode == AppLayoutMode::Deck) ? 275.f
-                                : (m_appLayoutMode == AppLayoutMode::Cover) ? 545.f
-                                : 630.f;
-        m_titlePill->setTargetY(targetPillY);
+        if (m_appLayoutMode == AppLayoutMode::Cards && m_openFolderId == 0) {
+            m_titlePill->setVisible(false);
+        } else {
+            const float targetPillY = (m_openFolderId != 0) ? 620.f
+                                    : (m_appLayoutMode == AppLayoutMode::Deck) ? 275.f
+                                    : (m_appLayoutMode == AppLayoutMode::Cover) ? 545.f
+                                    : 630.f;
+            m_titlePill->setTargetY(targetPillY);
+        }
     }
 
     // Periodically re-check whether the automatic day/night theme should switch.
@@ -10240,7 +10244,7 @@ void WiiUMenuApp::renderPageArrows(nxui::Renderer& ren) {
     if (m_plazaScreen && m_plazaScreen->isActive()) return;
     if (m_navigator.route() != switchu::navigation::Route::Home) return;
     if (focusRoot() != &rootBox()) return;
-    if (m_appLayoutMode == AppLayoutMode::Xmb || m_appLayoutMode == AppLayoutMode::List || m_appLayoutMode == AppLayoutMode::Metro) return;
+    if (m_appLayoutMode == AppLayoutMode::Xmb || m_appLayoutMode == AppLayoutMode::List || m_appLayoutMode == AppLayoutMode::Metro || m_appLayoutMode == AppLayoutMode::Cards) return;
 
     constexpr float kGlyphScale = 0.70f;
     auto drawArrow = [&](bool left, const nxui::Texture& texture,
@@ -10434,10 +10438,12 @@ void WiiUMenuApp::onRender(nxui::Renderer& ren) {
     }
 
     renderPageArrows(ren);
-    if (m_config.actionHintStyle == "panel")
-        renderActionHintPanel(ren);
-    else
-        renderActionHintBar(ren);
+    if (m_appLayoutMode != AppLayoutMode::Cards || m_openFolderId != 0 || focusRoot() != &rootBox()) {
+        if (m_config.actionHintStyle == "panel")
+            renderActionHintPanel(ren);
+        else
+            renderActionHintBar(ren);
+    }
 
     // Over the hint bar as well: while the lock screen is up none of those
     // buttons do anything, so showing them would be a lie.

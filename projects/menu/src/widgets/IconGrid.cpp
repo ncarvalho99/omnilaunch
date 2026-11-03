@@ -1378,7 +1378,7 @@ int IconGrid::hitTest(float screenX, float screenY) const {
                     return i;
             }
         }
-        const nxui::Rect playBtnRect{186.f + 28.f, 503.f + 114.f, 220.f, 62.f};
+        const nxui::Rect playBtnRect{186.f + 24.f, 503.f + 116.f, 190.f, 62.f};
         if (playBtnRect.contains(screenX, screenY)) {
             return focusedGlobalIndex();
         }
@@ -3117,11 +3117,14 @@ void IconGrid::renderCards(nxui::Renderer& ren) {
         if (c.chosen > 0.05f) {
             const float pulse = 0.85f + 0.15f * std::sin(m_cardsClock * 5.0f);
             const nxui::Color accentColor(0.36f, 0.68f, 1.0f, 1.0f);
-            ren.drawRoundedRectOutline(c.rect.expanded(2.f),
+            ren.drawRoundedRectOutline(c.rect.expanded(3.f),
+                                       accentColor.withAlpha(c.chosen * 0.40f * pulse * alpha),
+                                       kCardRadius + 3.f, 2.0f);
+            ren.drawRoundedRectOutline(c.rect.expanded(1.f),
                                        accentColor.withAlpha(c.chosen * pulse * alpha),
-                                       kCardRadius + 2.f, 3.0f);
+                                       kCardRadius + 1.f, 2.5f);
             ren.drawRoundedRectOutline(c.rect,
-                                       nxui::Color::white().withAlpha(c.chosen * 0.6f * alpha),
+                                       nxui::Color::white().withAlpha(c.chosen * 0.75f * alpha),
                                        kCardRadius, 1.0f);
         }
     }
@@ -3178,23 +3181,30 @@ void IconGrid::renderCards(nxui::Renderer& ren) {
             const GameDetailInfo& details = m_cardsCachedDetail;
 
             if (fontSmall) {
-                std::string metaStr;
+                std::string metaLine1;
                 if (active->entryKind() == GridEntryKind::Folder) {
-                    metaStr = i18n.tr("folder.name_default", "Game Folder");
+                    metaLine1 = i18n.tr("folder.name_default", "Game Folder");
                 } else {
-                    if (!details.publisher.empty()) metaStr += details.publisher;
-                    if (!details.version.empty()) {
-                        if (!metaStr.empty()) metaStr += "  •  ";
-                        metaStr += "v" + details.version;
-                    }
                     if (!details.playtime.empty()) {
-                        if (!metaStr.empty()) metaStr += "  •  ";
-                        metaStr += details.playtime;
+                        metaLine1 = details.playtime;
+                    }
+                    if (!details.lastPlayed.empty()) {
+                        if (!metaLine1.empty()) metaLine1 += "    ";
+                        metaLine1 += details.lastPlayed;
+                    } else if (!details.publisher.empty()) {
+                        if (!metaLine1.empty()) metaLine1 += "    ";
+                        metaLine1 += details.publisher;
                     }
                 }
-                if (!metaStr.empty()) {
-                    ren.drawText(metaStr, {textX, kPanel.y + 60.f}, fontSmall,
-                                 nxui::Color(0.72f, 0.78f, 0.88f, 0.85f * panelAlpha), 0.80f);
+                if (!metaLine1.empty()) {
+                    ren.drawText(metaLine1, {textX, kPanel.y + 56.f}, fontSmall,
+                                 nxui::Color(0.85f, 0.88f, 0.94f, 0.90f * panelAlpha), 0.82f);
+                }
+
+                if (!details.version.empty()) {
+                    std::string metaLine2 = "•  v" + details.version;
+                    ren.drawText(metaLine2, {textX, kPanel.y + 78.f}, fontSmall,
+                                 nxui::Color(0.68f, 0.74f, 0.84f, 0.80f * panelAlpha), 0.75f);
                 }
             }
 
@@ -3204,31 +3214,64 @@ void IconGrid::renderCards(nxui::Renderer& ren) {
                 ren.drawText(i18n.tr("hint.running", "RUNNING"), {runPill.x + 14.f, runPill.y + 5.f}, fontSmall, nxui::Color::white().withAlpha(panelAlpha), 0.55f);
             }
 
-            // Play / Resume Button (A)
-            const nxui::Rect playBtnRect{kPanel.x + 28.f, kPanel.y + 114.f, 220.f, 62.f};
+            // 1. Play / Resume Button (A)
+            const nxui::Rect playBtnRect{kPanel.x + 24.f, kPanel.y + 116.f, 190.f, 62.f};
             ren.drawRoundedRect(playBtnRect, nxui::Color(1.f, 1.f, 1.f, 0.95f * panelAlpha), playBtnRect.height * 0.5f);
             ren.drawRoundedRectOutline(playBtnRect.expanded(2.f), nxui::Color(0.36f, 0.68f, 1.0f, 0.6f * panelAlpha), playBtnRect.height * 0.5f + 2.f, 2.f);
 
             const nxui::Color inkColor(0.08f, 0.10f, 0.16f, panelAlpha);
-            const std::string actionWord = active->isSuspended() ? i18n.tr("button.resume", "Resume") : i18n.tr("button.play", "Play");
+            const std::string actionWord = std::string("▶  ") + (active->isSuspended() ? i18n.tr("button.resume", "Resume") : i18n.tr("button.play", "Play"));
             if (fontNormal) {
-                ren.drawText(actionWord, {playBtnRect.x + 50.f, playBtnRect.y + 18.f}, fontNormal, inkColor, 1.0f);
-            }
-            const float aCircleRadius = 14.f;
-            const nxui::Vec2 aCenter{playBtnRect.right() - 32.f, playBtnRect.y + playBtnRect.height * 0.5f};
-            ren.drawCircle(aCenter, aCircleRadius, nxui::Color(0.85f, 0.88f, 0.94f, panelAlpha));
-            if (fontSmall) {
-                ren.drawText("A", {aCenter.x - 5.f, aCenter.y - 8.f}, fontSmall, inkColor, 0.85f);
+                const float wordW = fontNormal->measure(actionWord).x;
+                ren.drawText(actionWord, {playBtnRect.x + (playBtnRect.width - wordW) * 0.5f, playBtnRect.y + 18.f}, fontNormal, inkColor, 1.0f);
             }
 
-            if (fontSmall) {
-                const float rightActionsX = kPanel.right() - 210.f;
-                const float hintY = kPanel.y + 130.f;
-                const std::string sortHint = "Y  " + i18n.tr("hint.sort", "Sort");
-                const std::string optHint = "+  " + i18n.tr("hint.options", "Options");
-                ren.drawText(sortHint, {rightActionsX, hintY}, fontSmall, nxui::Color(0.65f, 0.72f, 0.85f, 0.75f * panelAlpha), 0.75f);
-                ren.drawText(optHint, {rightActionsX + 90.f, hintY}, fontSmall, nxui::Color(0.65f, 0.72f, 0.85f, 0.75f * panelAlpha), 0.75f);
-            }
+            // 2. Options circle button (...) beside Play
+            const float optR = 31.f;
+            const float optX = playBtnRect.right() + 16.f + optR;
+            const float optY = playBtnRect.y + optR;
+            const nxui::Rect optRect{optX - optR, optY - optR, optR * 2.f, optR * 2.f};
+            ren.drawFrostedInset(optRect,
+                                 nxui::Color(0.08f, 0.12f, 0.20f, 0.65f * panelAlpha),
+                                 nxui::Color(1.f, 1.f, 1.f, 0.22f * panelAlpha),
+                                 nxui::Color(1.f, 1.f, 1.f, 0.18f * panelAlpha),
+                                 optR, panelAlpha);
+            ren.drawRoundedRectOutline(optRect, nxui::Color(1.f, 1.f, 1.f, 0.25f * panelAlpha), optR, 1.5f);
+            ren.drawCircle({optX - 8.f, optY}, 2.8f, nxui::Color::white().withAlpha(0.95f * panelAlpha));
+            ren.drawCircle({optX, optY}, 2.8f, nxui::Color::white().withAlpha(0.95f * panelAlpha));
+            ren.drawCircle({optX + 8.f, optY}, 2.8f, nxui::Color::white().withAlpha(0.95f * panelAlpha));
+
+            // 3. Right-side circular buttons: Layers/Pages and Homebrew/App
+            const float btn2X = kPanel.right() - 28.f - optR;
+            const float btn2Y = optY;
+            const nxui::Rect btn2Rect{btn2X - optR, btn2Y - optR, optR * 2.f, optR * 2.f};
+            ren.drawFrostedInset(btn2Rect,
+                                 nxui::Color(0.08f, 0.12f, 0.20f, 0.65f * panelAlpha),
+                                 nxui::Color(1.f, 1.f, 1.f, 0.22f * panelAlpha),
+                                 nxui::Color(1.f, 1.f, 1.f, 0.18f * panelAlpha),
+                                 optR, panelAlpha);
+            ren.drawRoundedRectOutline(btn2Rect, nxui::Color(1.f, 1.f, 1.f, 0.25f * panelAlpha), optR, 1.5f);
+            ren.drawCircle({btn2X, btn2Y}, 11.f, nxui::Color(0.18f, 0.68f, 0.95f, 0.85f * panelAlpha));
+            ren.drawCircle({btn2X, btn2Y}, 4.5f, nxui::Color::white().withAlpha(panelAlpha));
+
+            const float btn1X = btn2X - optR * 2.f - 14.f;
+            const float btn1Y = optY;
+            const nxui::Rect btn1Rect{btn1X - optR, btn1Y - optR, optR * 2.f, optR * 2.f};
+            ren.drawFrostedInset(btn1Rect,
+                                 nxui::Color(0.08f, 0.12f, 0.20f, 0.65f * panelAlpha),
+                                 nxui::Color(1.f, 1.f, 1.f, 0.22f * panelAlpha),
+                                 nxui::Color(1.f, 1.f, 1.f, 0.18f * panelAlpha),
+                                 optR, panelAlpha);
+            ren.drawRoundedRectOutline(btn1Rect, nxui::Color(1.f, 1.f, 1.f, 0.25f * panelAlpha), optR, 1.5f);
+            ren.drawRoundedRectOutline({btn1X - 9.f, btn1Y - 9.f, 16.f, 16.f}, nxui::Color::white().withAlpha(0.6f * panelAlpha), 4.f, 1.5f);
+            ren.drawRoundedRectOutline({btn1X - 5.f, btn1Y - 5.f, 16.f, 16.f}, nxui::Color::white().withAlpha(0.95f * panelAlpha), 4.f, 1.5f);
+
+            // 4. Three category pagination dots below the right buttons
+            const float dotsCenterX = (btn1X + btn2X) * 0.5f;
+            const float dotsY = kPanel.y + 192.f;
+            ren.drawCircle({dotsCenterX - 9.f, dotsY}, 3.5f, nxui::Color::white().withAlpha(0.95f * panelAlpha));
+            ren.drawCircle({dotsCenterX, dotsY}, 2.2f, nxui::Color::white().withAlpha(0.35f * panelAlpha));
+            ren.drawCircle({dotsCenterX + 9.f, dotsY}, 2.2f, nxui::Color::white().withAlpha(0.35f * panelAlpha));
         }
     }
 
