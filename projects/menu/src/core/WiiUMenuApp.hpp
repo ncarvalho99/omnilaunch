@@ -969,8 +969,6 @@ private:
     static constexpr float kLeaveSplashHoldDur = 0.06f;
     static constexpr float kLeaveSplashFadeDur = 0.25f;
 
-    bool  m_audioInitPending = false;
-    bool  m_audioHeldLogged  = false;
     bool m_fastReturnRequested = false;
     std::future<void> m_themePackageTransferFuture;
     std::future<void> m_softwareDeleteFuture;

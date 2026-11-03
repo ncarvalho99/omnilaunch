@@ -684,9 +684,6 @@ bool WiiUMenuApp::onCreate() {
     if (m_config.soundPreset.rfind("package:", 0) != 0 &&
         m_config.soundPreset != kBuiltInSoundPreset)
         m_config.soundPreset = kBuiltInSoundPreset;
-    // Service workers own immutable configuration/theme snapshots, never this view.
-    m_homeCore.audioServices().startClassic(m_threadPool, m_config, m_allPresets);
-    DebugLog::log("[init] Audio loading started or process audio reused");
 
     if (m_launcher.suspendedTitleId() != 0) {
         m_deferredBluetoothInitFrames = 120;
@@ -751,6 +748,11 @@ bool WiiUMenuApp::onCreate() {
     DebugLog::log("[init] buildGrid...");
     buildGrid();
     DebugLog::log("[init] buildGrid done at %lums", initElapsedMs());
+
+    // Service workers own immutable configuration/theme snapshots, never this view.
+    // Placed after buildGrid() so m_allPresets is populated before the snapshot is taken.
+    m_homeCore.audioServices().startClassic(m_threadPool, m_config, m_allPresets);
+    DebugLog::log("[init] Audio loading started or process audio reused");
 
     setupLockScreen();
 

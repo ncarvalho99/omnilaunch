@@ -374,7 +374,9 @@ bool HomeAudio::reloadMusicTracks(const AppConfig& config, const std::vector<The
     for (const auto& track : desired) audio.loadTrack(track.path, track.title);
     if (wasPlaying && config.musicEnabled) audio.play();
     return true;
-}std::vector<std::string> HomeAudio::scanAvailablePresets() {
+}
+
+std::vector<std::string> HomeAudio::scanAvailablePresets() {
     std::vector<std::string> presets;
     std::string soundsDir = std::string(m_assets) + "/sounds";
     std::error_code ec;
