@@ -1301,6 +1301,12 @@
     "suspended_title": "Software suspenso",
     "suspended_body": "Feche primeiro o software suspenso (X no card dele).",
     "wake_hint": "Pressione A para continuar",
-    "coming_soon": "Disponível em uma próxima atualização"
+    "coming_soon": "Disponível em uma próxima atualização",
+    "close_software": "Fechar software",
+    "home_style": "Estilo do HOME",
+    "home_style_desc": "Escolha a aparência do Menu HOME.",
+    "home_style_classic": "Clássico",
+    "home_style_cards": "Cards",
+    "home_style_restart": "Aplicado após reiniciar o console"
   }
 }

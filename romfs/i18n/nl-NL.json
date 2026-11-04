@@ -1181,6 +1181,12 @@
     "suspended_title": "Software onderbroken",
     "suspended_body": "Sluit eerst de onderbroken software (X op de kaart).",
     "wake_hint": "Druk op A om door te gaan",
-    "coming_soon": "Komt in een latere update"
+    "coming_soon": "Komt in een latere update",
+    "close_software": "Software sluiten",
+    "home_style": "HOME-stijl",
+    "home_style_desc": "Kies hoe het HOME-menu eruitziet.",
+    "home_style_classic": "Klassiek",
+    "home_style_cards": "Cards",
+    "home_style_restart": "Wordt toegepast na het herstarten van de console"
   }
 }

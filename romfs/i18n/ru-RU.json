@@ -1181,6 +1181,12 @@
     "suspended_title": "Программа приостановлена",
     "suspended_body": "Сначала закройте приостановленную программу (X на её карточке).",
     "wake_hint": "Нажмите A, чтобы продолжить",
-    "coming_soon": "Появится в следующем обновлении"
+    "coming_soon": "Появится в следующем обновлении",
+    "close_software": "Закрыть программу",
+    "home_style": "Стиль HOME",
+    "home_style_desc": "Выберите вид меню HOME.",
+    "home_style_classic": "Классический",
+    "home_style_cards": "Cards",
+    "home_style_restart": "Применится после перезапуска консоли"
   }
 }

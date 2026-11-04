@@ -1230,6 +1230,12 @@
     "suspended_title": "Programa suspendido",
     "suspended_body": "Cierra primero el programa suspendido (X en su tarjeta).",
     "wake_hint": "Pulsa A para continuar",
-    "coming_soon": "Disponible en una próxima actualización"
+    "coming_soon": "Disponible en una próxima actualización",
+    "close_software": "Cerrar programa",
+    "home_style": "Estilo del HOME",
+    "home_style_desc": "Elige el aspecto del menú HOME.",
+    "home_style_classic": "Clásico",
+    "home_style_cards": "Cards",
+    "home_style_restart": "Se aplica al reiniciar la consola"
   }
 }

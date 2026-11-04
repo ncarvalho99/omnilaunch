@@ -1181,6 +1181,12 @@
     "suspended_title": "Logiciel suspendu",
     "suspended_body": "Fermez d'abord le logiciel suspendu (X sur sa carte).",
     "wake_hint": "Appuyez sur A pour continuer",
-    "coming_soon": "Disponible dans une prochaine mise à jour"
+    "coming_soon": "Disponible dans une prochaine mise à jour",
+    "close_software": "Fermer le logiciel",
+    "home_style": "Style du HOME",
+    "home_style_desc": "Choisissez l'apparence du menu HOME.",
+    "home_style_classic": "Classique",
+    "home_style_cards": "Cards",
+    "home_style_restart": "Appliqué après le redémarrage de la console"
   }
 }

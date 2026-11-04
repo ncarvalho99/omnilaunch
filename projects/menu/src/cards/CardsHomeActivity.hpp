@@ -57,6 +57,7 @@ private:
     void updateStatus(float dt);
     void loadAvatar();
     void activateTop();
+    void openCardOptions();
     void showToast(const std::string& text);
     void persistLastFocus();
     void finishAudioLoad();
@@ -75,9 +76,13 @@ private:
     StatusSnapshot m_status;
     std::unique_ptr<nxui::Texture> m_avatar;
     float m_statusTimer = 0.f;
-    // Focus zone: the card row, or the top bar (UP from the row).
+    // Focus zone: the card row, the top bar (UP from the row) or the panel
+    // (DOWN from the row: 0 = Play/Resume pill, 1 = "..." options circle).
     bool m_topZone = false;
     int m_topIndex = 0;
+    bool m_panelZone = false;
+    int m_panelIndex = 0;
+    bool m_closeConfirmQueued = false;  // card options -> Close software
     // Background cross-fade.
     std::uint64_t m_bgId = 0;
     std::uint64_t m_bgPrevId = 0;

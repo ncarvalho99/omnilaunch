@@ -1181,6 +1181,12 @@
     "suspended_title": "Software sospeso",
     "suspended_body": "Chiudi prima il software sospeso (X sulla sua scheda).",
     "wake_hint": "Premi A per continuare",
-    "coming_soon": "Disponibile in un prossimo aggiornamento"
+    "coming_soon": "Disponibile in un prossimo aggiornamento",
+    "close_software": "Chiudi software",
+    "home_style": "Stile HOME",
+    "home_style_desc": "Scegli l'aspetto del menu HOME.",
+    "home_style_classic": "Classico",
+    "home_style_cards": "Cards",
+    "home_style_restart": "Applicato dopo il riavvio della console"
   }
 }

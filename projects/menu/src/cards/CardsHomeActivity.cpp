@@ -317,6 +317,14 @@ void CardsHomeActivity::onUpdate(float dt) {
         }
     }
     pollDaemonNotifications();
+#ifdef SWITCHU_MENU
+    if (m_closeConfirmQueued && !(m_userSelect && m_userSelect->isActive())) {
+        m_closeConfirmQueued = false;
+        if (m_selected >= 0 && m_selected < m_catalog.count() &&
+            m_core.launcher().isAppSuspended(m_catalog.at(m_selected).app.titleId))
+            confirmCloseSuspended();
+    }
+#endif
     if (m_wakeGuard) {
         auto& in = app().input();
         if (in.isDown(nxui::Button::A) || in.isDown(nxui::Button::B) || in.touchDown()) {
@@ -377,12 +385,8 @@ void CardsHomeActivity::updateStatus(float dt) {
     }
     m_status.clock = buf;
 #ifdef SWITCHU_MENU
-    u32 charge = 0;
-    if (R_SUCCEEDED(psmGetBatteryChargePercentage(&charge)))
-        m_status.batteryPercent = static_cast<int>(charge);
-    PsmChargerType charger = PsmChargerType_Unconnected;
-    if (R_SUCCEEDED(psmGetChargerType(&charger)))
-        m_status.charging = charger != PsmChargerType_Unconnected;
+    // Battery figures come from the daemon's BatteryStatusChanged notification
+    // (pollDaemonNotifications): psm gives nothing inside the menu applet.
     const auto thermals = switchu::getThermalReading();
     m_status.socCelsius = thermals.hasSoc ? thermals.soc : -1.f;
 #endif
@@ -399,8 +403,15 @@ void CardsHomeActivity::updateStatus(float dt) {
 void CardsHomeActivity::loadAvatar() {
 #ifdef SWITCHU_MENU
     AccountUid uid{};
-    if (R_FAILED(accountGetLastOpenedUser(&uid)) || !accountUidIsValid(&uid))
-        return;
+    if (R_FAILED(accountGetLastOpenedUser(&uid)) || !accountUidIsValid(&uid)) {
+        // Nothing has been opened yet on a cold boot: show the first account.
+        AccountUid uids[8]{};
+        s32 count = 0;
+        if (R_FAILED(accountListAllUsers(uids, 8, &count)) || count <= 0 ||
+            !accountUidIsValid(&uids[0]))
+            return;
+        uid = uids[0];
+    }
     AccountProfile profile{};
     if (R_FAILED(accountGetProfile(&profile, uid)))
         return;
@@ -425,9 +436,65 @@ void CardsHomeActivity::showToast(const std::string& text) {
 
 void CardsHomeActivity::activateTop() {
     auto& i18n = nxui::I18n::instance();
+    const auto button = static_cast<TopButton>(m_topIndex);
+    if (m_userSelect && button == TopButton::Power) {
+        // Same actions as Classic's power dialog (WiiUMenuApp onOpenPower).
+        m_audio.playSfx(Sfx::ModalShow);
+        m_userSelect->show(
+            i18n.tr("power.title", "Power"),
+            i18n.tr("power.choose_action", "Choose a power action."),
+            {
+                {i18n.tr("button.cancel", "Cancel"), []() {}, true},
+                {i18n.tr("power.sleep", "Sleep"), [this]() {
+#ifdef SWITCHU_MENU
+                    m_core.launcher().enterSleep();
+#endif
+                }, true},
+                {i18n.tr("power.reboot", "Restart"), [this]() {
+#ifdef SWITCHU_MENU
+                    m_core.launcher().reboot();
+#endif
+                }, true},
+                {i18n.tr("power.shutdown", "Turn Off"), [this]() {
+#ifdef SWITCHU_MENU
+                    m_core.launcher().shutdown();
+#endif
+                }, true},
+            },
+            0, {});
+        focusManager().setFocus(m_userSelect.get());
+        return;
+    }
+    if (m_userSelect && button == TopButton::Settings) {
+        // HOME style. Saved now, applied by the next menu start until the
+        // live switch (D2) exists.
+        m_audio.playSfx(Sfx::ModalShow);
+        auto choose = [this](home::HomeStyle style) {
+            auto& config = m_core.config();
+            if (config.homeStyle == style)
+                return;
+            config.homeStyle = style;
+            if (!config.save())
+                DebugLog::log("[cards] homeStyle save failed");
+            showToast(nxui::I18n::instance().tr("cards.home_style_restart",
+                                                "Applies after the console restarts"));
+        };
+        m_userSelect->show(
+            i18n.tr("cards.home_style", "HOME style"),
+            i18n.tr("cards.home_style_desc", "Choose how the HOME Menu looks."),
+            {
+                {i18n.tr("cards.home_style_classic", "Classic"),
+                 [choose]() { choose(home::HomeStyle::Classic); }, true},
+                {i18n.tr("cards.home_style_cards", "Cards"),
+                 [choose]() { choose(home::HomeStyle::Cards); }, true},
+            },
+            m_core.config().homeStyle == home::HomeStyle::Cards ? 1 : 0, {});
+        focusManager().setFocus(m_userSelect.get());
+        return;
+    }
     m_audio.playSfx(Sfx::Activate);
-    // D1b: the top bar is visual; its sheets (menu, Discord, sort, users,
-    // notifications, music, power, settings) arrive in later steps.
+    // The other sheets (menu, Discord, sort, users, notifications, music)
+    // arrive in later steps.
     showToast(i18n.tr("cards.coming_soon", "Coming in a later update"));
 }
 
@@ -458,8 +525,40 @@ void CardsHomeActivity::handleInput() {
         }
         return;
     }
+    if (m_panelZone) {
+        if (m_catalog.count() == 0) {
+            m_panelZone = false;
+            return;
+        }
+        const bool l = in.isDown(B::DLeft) || in.isDown(B::LStickL);
+        const bool r = in.isDown(B::DRight) || in.isDown(B::LStickR);
+        if (l && m_panelIndex > 0) { --m_panelIndex; m_audio.playSfx(Sfx::Navigate); }
+        if (r && m_panelIndex < 1) { ++m_panelIndex; m_audio.playSfx(Sfx::Navigate); }
+        if (in.isDown(B::DUp) || in.isDown(B::LStickU) || in.isDown(B::B)) {
+            m_panelZone = false;
+            m_audio.playSfx(Sfx::Navigate);
+        } else if (in.isDown(B::A)) {
+            if (m_panelIndex == 0) {
+                activateSelected();
+                return;
+            }
+            openCardOptions();
+        }
+#ifdef SWITCHU_MENU
+        else if (in.isDown(B::X) && m_core.launcher().isAppSuspended(m_catalog.at(m_selected).app.titleId)) {
+            confirmCloseSuspended();
+        }
+#endif
+        return;
+    }
     if (in.isDown(B::DUp) || in.isDown(B::LStickU)) {
         m_topZone = true;
+        m_audio.playSfx(Sfx::Navigate);
+        return;
+    }
+    if ((in.isDown(B::DDown) || in.isDown(B::LStickD)) && m_catalog.count() > 0) {
+        m_panelZone = true;
+        m_panelIndex = 0;
         m_audio.playSfx(Sfx::Navigate);
         return;
     }
@@ -617,6 +716,35 @@ void CardsHomeActivity::confirmCloseSuspended() {
 }
 #endif
 
+// The "..." card options: the title's details, and Close software while it is
+// suspended. Delete, move and art pickers come with later steps.
+void CardsHomeActivity::openCardOptions() {
+    if (!m_userSelect || m_selected < 0 || m_selected >= m_catalog.count())
+        return;
+    auto& i18n = nxui::I18n::instance();
+    const AppEntry& app = m_catalog.at(m_selected).app;
+    char id[24];
+    std::snprintf(id, sizeof(id), "%016llX", static_cast<unsigned long long>(app.titleId));
+    const std::uint64_t played = m_core.config().playtimeOf(app.titleId);
+    std::string body = i18n.tr("game.title_id", "Title ID") + ": " + id + "\n" +
+                       i18n.tr("cards.played", "Played") + ": " +
+                       (played > 0 ? switchu::menu::playtime::format(played)
+                                   : i18n.tr("cards.not_played", "Not played yet"));
+    std::vector<OverlayDialog::ButtonDef> buttons;
+#ifdef SWITCHU_MENU
+    if (m_core.launcher().isAppSuspended(app.titleId)) {
+        buttons.push_back({i18n.tr("cards.close_software", "Close software"),
+                           // Deferred: show() inside the dialog's own button
+                           // handler would rebuild the actions it runs from.
+                           [this]() { m_closeConfirmQueued = true; }, true});
+    }
+#endif
+    buttons.push_back({i18n.tr("button.ok", "OK"), []() {}, true});
+    m_audio.playSfx(Sfx::ModalShow);
+    m_userSelect->show(app.title, body, std::move(buttons), 0, {});
+    focusManager().setFocus(m_userSelect.get());
+}
+
 void CardsHomeActivity::resumeSuspended() {
 #ifdef SWITCHU_MENU
     if (m_launching)
@@ -662,6 +790,11 @@ void CardsHomeActivity::pollDaemonNotifications() {
             launcher.setAppRunning(true);
             launcher.setAppHasForeground(false);
             launcher.setSuspendedTitleId(notif.app_id);
+            break;
+        case switchu::smi::MenuMessage::BatteryStatusChanged:
+            m_status.batteryPercent =
+                static_cast<int>(switchu::smi::batteryPayloadPercentage(notif.payload));
+            m_status.charging = switchu::smi::batteryPayloadCharging(notif.payload);
             break;
         case switchu::smi::MenuMessage::AppRecordsChanged:
         case switchu::smi::MenuMessage::GameCardMountFailure:
@@ -744,7 +877,7 @@ void CardsHomeActivity::drawCard(nxui::Renderer& ren, int index, const nxui::Rec
         ren.drawCircle({badge.x + 13.f, badge.y + 13.f}, 8.f, CardsChrome::kGreen, 24);
     }
 #endif
-    if (chosen > 0.5f && !m_topZone) {
+    if (chosen > 0.5f && !m_topZone && !m_panelZone) {
         const float pulse = 0.8f + 0.2f * std::sin(m_time * 5.f);
         ren.drawRoundedRectOutline(card, CardsChrome::accent(pulse * chosen), layout::kCardRadius, 3.f);
     }
@@ -794,8 +927,15 @@ void CardsHomeActivity::drawPanel(nxui::Renderer& ren) {
     const bool suspended = false;
 #endif
     const nxui::Rect button{p.x + 18.f, p.bottom() - 97.f, 262.f, 77.f};
+    const bool playFocus = m_panelZone && m_panelIndex == 0;
+    const bool dotsFocus = m_panelZone && m_panelIndex == 1;
     const bool rowFocus = !m_topZone;
     ren.drawRoundedRect(button, {1.f, 1.f, 1.f, (rowFocus ? 0.92f : 0.75f) * d}, 38.5f);
+    if (playFocus) {
+        const float pulse = 0.8f + 0.2f * std::sin(m_time * 5.f);
+        ren.drawRoundedRectOutline({button.x - 5.f, button.y - 5.f, button.width + 10.f, button.height + 10.f},
+                                   CardsChrome::accent(pulse * d), 43.5f, 3.f);
+    }
     const std::string label = suspended ? i18n.tr("cards.resume", "Resume") : i18n.tr("cards.play", "Play");
     auto& lf = m_chrome.labelFont();
     const float lw = lf.measure(label).x;
@@ -806,7 +946,7 @@ void CardsHomeActivity::drawPanel(nxui::Renderer& ren) {
     const float cy = button.y + button.height * 0.5f;
     ren.drawTriangle({triX, cy - 8.f}, {triX, cy + 8.f}, {triX + 13.f, cy}, ink);
     m_chrome.textMid(ren, lf, label, triX + 26.f, cy, ink);
-    m_chrome.glassCircle(ren, button.right() + 46.f, cy, 72.f, false, "dots", 30.f, m_time);
+    m_chrome.glassCircle(ren, button.right() + 46.f, cy, 72.f, dotsFocus, "dots", 30.f, m_time);
 
     if (suspended) {
         const std::string hint = i18n.tr("cards.hint_close", "X  Close software");

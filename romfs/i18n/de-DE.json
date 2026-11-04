@@ -1181,6 +1181,12 @@
     "suspended_title": "Software pausiert",
     "suspended_body": "Beende zuerst die pausierte Software (X auf ihrer Karte).",
     "wake_hint": "Drücke A, um fortzufahren",
-    "coming_soon": "Kommt in einem späteren Update"
+    "coming_soon": "Kommt in einem späteren Update",
+    "close_software": "Software schließen",
+    "home_style": "HOME-Stil",
+    "home_style_desc": "Wähle das Aussehen des HOME-Menüs.",
+    "home_style_classic": "Klassisch",
+    "home_style_cards": "Cards",
+    "home_style_restart": "Wird nach dem Neustart der Konsole übernommen"
   }
 }
