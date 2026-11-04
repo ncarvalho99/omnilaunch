@@ -110,6 +110,11 @@ bool AppConfig::load() {
     readJsonOpt(j, "defaultProfileEnabled", defaultProfileEnabled);
     readJsonOpt(j, "defaultProfileUid", defaultProfileUid);
     readJsonOpt(j, "tutorialCompleted", tutorialCompleted);
+    {
+        std::string style;
+        readJsonOpt(j, "homeStyle", style);
+        homeStyle = home::parseHomeStyle(style);
+    }
     readJsonOpt(j, "lastUpdateCheckDay", lastUpdateCheckDay);
     readJsonOpt(j, "clockUse12Hour", clockUse12Hour);
     readJsonOpt(j, "backgroundBlur", backgroundBlur);
@@ -299,6 +304,7 @@ bool AppConfig::save() const {
     j["defaultProfileEnabled"] = defaultProfileEnabled;
     j["defaultProfileUid"] = defaultProfileEnabled ? defaultProfileUid : std::string();
     j["tutorialCompleted"] = tutorialCompleted;
+    j["homeStyle"] = home::homeStyleName(homeStyle);
     j["lastUpdateCheckDay"] = lastUpdateCheckDay;
     j["clockUse12Hour"] = clockUse12Hour;
     j["backgroundBlur"] = backgroundBlur;

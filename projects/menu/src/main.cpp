@@ -5,6 +5,7 @@
 #include "core/NsService.hpp"
 #include "tutorial/TutorialActivity.hpp"
 #include "home/HomeCore.hpp"
+#include "home/HomeFrontend.hpp"
 #include "services/NtpClient.hpp"
 #include "usb/Mtp.hpp"
 #include <nxui/Application.hpp>
@@ -364,10 +365,10 @@ int main(int argc, char* argv[]) {
             homeCore.runShutdownPhase(home::ShutdownPhase::GpuResources);
         });
 #ifdef SWITCHU_HOMEBREW
+        // C7: every frontend comes from home::makeFrontend, reading the style
+        // from config at the moment it is built (the tutorial hands off later).
         auto makeMenuActivity = [&homeCore](bool fromTutorial = false) -> std::unique_ptr<nxui::Activity> {
-            auto activity = std::make_unique<WiiUMenuApp>(homeCore);
-            activity->setTutorialStartupFade(fromTutorial);
-            return activity;
+            return home::makeFrontend(homeCore, homeCore.config().homeStyle, fromTutorial);
         };
         if (homeCore.config().tutorialCompleted)
             app.setActivity(makeMenuActivity(false));
@@ -395,10 +396,10 @@ int main(int argc, char* argv[]) {
 #else
         homeCore.setStartupStatus(sysStatus);
         homeCore.setMenuMainTrace(menuMainTick, menuMainCore);
+        // C7: every frontend comes from home::makeFrontend, reading the style
+        // from config at the moment it is built (the tutorial hands off later).
         auto makeMenuActivity = [&homeCore](bool fromTutorial = false) -> std::unique_ptr<nxui::Activity> {
-            auto activity = std::make_unique<WiiUMenuApp>(homeCore);
-            activity->setTutorialStartupFade(fromTutorial);
-            return activity;
+            return home::makeFrontend(homeCore, homeCore.config().homeStyle, fromTutorial);
         };
         if (homeCore.config().tutorialCompleted)
             app.setActivity(makeMenuActivity(false));

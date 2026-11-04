@@ -1,5 +1,6 @@
 #pragma once
 #include "core/AppLayoutMode.hpp"
+#include "home/HomeStyle.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <limits>
@@ -31,6 +32,8 @@ struct AppConfig {
     bool  defaultProfileEnabled = false;
     std::string defaultProfileUid;
     bool  tutorialCompleted = false;
+    // HOME frontend (HomeNX C7). Saved as "classic"/"cards"; Classic default.
+    home::HomeStyle homeStyle = home::HomeStyle::Classic;
     // Day number of the last update check, so the console asks GitHub once a
     // day rather than on every return from a game.
     int   lastUpdateCheckDay = 0;

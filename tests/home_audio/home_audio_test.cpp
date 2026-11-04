@@ -1,6 +1,7 @@
 // Host contract tests: production HomeAudio/HomeCore/ThreadPool, fake devices.
 // These validate ownership/snapshot/order logic, not SDL/espeak or console sound.
 #include "home/HomeCore.hpp"
+#include "home/HomeStyle.hpp"
 #include "themeshop/ThemeHttp.hpp"
 #include "bluetooth/BluetoothManager.hpp"
 #include <cassert>
@@ -110,6 +111,13 @@ int main() {
   pcore.playtime().start(pcore.threadPool(), {3}, 8);
   pcore.runShutdownPhase(ShutdownPhase::ProcessExit); // collects it before the pool joins
   assert(!pcore.playtime().running());
+ } // C7 home style: stable strings, unknown/missing means Classic.
+ {
+  using home::HomeStyle;
+  assert(home::parseHomeStyle("cards")==HomeStyle::Cards);
+  assert(home::parseHomeStyle("classic")==HomeStyle::Classic);
+  assert(home::parseHomeStyle("")==HomeStyle::Classic && home::parseHomeStyle("Cards")==HomeStyle::Classic);
+  assert(std::string(home::homeStyleName(HomeStyle::Cards))=="cards" && std::string(home::homeStyleName(HomeStyle::Classic))=="classic");
  } // C3 HomeCore launcher, pool, config, and quiesce routing contracts
  bool quiesceCalled = false;
  core.setFrontendQuiesce([&quiesceCalled] { quiesceCalled = true; });
