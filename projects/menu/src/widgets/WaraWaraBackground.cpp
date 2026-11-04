@@ -225,6 +225,10 @@ std::uint64_t estimateVertexCount(const WaraWaraBackground::Config& config, int 
 
 WaraWaraBackground::WaraWaraBackground() { regenerate(30); }
 
+WaraWaraBackground::~WaraWaraBackground() {
+    clearImage();
+}
+
 void WaraWaraBackground::setConfig(const Config& config) {
     m_config = config;
     m_config.shapeCount = std::max(1, m_config.shapeCount);
@@ -244,6 +248,7 @@ void WaraWaraBackground::setConfig(const Config& config) {
 }
 
 bool WaraWaraBackground::loadImage(nxui::GpuDevice& gpu, nxui::Renderer& ren, const std::string& path) {
+    m_arenaGpu = &gpu;
     if (path.empty()) {
         clearImage();
         return false;
@@ -268,6 +273,7 @@ bool WaraWaraBackground::loadImage(nxui::GpuDevice& gpu, nxui::Renderer& ren, co
 bool WaraWaraBackground::loadImageSequence(nxui::GpuDevice& gpu, nxui::Renderer& ren,
                                            const std::vector<std::string>& paths,
                                            float fps) {
+    m_arenaGpu = &gpu;
     clearImage();
     if (paths.empty())
         return false;

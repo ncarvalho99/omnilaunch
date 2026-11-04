@@ -144,6 +144,8 @@ bool TutorialActivity::onCreate() {
 }
 
 void TutorialActivity::onDestroy() {
+    if (m_background)
+        m_background->clearImage();
     m_homeCore.audioServices().endTutorial();
     DebugLog::log("[tutorial] activity destroy");
 }

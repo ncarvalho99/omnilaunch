@@ -63,10 +63,7 @@ public:
     };
 
     WaraWaraBackground();
-
-    // O leitor de quadros aponta para esta instancia. Se ela sumir antes
-    // dele, ele escreve numa fila que nao existe mais.
-    ~WaraWaraBackground() { stopFrameReader(); }
+    ~WaraWaraBackground() override;
 
     void setConfig(const Config& config);
     const Config& config() const { return m_config; }
@@ -180,6 +177,13 @@ private:
     std::vector<Shape> m_shapes;
     nxui::Texture m_backgroundImage;
     switchu::video::VideoPlayer m_videoPlayer;
+
+    // Declared before m_frames so that in member destruction order (reverse of
+    // declaration), m_frames (whose textures view m_frameArena memory) is
+    // destroyed before m_frameArena drops its GpuPool chunks (C6, finding 3).
+    nxui::GpuDevice* m_arenaGpu = nullptr;
+    nxui::GpuDevice::ImageArena m_frameArena;
+
     // Extra frames beyond the first. A still wallpaper leaves this empty and
     // costs exactly what it did before.
     std::vector<nxui::Texture> m_frames;
@@ -205,9 +209,6 @@ private:
 
     std::thread m_frameReader;
     std::mutex  m_frameQueueMutex;
-    // Frame memory, 8 MB chunks shared by the whole sequence (issue #2 item 4).
-    nxui::GpuDevice::ImageArena m_frameArena;
-    nxui::GpuDevice* m_arenaGpu = nullptr;
     std::deque<std::vector<std::uint8_t>> m_frameQueue;
     std::atomic<bool> m_frameReaderStop{false};
     std::atomic<bool> m_frameReaderDone{false};

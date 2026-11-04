@@ -878,6 +878,13 @@ void WiiUMenuApp::onDestroy() {
     m_steamGridDb.cancelAndWait();
     // The transform captures this frontend; the Core keeps the loader.
     m_appLoader.setPendingTransform({});
+    m_iconStreamer.cancelPending();
+
+    // Release frontend-owned background media (frames, arena, video player)
+    // on the render thread before Activity destruction so GPU image memory
+    // returns to baseline (C6).
+    if (m_background)
+        m_background->clearImage();
 
     // Theme Shop, Gallery, metadata, icon, and artwork work all shares this
     // pool.  The old order stopped libcurl/Bluetooth first and relied on the
