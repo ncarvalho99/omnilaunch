@@ -1229,6 +1229,7 @@
     "hint_close": "X  Cerrar programa",
     "suspended_title": "Programa suspendido",
     "suspended_body": "Cierra primero el programa suspendido (X en su tarjeta).",
-    "wake_hint": "Pulsa A para continuar"
+    "wake_hint": "Pulsa A para continuar",
+    "coming_soon": "Disponible en una próxima actualización"
   }
 }

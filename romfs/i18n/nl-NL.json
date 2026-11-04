@@ -1180,6 +1180,7 @@
     "hint_close": "X  Software sluiten",
     "suspended_title": "Software onderbroken",
     "suspended_body": "Sluit eerst de onderbroken software (X op de kaart).",
-    "wake_hint": "Druk op A om door te gaan"
+    "wake_hint": "Druk op A om door te gaan",
+    "coming_soon": "Komt in een latere update"
   }
 }

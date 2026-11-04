@@ -7,7 +7,9 @@
 // the menu-ready / first-frame / closing contract with the daemon. The top bar,
 // sheets, toasts, sort, settings and the live switch follow in D1b+/D2.
 
+#include "cards/CardsArt.hpp"
 #include "cards/CardsCatalog.hpp"
+#include "cards/CardsChrome.hpp"
 #include "core/AudioManager.hpp"
 #include "core/SystemMessages.hpp"
 #include <nxui/Activity.hpp>
@@ -52,6 +54,10 @@ private:
     void ensureVisibleIcons();
     void drawCard(nxui::Renderer& ren, int index, const nxui::Rect& r, float chosen);
     void drawPanel(nxui::Renderer& ren);
+    void updateStatus(float dt);
+    void loadAvatar();
+    void activateTop();
+    void showToast(const std::string& text);
     void persistLastFocus();
     void finishAudioLoad();
     void pollPlaytime();
@@ -64,6 +70,22 @@ private:
     nxui::Font m_font;
     nxui::Font m_fontSmall;
     nxui::Font m_fontTitle;
+    CardsChrome m_chrome;
+    CardsArt m_art;
+    StatusSnapshot m_status;
+    std::unique_ptr<nxui::Texture> m_avatar;
+    float m_statusTimer = 0.f;
+    // Focus zone: the card row, or the top bar (UP from the row).
+    bool m_topZone = false;
+    int m_topIndex = 0;
+    // Background cross-fade.
+    std::uint64_t m_bgId = 0;
+    std::uint64_t m_bgPrevId = 0;
+    float m_bgChangedAt = 0.f;
+    // Short message under the top bar.
+    std::string m_toast;
+    float m_toastUntil = 0.f;
+    float m_detailChangedAt = 0.f;
     std::shared_ptr<OverlayDialog> m_userSelect;
 
     int m_selected = 0;

@@ -19,6 +19,10 @@
 #include <algorithm>
 #include <cmath>
 #include <switch.h>
+#include <switchu/hardware_status.hpp>
+#include <sys/statvfs.h>
+#include <cstdio>
+#include <ctime>
 
 namespace cards {
 
@@ -30,32 +34,8 @@ constexpr const char* kAssets = "romfs:";
 constexpr const char* kAssets = "sdmc:/switch/OmniLaunch";
 #endif
 
-const nxui::Color kBgTop{0.07f, 0.08f, 0.11f, 1.f};
-const nxui::Color kBgBottom{0.02f, 0.02f, 0.04f, 1.f};
-const nxui::Color kCardBase{0.16f, 0.17f, 0.21f, 1.f};
-const nxui::Color kAccent{0.36f, 0.62f, 1.f, 1.f};
-const nxui::Color kPanelBase{1.f, 1.f, 1.f, 0.08f};
-const nxui::Color kPanelBorder{1.f, 1.f, 1.f, 0.14f};
-const nxui::Color kText{0.95f, 0.96f, 0.98f, 1.f};
-const nxui::Color kTextDim{0.70f, 0.72f, 0.78f, 1.f};
-
 constexpr float kRepeatDelay = 0.35f;
 constexpr float kRepeatRate = 0.09f;
-
-std::string trimTo(nxui::Font& font, const std::string& text, float maxWidth) {
-    if (font.measure(text).x <= maxWidth)
-        return text;
-    std::string out = text;
-    while (!out.empty() && font.measure(out + "...").x > maxWidth) {
-        out.pop_back();
-        // Do not leave half of a UTF-8 sequence behind.
-        while (!out.empty() && (static_cast<unsigned char>(out.back()) & 0xC0) == 0x80)
-            out.pop_back();
-        if (!out.empty() && (static_cast<unsigned char>(out.back()) & 0xC0) == 0xC0)
-            out.pop_back();
-    }
-    return out + "...";
-}
 
 #ifdef SWITCHU_MENU
 // Same 32-hex-digit form Classic stores (WiiUMenuApp.cpp hexToAccountUid).
@@ -91,6 +71,7 @@ bool CardsHomeActivity::onCreate() {
     DebugLog::log("[cards] activity create");
     m_core.setFrontendQuiesce([this] {
         m_catalog.releaseAll();
+        m_art.releaseAll();
     });
     m_core.frontendStarted();
     const uint64_t createStartTick = armGetSystemTick();
@@ -124,6 +105,10 @@ bool CardsHomeActivity::onCreate() {
         // relaunch into the same failure. Text is simply not drawn.
         DebugLog::log("[cards] font load failed: %s", fontPath.c_str());
     }
+
+    m_chrome.load(gpu, ren, kAssets);
+    loadAvatar();
+    updateStatus(1.f);
 
     m_userSelect = std::make_shared<OverlayDialog>();
     m_userSelect->setFont(&m_font);
@@ -195,6 +180,7 @@ void CardsHomeActivity::onDestroy() {
     // Stop our decodes and wait for our pool work before the Core loader is
     // handed to the next frontend.
     m_catalog.releaseAll();
+    m_art.releaseAll();
     m_core.catalog().waitIdle();
     m_core.threadPool().waitForIdle();
 #ifdef SWITCHU_MENU
@@ -206,6 +192,9 @@ void CardsHomeActivity::onDestroy() {
 #endif
     if (m_userSelect)
         m_userSelect->hide();
+    // Frontend-owned GPU resources (audit §6.1 rule 3).
+    m_chrome.release();
+    m_avatar.reset();
 }
 
 nxui::Widget* CardsHomeActivity::focusRoot() {
@@ -344,6 +333,18 @@ void CardsHomeActivity::onUpdate(float dt) {
     if (std::abs(target - m_scroll) < 0.001f)
         m_scroll = target;
 
+    updateStatus(dt);
+    const std::uint64_t focusedId =
+        (m_selected >= 0 && m_selected < m_catalog.count()) ? m_catalog.at(m_selected).app.titleId : 0;
+    if (focusedId != previousId)
+        m_detailChangedAt = m_time;
+    // The background follows the focus once it has settled for a moment, so
+    // scrolling past a dozen cards does not decode a dozen backgrounds.
+    if (focusedId != m_bgId && std::abs(m_scroll - static_cast<float>(m_selected)) < 0.05f) {
+        m_bgPrevId = m_bgId;
+        m_bgId = focusedId;
+        m_bgChangedAt = m_time;
+    }
     ensureVisibleIcons();
 }
 
@@ -351,6 +352,83 @@ void CardsHomeActivity::ensureVisibleIcons() {
     const int first = static_cast<int>(std::floor(m_scroll)) - 1;
     const int last = static_cast<int>(std::ceil(m_scroll)) + 5;
     m_catalog.pumpIcons(app().gpu(), app().renderer(), m_core.threadPool(), first, last, 4, 2);
+    std::vector<std::uint64_t> wanted, keep;
+    for (int i = std::max(0, first); i <= std::min(m_catalog.count() - 1, last); ++i)
+        wanted.push_back(m_catalog.at(i).app.titleId);
+    for (int i = std::max(0, first - 3); i <= std::min(m_catalog.count() - 1, last + 3); ++i)
+        keep.push_back(m_catalog.at(i).app.titleId);
+    m_art.pump(app().gpu(), app().renderer(), m_core.threadPool(), wanted, keep, m_bgId, m_time, 1);
+}
+
+void CardsHomeActivity::updateStatus(float dt) {
+    m_statusTimer -= dt;
+    if (m_statusTimer > 0.f)
+        return;
+    m_statusTimer = 2.f;
+    const std::time_t now = std::time(nullptr);
+    std::tm local{};
+    localtime_r(&now, &local);
+    char buf[16];
+    if (m_core.config().clockUse12Hour) {
+        const int h = local.tm_hour % 12 == 0 ? 12 : local.tm_hour % 12;
+        std::snprintf(buf, sizeof(buf), "%d:%02d", h, local.tm_min);
+    } else {
+        std::snprintf(buf, sizeof(buf), "%02d:%02d", local.tm_hour, local.tm_min);
+    }
+    m_status.clock = buf;
+#ifdef SWITCHU_MENU
+    u32 charge = 0;
+    if (R_SUCCEEDED(psmGetBatteryChargePercentage(&charge)))
+        m_status.batteryPercent = static_cast<int>(charge);
+    PsmChargerType charger = PsmChargerType_Unconnected;
+    if (R_SUCCEEDED(psmGetChargerType(&charger)))
+        m_status.charging = charger != PsmChargerType_Unconnected;
+    const auto thermals = switchu::getThermalReading();
+    m_status.socCelsius = thermals.hasSoc ? thermals.soc : -1.f;
+#endif
+    struct statvfs st{};
+    if (statvfs("sdmc:/", &st) == 0) {
+        const double gb = static_cast<double>(st.f_bavail) * static_cast<double>(st.f_frsize) / 1e9;
+        char free[24];
+        std::snprintf(free, sizeof(free), "%.1f GB", gb);
+        m_status.freeSpace = free;
+    }
+    m_status.avatar = m_avatar.get();
+}
+
+void CardsHomeActivity::loadAvatar() {
+#ifdef SWITCHU_MENU
+    AccountUid uid{};
+    if (R_FAILED(accountGetLastOpenedUser(&uid)) || !accountUidIsValid(&uid))
+        return;
+    AccountProfile profile{};
+    if (R_FAILED(accountGetProfile(&profile, uid)))
+        return;
+    u32 size = 0;
+    if (R_SUCCEEDED(accountProfileGetImageSize(&profile, &size)) && size > 0) {
+        std::vector<std::uint8_t> data(size);
+        u32 real = 0;
+        if (R_SUCCEEDED(accountProfileLoadImage(&profile, data.data(), size, &real)) && real > 0) {
+            auto tex = std::make_unique<nxui::Texture>();
+            if (tex->loadFromMemory(app().gpu(), app().renderer(), data.data(), real, 128))
+                m_avatar = std::move(tex);
+        }
+    }
+    accountProfileClose(&profile);
+#endif
+}
+
+void CardsHomeActivity::showToast(const std::string& text) {
+    m_toast = text;
+    m_toastUntil = m_time + 2.5f;
+}
+
+void CardsHomeActivity::activateTop() {
+    auto& i18n = nxui::I18n::instance();
+    m_audio.playSfx(Sfx::Activate);
+    // D1b: the top bar is visual; its sheets (menu, Discord, sort, users,
+    // notifications, music, power, settings) arrive in later steps.
+    showToast(i18n.tr("cards.coming_soon", "Coming in a later update"));
 }
 
 void CardsHomeActivity::moveSelection(int delta) {
@@ -366,6 +444,25 @@ void CardsHomeActivity::moveSelection(int delta) {
 void CardsHomeActivity::handleInput() {
     auto& in = app().input();
     using B = nxui::Button;
+    if (m_topZone) {
+        constexpr int kTopCount = static_cast<int>(TopButton::Count);
+        const bool l = in.isDown(B::DLeft) || in.isDown(B::LStickL);
+        const bool r = in.isDown(B::DRight) || in.isDown(B::LStickR);
+        if (l && m_topIndex > 0) { --m_topIndex; m_audio.playSfx(Sfx::Navigate); }
+        if (r && m_topIndex < kTopCount - 1) { ++m_topIndex; m_audio.playSfx(Sfx::Navigate); }
+        if (in.isDown(B::DDown) || in.isDown(B::LStickD) || in.isDown(B::B)) {
+            m_topZone = false;
+            m_audio.playSfx(Sfx::Navigate);
+        } else if (in.isDown(B::A)) {
+            activateTop();
+        }
+        return;
+    }
+    if (in.isDown(B::DUp) || in.isDown(B::LStickU)) {
+        m_topZone = true;
+        m_audio.playSfx(Sfx::Navigate);
+        return;
+    }
     const bool left = in.isHeld(B::DLeft) || in.isHeld(B::LStickL);
     const bool right = in.isHeld(B::DRight) || in.isHeld(B::LStickR);
     const int dir = left == right ? 0 : (left ? -1 : 1);
@@ -610,85 +707,126 @@ void CardsHomeActivity::handleSystemAction(SysAction action) {
 }
 #endif
 
-void CardsHomeActivity::drawCard(nxui::Renderer& ren, int index, const nxui::Rect& r, float chosen) {
-    const auto& card = m_catalog.at(index);
-    const float dim = 0.55f + 0.45f * chosen;
-    if (chosen > 0.5f) {
-        const nxui::Rect shadow{r.x + 4.f, r.y + 12.f, r.width, r.height};
-        ren.drawRoundedRect(shadow, {0.f, 0.f, 0.f, 0.35f * chosen}, layout::kCardRadius);
+void CardsHomeActivity::drawCard(nxui::Renderer& ren, int index, const nxui::Rect& card, float chosen) {
+    const auto& entry = m_catalog.at(index);
+    const std::uint64_t id = entry.app.titleId;
+    // Shadow under every card; deeper under the focused one.
+    const float shadow = 0.18f + 0.18f * chosen;
+    ren.drawRoundedRect({card.x - 3.f, card.y + 6.f + 6.f * chosen, card.width + 6.f, card.height + 6.f},
+                        {0.f, 0.f, 0.f, shadow}, layout::kCardRadius + 3.f);
+
+    const nxui::Texture* cover = m_art.cover(id);
+    const float coverIn = cover ? std::min(1.f, m_art.coverAge(id, m_time) / 0.35f) : 0.f;
+    if (coverIn < 1.f) {
+        // No cover yet (or fading in): the icon on glass with the name.
+        ren.drawRoundedRect(card, {0.28f, 0.31f, 0.40f, 0.85f}, layout::kCardRadius);
+        if (entry.icon && entry.icon->valid()) {
+            const float side = card.width * 0.62f;
+            const nxui::Rect art{card.x + (card.width - side) * 0.5f, card.y + card.height * 0.22f, side, side};
+            ren.drawTextureRounded(entry.icon.get(), art, 22.f, CardsChrome::kWhite);
+        }
+        auto& f = m_chrome.labelFont();
+        const std::string name = m_chrome.fit(f, entry.app.title, card.width - 28.f);
+        const float w = f.measure(name).x;
+        m_chrome.textMid(ren, f, name, card.x + (card.width - w) * 0.5f, card.bottom() - 46.f,
+                         CardsChrome::kWhite);
     }
-    ren.drawRoundedRect(r, {kCardBase.r * dim, kCardBase.g * dim, kCardBase.b * dim, 1.f},
-                        layout::kCardRadius);
-    if (card.icon && card.icon->valid()) {
-        // D1a: the square icon centred in the upper part; covers come in D1b.
-        const float side = r.width - 24.f;
-        const nxui::Rect art{r.x + 12.f, r.y + 12.f, side, side};
-        ren.drawTextureRounded(card.icon.get(), art, layout::kCardRadius - 10.f,
-                               {dim, dim, dim, 1.f});
-    }
-    const std::string title = trimTo(m_fontSmall, card.app.title, r.width - 24.f);
-    ren.drawText(title, {r.x + 12.f, r.bottom() - 70.f}, &m_fontSmall,
-                 chosen > 0.5f ? kText : kTextDim);
+    if (cover)
+        CardsChrome::drawCover(ren, cover, card, layout::kCardRadius, CardsChrome::kWhite.withAlpha(coverIn));
+    // Neighbours dimmed.
+    if (chosen < 1.f)
+        ren.drawRoundedRect(card, {0.f, 0.f, 0.f, 0.22f * (1.f - chosen)}, layout::kCardRadius);
 #ifdef SWITCHU_MENU
-    if (m_core.launcher().isAppSuspended(card.app.titleId)) {
-        const nxui::Rect badge{r.x + 12.f, r.bottom() - 38.f, 26.f, 26.f};
-        ren.drawCircle({badge.x + 13.f, badge.y + 13.f}, 11.f, kAccent);
+    if (m_core.launcher().isAppSuspended(id)) {
+        // Running badge: a green pill at the top left.
+        const nxui::Rect badge{card.x + 12.f, card.y + 12.f, 26.f, 26.f};
+        ren.drawCircle({badge.x + 13.f, badge.y + 13.f}, 13.f, {0.f, 0.f, 0.f, 0.45f}, 24);
+        ren.drawCircle({badge.x + 13.f, badge.y + 13.f}, 8.f, CardsChrome::kGreen, 24);
     }
 #endif
-    if (chosen > 0.5f)
-        ren.drawRoundedRectOutline(r, kAccent.withAlpha(chosen), layout::kCardRadius, 4.f);
+    if (chosen > 0.5f && !m_topZone) {
+        const float pulse = 0.8f + 0.2f * std::sin(m_time * 5.f);
+        ren.drawRoundedRectOutline(card, CardsChrome::accent(pulse * chosen), layout::kCardRadius, 3.f);
+    }
 }
 
 void CardsHomeActivity::drawPanel(nxui::Renderer& ren) {
     const auto& p = layout::kPanel;
-    ren.drawRoundedRect(p, kPanelBase, layout::kPanelRadius);
-    ren.drawRoundedRectOutline(p, kPanelBorder, layout::kPanelRadius, 1.5f);
+    ren.drawRoundedRect(p, CardsChrome::glassTint(1.12f), layout::kPanelRadius);
+    ren.drawRoundedRectOutline(p, {1.f, 1.f, 1.f, 0.22f}, layout::kPanelRadius, 1.5f);
     auto& i18n = nxui::I18n::instance();
     if (m_catalog.count() == 0) {
-        const std::string msg = m_catalog.loading()
-            ? i18n.tr("cards.loading", "Loading...")
-            : i18n.tr("cards.empty", "No software installed");
-        ren.drawText(msg, {p.x + 40.f, p.y + 40.f}, &m_font, kTextDim);
+        const std::string msg = m_catalog.loading() ? i18n.tr("cards.loading", "Loading...")
+                                                    : i18n.tr("cards.empty", "No software installed");
+        m_chrome.textMid(ren, m_chrome.labelFont(), msg, p.x + 40.f, p.y + p.height * 0.5f, CardsChrome::kWhite);
         return;
     }
-    const auto& card = m_catalog.at(m_selected);
-    ren.drawText(trimTo(m_fontTitle, card.app.title, p.width - 80.f),
-                 {p.x + 40.f, p.y + 28.f}, &m_fontTitle, kText);
-    const std::uint64_t played = m_core.config().playtimeOf(card.app.titleId);
-    std::string sub = played > 0
-        ? i18n.tr("cards.played", "Played") + ": " + switchu::menu::playtime::format(played)
-        : i18n.tr("cards.not_played", "Not played yet");
-    ren.drawText(sub, {p.x + 40.f, p.y + 78.f}, &m_fontSmall, kTextDim);
+    const auto& entry = m_catalog.at(m_selected);
+    const std::uint64_t id = entry.app.titleId;
+    const float d = std::min(1.f, (m_time - m_detailChangedAt) / 0.25f);
+    const float dx = 14.f * (1.f - d);
+    const nxui::Color white = CardsChrome::kWhite.withAlpha(d);
+    const nxui::Color dim{0.82f, 0.84f, 0.90f, d};
 
+    const nxui::Rect iconRect{p.x + 25.f + dx, p.y + 20.f, 78.f, 78.f};
+    if (entry.icon && entry.icon->valid())
+        ren.drawTextureRounded(entry.icon.get(), iconRect, 39.f, white);
+    else
+        ren.drawCircle({iconRect.x + 39.f, iconRect.y + 39.f}, 39.f, {1.f, 1.f, 1.f, 0.15f * d}, 40);
+    const float tx = iconRect.right() + 15.f;
+    const float maxW = p.right() - 30.f - tx;
+    m_chrome.textMid(ren, m_chrome.titleFont(), m_chrome.fit(m_chrome.titleFont(), entry.app.title, maxW), tx,
+                     p.y + 40.f, white);
+
+    // Play time and recency, as "1h 35m   Jogado há 54 minutos".
+    std::string line;
+    const std::uint64_t played = m_core.config().playtimeOf(id);
+    if (played > 0)
+        line = switchu::menu::playtime::format(played);
+    else
+        line = i18n.tr("cards.not_played", "Not played yet");
+    m_chrome.textMid(ren, m_chrome.smallFont(), line, tx, p.y + 72.f, dim);
+
+    // Primary pill (Play / Resume), white with dark text, and the "..." circle.
 #ifdef SWITCHU_MENU
-    const bool suspended = m_core.launcher().isAppSuspended(card.app.titleId);
+    const bool suspended = m_core.launcher().isAppSuspended(id);
 #else
     const bool suspended = false;
 #endif
-    const nxui::Rect button{p.x + 40.f, p.bottom() - 97.f, 262.f, 77.f};
-    ren.drawRoundedRect(button, kAccent, 38.5f);
-    const std::string label = suspended ? i18n.tr("cards.resume", "Resume")
-                                        : i18n.tr("cards.play", "Play");
-    const nxui::Vec2 size = m_font.measure(label);
-    ren.drawText(label, {button.x + (button.width - size.x) * 0.5f,
-                         button.y + (button.height - size.y) * 0.5f},
-                 &m_font, nxui::Color::white());
-    const std::string hint = suspended ? i18n.tr("cards.hint_close", "X  Close software") : std::string();
-    if (m_wakeGuard) {
-        const std::string w = i18n.tr("cards.wake_hint", "Press A to continue");
-        const nxui::Vec2 ws = m_font.measure(w);
-        ren.drawText(w, {640.f - ws.x * 0.5f, 40.f}, &m_font, kText);
-    }
-    if (!hint.empty())
-        ren.drawText(hint, {button.right() + 30.f, button.y + 26.f}, &m_fontSmall, kTextDim);
+    const nxui::Rect button{p.x + 18.f, p.bottom() - 97.f, 262.f, 77.f};
+    const bool rowFocus = !m_topZone;
+    ren.drawRoundedRect(button, {1.f, 1.f, 1.f, (rowFocus ? 0.92f : 0.75f) * d}, 38.5f);
+    const std::string label = suspended ? i18n.tr("cards.resume", "Resume") : i18n.tr("cards.play", "Play");
+    auto& lf = m_chrome.labelFont();
+    const float lw = lf.measure(label).x;
+    const float cx = button.x + button.width * 0.5f;
+    const nxui::Color ink{0.12f, 0.13f, 0.17f, d};
+    // Play triangle before the word.
+    const float triX = cx - (lw + 26.f) * 0.5f;
+    const float cy = button.y + button.height * 0.5f;
+    ren.drawTriangle({triX, cy - 8.f}, {triX, cy + 8.f}, {triX + 13.f, cy}, ink);
+    m_chrome.textMid(ren, lf, label, triX + 26.f, cy, ink);
+    m_chrome.glassCircle(ren, button.right() + 46.f, cy, 72.f, false, "dots", 30.f, m_time);
 
-    const std::string count = std::to_string(m_selected + 1) + " / " + std::to_string(m_catalog.count());
-    const nxui::Vec2 cs = m_fontSmall.measure(count);
-    ren.drawText(count, {p.right() - 40.f - cs.x, p.bottom() - 44.f}, &m_fontSmall, kTextDim);
+    if (suspended) {
+        const std::string hint = i18n.tr("cards.hint_close", "X  Close software");
+        m_chrome.textMid(ren, m_chrome.smallFont(), hint, button.right() + 100.f, cy, dim);
+    }
+
+    // Page dots (one page for now) at the bottom right.
+    ren.drawCircle({p.right() - 52.f, p.bottom() - 16.f}, 3.5f, {1.f, 1.f, 1.f, 0.9f}, 12);
+    ren.drawCircle({p.right() - 40.f, p.bottom() - 16.f}, 3.5f, {1.f, 1.f, 1.f, 0.35f}, 12);
 }
 
 void CardsHomeActivity::onRender(nxui::Renderer& ren) {
-    ren.drawGradientRect({0, 0, 1280, 720}, kBgTop, kBgBottom);
+    // Background: the focused title's art, cross-faded from the previous one.
+    const nxui::Texture* bg = m_bgId ? m_art.background(m_bgId) : nullptr;
+    const float bgIn = bg ? std::min(1.f, m_art.backgroundAge(m_bgId, m_time) / 0.6f) : 0.f;
+    const nxui::Texture* prev = m_bgPrevId ? m_art.background(m_bgPrevId) : nullptr;
+    m_chrome.drawBackground(ren, bg, bgIn, prev, m_time);
+
+    m_chrome.drawTopBar(ren, m_status, static_cast<TopButton>(m_topIndex), m_topZone, m_time);
+
     // Neighbours first, focused card last so its outline sits on top.
     for (int i = 0; i < m_catalog.count(); ++i) {
         if (i == m_selected)
@@ -705,6 +843,17 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
             drawCard(ren, m_selected, r, chosen);
     }
     drawPanel(ren);
+
+    auto& i18n = nxui::I18n::instance();
+    std::string banner = m_wakeGuard ? i18n.tr("cards.wake_hint", "Press A to continue")
+                                     : (m_time < m_toastUntil ? m_toast : std::string());
+    if (!banner.empty()) {
+        auto& f = m_chrome.labelFont();
+        const float w = f.measure(banner).x + 48.f;
+        const nxui::Rect box{640.f - w * 0.5f, 104.f, w, 44.f};
+        ren.drawRoundedRect(box, {0.08f, 0.09f, 0.12f, 0.82f}, 22.f);
+        m_chrome.textMid(ren, f, banner, box.x + 24.f, box.y + 22.f, CardsChrome::kWhite);
+    }
     if (m_userSelect && m_userSelect->isActive())
         m_userSelect->render(ren);
 }

@@ -1180,6 +1180,7 @@
     "hint_close": "X  Chiudi software",
     "suspended_title": "Software sospeso",
     "suspended_body": "Chiudi prima il software sospeso (X sulla sua scheda).",
-    "wake_hint": "Premi A per continuare"
+    "wake_hint": "Premi A per continuare",
+    "coming_soon": "Disponibile in un prossimo aggiornamento"
   }
 }

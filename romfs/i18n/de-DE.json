@@ -1180,6 +1180,7 @@
     "hint_close": "X  Software beenden",
     "suspended_title": "Software pausiert",
     "suspended_body": "Beende zuerst die pausierte Software (X auf ihrer Karte).",
-    "wake_hint": "Drücke A, um fortzufahren"
+    "wake_hint": "Drücke A, um fortzufahren",
+    "coming_soon": "Kommt in einem späteren Update"
   }
 }

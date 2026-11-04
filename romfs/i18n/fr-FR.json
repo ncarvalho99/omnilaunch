@@ -1180,6 +1180,7 @@
     "hint_close": "X  Fermer le logiciel",
     "suspended_title": "Logiciel suspendu",
     "suspended_body": "Fermez d'abord le logiciel suspendu (X sur sa carte).",
-    "wake_hint": "Appuyez sur A pour continuer"
+    "wake_hint": "Appuyez sur A pour continuer",
+    "coming_soon": "Disponible dans une prochaine mise à jour"
   }
 }

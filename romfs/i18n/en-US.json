@@ -1300,6 +1300,7 @@
     "hint_close": "X  Close software",
     "suspended_title": "Software suspended",
     "suspended_body": "Close the suspended software first (X on its card).",
-    "wake_hint": "Press A to continue"
+    "wake_hint": "Press A to continue",
+    "coming_soon": "Coming in a later update"
   }
 }
