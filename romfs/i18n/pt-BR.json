@@ -1289,5 +1289,17 @@
       "off": "Desligado"
     },
     "title": "Tema automático"
+  },
+  "cards": {
+    "loading": "Carregando...",
+    "empty": "Nenhum software instalado",
+    "played": "Jogado",
+    "not_played": "Ainda não jogado",
+    "resume": "Continuar",
+    "play": "Jogar",
+    "hint_close": "X  Fechar software",
+    "suspended_title": "Software suspenso",
+    "suspended_body": "Feche primeiro o software suspenso (X no card dele).",
+    "wake_hint": "Pressione A para continuar"
   }
 }

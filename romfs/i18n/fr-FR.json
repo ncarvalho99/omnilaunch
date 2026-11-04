@@ -1169,5 +1169,17 @@
     "hint_shortcut": "Journal",
     "hint_step": "Changer date",
     "hint_today": "Aujourd'hui"
+  },
+  "cards": {
+    "loading": "Chargement...",
+    "empty": "Aucun logiciel installé",
+    "played": "Joué",
+    "not_played": "Pas encore joué",
+    "resume": "Reprendre",
+    "play": "Jouer",
+    "hint_close": "X  Fermer le logiciel",
+    "suspended_title": "Logiciel suspendu",
+    "suspended_body": "Fermez d'abord le logiciel suspendu (X sur sa carte).",
+    "wake_hint": "Appuyez sur A pour continuer"
   }
 }

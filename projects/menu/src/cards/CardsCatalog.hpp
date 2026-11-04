@@ -1,0 +1,66 @@
+#pragma once
+// Cards view of the HomeCore catalogue (HomeNX D1a). The title list comes from
+// the Core's AppListLoader; this frontend keeps only its own ordering and the
+// GPU icon textures of the cards near the focus. Those textures belong to the
+// frontend and are released in onDestroy (audit §6.1 rule 3).
+
+#include "core/GridModel.hpp"
+#include "launcher/IconStreamer.hpp"
+#include <nxui/core/Texture.hpp>
+#include <cstdint>
+#include <future>
+#include <memory>
+#include <string>
+#include <vector>
+
+struct AppConfig;
+class AppListLoader;
+namespace nxui { class GpuDevice; class Renderer; class ThreadPool; }
+
+namespace cards {
+
+struct CardEntry {
+    AppEntry app;
+    std::unique_ptr<nxui::Texture> icon;
+    bool iconRequested = false;
+    bool iconFailed = false;
+};
+
+class CardsCatalog {
+public:
+    /// Starts an asynchronous catalogue fetch on the Core loader.
+    void startLoad(AppListLoader& loader, nxui::ThreadPool& pool);
+    /// Main thread. Adopts a finished fetch, ordered by last opened (newest
+    /// first). Returns true when the list was replaced.
+    bool poll(AppListLoader& loader, const AppConfig& config);
+    bool loading() const { return m_loading; }
+
+    int count() const { return static_cast<int>(m_entries.size()); }
+    CardEntry& at(int i) { return m_entries[static_cast<std::size_t>(i)]; }
+    const CardEntry& at(int i) const { return m_entries[static_cast<std::size_t>(i)]; }
+    int indexOf(std::uint64_t titleId) const;
+    void updateViewFlags(std::uint64_t titleId, std::uint32_t flags);
+
+    /// Queues icon decodes on the pool for cards in [first, last] and uploads
+    /// finished ones (main thread, at most `uploadBudget` per call). Textures
+    /// outside [first - keep, last + keep] are released.
+    void pumpIcons(nxui::GpuDevice& gpu, nxui::Renderer& ren, nxui::ThreadPool& pool,
+                   int first, int last, int keep, int uploadBudget);
+
+    /// Stops pending decodes and drops every texture (onDestroy).
+    void releaseAll();
+
+private:
+    struct PendingIcon {
+        std::uint64_t titleId = 0;
+        std::shared_ptr<IconStreamer::DecodedIcon> decoded;
+        std::shared_ptr<std::atomic<bool>> cancelled;
+        std::future<void> future;
+    };
+
+    std::vector<CardEntry> m_entries;
+    std::vector<PendingIcon> m_pending;
+    bool m_loading = false;
+};
+
+} // namespace cards

@@ -1169,5 +1169,17 @@
     "hint_shortcut": "Registro",
     "hint_step": "Cambia data",
     "hint_today": "Oggi"
+  },
+  "cards": {
+    "loading": "Caricamento...",
+    "empty": "Nessun software installato",
+    "played": "Giocato",
+    "not_played": "Non ancora giocato",
+    "resume": "Riprendi",
+    "play": "Gioca",
+    "hint_close": "X  Chiudi software",
+    "suspended_title": "Software sospeso",
+    "suspended_body": "Chiudi prima il software sospeso (X sulla sua scheda).",
+    "wake_hint": "Premi A per continuare"
   }
 }

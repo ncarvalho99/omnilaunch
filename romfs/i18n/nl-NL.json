@@ -1169,5 +1169,17 @@
     "hint_shortcut": "Logboek",
     "hint_step": "Datum wijzigen",
     "hint_today": "Vandaag"
+  },
+  "cards": {
+    "loading": "Laden...",
+    "empty": "Geen software geïnstalleerd",
+    "played": "Gespeeld",
+    "not_played": "Nog niet gespeeld",
+    "resume": "Hervatten",
+    "play": "Spelen",
+    "hint_close": "X  Software sluiten",
+    "suspended_title": "Software onderbroken",
+    "suspended_body": "Sluit eerst de onderbroken software (X op de kaart).",
+    "wake_hint": "Druk op A om door te gaan"
   }
 }

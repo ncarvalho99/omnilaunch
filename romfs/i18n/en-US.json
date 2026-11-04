@@ -1289,5 +1289,17 @@
       "off": "Off"
     },
     "title": "Auto Theme"
+  },
+  "cards": {
+    "loading": "Loading...",
+    "empty": "No software installed",
+    "played": "Played",
+    "not_played": "Not played yet",
+    "resume": "Resume",
+    "play": "Play",
+    "hint_close": "X  Close software",
+    "suspended_title": "Software suspended",
+    "suspended_body": "Close the suspended software first (X on its card).",
+    "wake_hint": "Press A to continue"
   }
 }
