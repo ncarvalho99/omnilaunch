@@ -12,9 +12,11 @@
 // C4: per-frontend HTTP cancel scope, HTTP runtime and Bluetooth lifetime,
 //     final MenuClosing notification.
 // C5a: play-time refresh (HomePlaytime).
+// C5b: SteamGridDB artwork scrape manager.
 
 #include "home/HomeAudio.hpp"
 #include "home/HomePlaytime.hpp"
+#include "steamgriddb/SteamGridDbManager.hpp"
 #include "launcher/AppletLauncher.hpp"
 #include "core/Config.hpp"
 #include <nxui/core/ThreadPool.hpp>
@@ -54,6 +56,7 @@ public:
 
     HomeAudio& audioServices() { return m_audio; }
     HomePlaytime& playtime() { return m_playtime; }
+    SteamGridDbManager& steamGridDb() { return m_steamGridDb; }
     AppConfig& config() { return m_config; }
     const AppConfig& config() const { return m_config; }
     nxui::ThreadPool& threadPool() { return m_threadPool; }
@@ -117,6 +120,7 @@ private:
 
     HomeAudio m_audio;
     HomePlaytime m_playtime;
+    SteamGridDbManager m_steamGridDb;
     AppConfig m_config;
     nxui::ThreadPool m_threadPool{2};
     AppletLauncher m_launcher;

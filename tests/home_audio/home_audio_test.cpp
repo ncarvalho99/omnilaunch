@@ -85,9 +85,9 @@ int main() {
  assert(speechReleasedBeforeMixer);
  core.runShutdownPhase(ShutdownPhase::ProcessExit);
  assert(audio.closes==1 && speechShutdowns==1);
- // C4 Services phase: pool joined, then HTTP runtime, then Bluetooth; once each.
+ // C4/C5b Services phase: pool joined, SteamGridDB scrape stopped, then HTTP runtime, then Bluetooth; once each.
  assert(themeshop::http::shutdownCalls==1 && bluetooth::finalizeCalls==1);
- assert((fake::serviceOrder==std::vector<std::string>{"http","bluetooth"}));
+ assert((fake::serviceOrder==std::vector<std::string>{"steamgriddb","http","bluetooth"}));
  // Process shutdown itself is terminal (no explicit cancel, scope was open):
  // reopening a frontend scope afterwards does not clear it.
  core.frontendStarted();

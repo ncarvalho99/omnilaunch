@@ -375,7 +375,8 @@ WiiUMenuApp::WiiUMenuApp(home::HomeCore& core)
       m_pendingSoundPreset(core.audioServices().pendingSoundPreset),
       m_threadPool(core.threadPool()),
       m_launcher(core.launcher()),
-      m_config(core.config()) {}
+      m_config(core.config()),
+      m_steamGridDb(core.steamGridDb()) {}
 WiiUMenuApp::~WiiUMenuApp() {
     m_animalesePlayer.clear();
     rootBox().clearChildren();
@@ -866,6 +867,9 @@ void WiiUMenuApp::onDestroy() {
 #ifdef SWITCHU_MENU
     m_homeCore.playtime().cancel();
 #endif
+    // Before C5b the scrape was cancelled and joined by this Activity's
+    // destructor; keep stopping it when the frontend leaves.
+    m_steamGridDb.cancelAndWait();
 
     // Theme Shop, Gallery, metadata, icon, and artwork work all shares this
     // pool.  The old order stopped libcurl/Bluetooth first and relied on the

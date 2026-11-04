@@ -43,6 +43,11 @@ HomeCore::HomeCore() {
         m_closingTrace.http_shutdown_done_tick = armGetSystemTick();
 #endif
     });
+    // The scrape runs on its own std::async thread and uses HTTP: stop it
+    // before the HTTP runtime goes away (hooks run in reverse order).
+    addShutdownHook(ShutdownPhase::Services, "steamgriddb", [this] {
+        m_steamGridDb.cancelAndWait();
+    });
     addShutdownHook(ShutdownPhase::Services, "thread pool", [this] {
         m_threadPool.shutdown();
     });

@@ -885,7 +885,7 @@ private:
     int  m_refreshPrevPage       = 0;
 
     AppConfig& m_config;
-    SteamGridDbManager m_steamGridDb;
+    SteamGridDbManager& m_steamGridDb; // HomeCore-owned (C5b)
     std::future<SteamGridDbManager::BrowseResult> m_steamGridDbBrowseFuture;
     std::future<SteamGridDbManager::ApplyResult> m_steamGridDbApplyFuture;
     std::shared_ptr<SteamGridDbApplyProgressShared> m_steamGridDbApplyProgress;
