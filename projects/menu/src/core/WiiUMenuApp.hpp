@@ -767,7 +767,7 @@ private:
     nxui::ThreadPool& m_threadPool;
     SidebarManager   m_sidebar;
     AppletLauncher&  m_launcher;
-    AppListLoader   m_appLoader;
+    AppListLoader&  m_appLoader; // HomeCore-owned catalogue loader (C5c)
     IconStreamer    m_iconStreamer;
     SystemMessages  m_sysMsg;
     switchu::navigation::MenuNavigator m_navigator;

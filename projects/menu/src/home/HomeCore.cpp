@@ -53,6 +53,10 @@ HomeCore::HomeCore() {
     });
     // Registered after the pool so it runs before the pool joins: cancel the
     // pdm batch and collect its future while the worker is still alive.
+    addShutdownHook(ShutdownPhase::Services, "catalogue loader", [this] {
+        m_catalog.setPendingTransform({});
+        m_catalog.waitIdle();
+    });
     addShutdownHook(ShutdownPhase::Services, "play-time refresh", [this] {
         m_playtime.shutdown();
     });

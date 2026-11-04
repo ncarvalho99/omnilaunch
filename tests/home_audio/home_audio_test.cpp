@@ -74,6 +74,7 @@ int main() {
   core.frontendStopping(); core.frontendStarted();
   assert(scope.cancelled(newReq) && !scope.cancelled(scope.begin()));
  }
+ core.catalog().setPendingTransform([](std::vector<PendingApp>&){});
  core.startBluetooth();
  assert(bluetooth::initializeCalls==1);
  std::vector<int> order;
@@ -86,8 +87,8 @@ int main() {
  core.runShutdownPhase(ShutdownPhase::ProcessExit);
  assert(audio.closes==1 && speechShutdowns==1);
  // C4/C5b Services phase: pool joined, SteamGridDB scrape stopped, then HTTP runtime, then Bluetooth; once each.
- assert(themeshop::http::shutdownCalls==1 && bluetooth::finalizeCalls==1);
- assert((fake::serviceOrder==std::vector<std::string>{"steamgriddb","http","bluetooth"}));
+ assert(themeshop::http::shutdownCalls==1 && bluetooth::finalizeCalls==1 && !core.catalog().transform);
+ assert((fake::serviceOrder==std::vector<std::string>{"catalogue","steamgriddb","http","bluetooth"}));
  // Process shutdown itself is terminal (no explicit cancel, scope was open):
  // reopening a frontend scope afterwards does not clear it.
  core.frontendStarted();

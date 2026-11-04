@@ -13,9 +13,11 @@
 //     final MenuClosing notification.
 // C5a: play-time refresh (HomePlaytime).
 // C5b: SteamGridDB artwork scrape manager.
+// C5c: catalogue loader (AppListLoader).
 
 #include "home/HomeAudio.hpp"
 #include "home/HomePlaytime.hpp"
+#include "launcher/AppListLoader.hpp"
 #include "steamgriddb/SteamGridDbManager.hpp"
 #include "launcher/AppletLauncher.hpp"
 #include "core/Config.hpp"
@@ -57,6 +59,9 @@ public:
     HomeAudio& audioServices() { return m_audio; }
     HomePlaytime& playtime() { return m_playtime; }
     SteamGridDbManager& steamGridDb() { return m_steamGridDb; }
+    /// Catalogue fetch. The active frontend sets its transform in onCreate and
+    /// clears it in onDestroy (the Core never keeps a dead frontend's callback).
+    AppListLoader& catalog() { return m_catalog; }
     AppConfig& config() { return m_config; }
     const AppConfig& config() const { return m_config; }
     nxui::ThreadPool& threadPool() { return m_threadPool; }
@@ -121,6 +126,7 @@ private:
     HomeAudio m_audio;
     HomePlaytime m_playtime;
     SteamGridDbManager m_steamGridDb;
+    AppListLoader m_catalog;
     AppConfig m_config;
     nxui::ThreadPool m_threadPool{2};
     AppletLauncher m_launcher;

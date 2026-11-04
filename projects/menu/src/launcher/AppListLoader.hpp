@@ -48,6 +48,12 @@ public:
 
     bool isReady() const;
 
+    /// Waits for an in-flight fetch without consuming its result (shutdown).
+    void waitIdle() {
+        if (m_future.valid())
+            m_future.wait();
+    }
+
     bool finalize(GridModel& model, IconStreamer& streamer);
 
     void setPendingTransform(PendingTransform transform) {
