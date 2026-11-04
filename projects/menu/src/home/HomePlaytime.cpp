@@ -9,10 +9,13 @@
 
 namespace home {
 
-void HomePlaytime::start(nxui::ThreadPool& pool, std::vector<std::uint64_t> titleIds) {
+bool HomePlaytime::start(nxui::ThreadPool& pool, std::vector<std::uint64_t> titleIds,
+                         std::uint64_t checkedSequence) {
     if (m_future.valid() || titleIds.empty())
-        return;
+        return false;
     auto state = std::make_shared<State>();
+    state->requested = titleIds.size();
+    state->checkedSequence = checkedSequence;
     m_state = state;
     m_future = pool.submit([state, titleIds = std::move(titleIds)]() {
 #ifdef SWITCHU_MENU
@@ -21,6 +24,7 @@ void HomePlaytime::start(nxui::ThreadPool& pool, std::vector<std::uint64_t> titl
         (void)titleIds;
 #endif
     });
+    return true;
 }
 
 int HomePlaytime::poll(AppConfig& config) {
@@ -39,6 +43,11 @@ int HomePlaytime::poll(AppConfig& config) {
     if (!failed && state) {
         for (const auto& [titleId, nanoseconds] : state->playtime)
             changed += config.setPlaytime(titleId, nanoseconds) ? 1 : 0;
+        // Advanced only when every title answered: a stopped or failed batch
+        // leaves the opened-since titles to be asked again next time.
+        if (state->playtime.size() == state->requested &&
+            state->checkedSequence > config.playtimeCheckedSequence)
+            config.playtimeCheckedSequence = state->checkedSequence;
     }
     DebugLog::log("[playtime] refresh done titles=%zu changed=%d",
                   state ? state->playtime.size() : static_cast<std::size_t>(0), changed);

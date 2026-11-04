@@ -205,6 +205,10 @@ struct AppConfig {
     // start without a valid wall clock and armGetSystemTick resets on reboot;
     // neither can provide a reliable "most recently opened" order.
     std::uint64_t lastOpenedSequence = 0;
+    // The lastOpenedSequence value up to which the play-time cache is known to
+    // be current. A title opened after it has been played since its figure was
+    // read, so it is asked again; everything else keeps its cached figure.
+    std::uint64_t playtimeCheckedSequence = 0;
 
     std::uint64_t lastOpenedAt(std::uint64_t titleId) const {
         for (const auto& e : lastOpened)

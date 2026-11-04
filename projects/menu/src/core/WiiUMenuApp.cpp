@@ -1489,27 +1489,39 @@ void WiiUMenuApp::pollPlaytimeRefresh() {
     m_playtimeRefreshQueued = false;
 
     // Only what can have changed. A title's play time moves when it is played,
-    // and the menu is recreated after every session, so the title just played
-    // plus anything with no figure yet is the whole set -- usually one query
-    // instead of a hundred and seventeen. Asking for all of them cost 29
+    // so the titles opened since the cache was last confirmed, the one still
+    // suspended, and anything with no figure yet are the whole set -- usually
+    // one query instead of a hundred and seventeen. The opened-since test uses
+    // the launch sequence rather than lastPageTitleId: that is the first icon
+    // of the page the grid was on, not the game that was played, and a game
+    // closed outright suspends nothing. Asking for all of them cost 29
     // seconds on a console with that many, measured in its own log, and the
     // handoff to a game waits for this pool: launching or resuming during those
     // seconds left the launch animation frozen on screen for as long as the
     // batch had left to run.
     std::vector<std::uint64_t> titleIds;
     titleIds.reserve(m_allApps.size());
-    const std::uint64_t justPlayed = m_launcher.suspendedTitleId() != 0
-        ? m_launcher.suspendedTitleId() : m_config.lastPageTitleId;
+    const std::uint64_t suspended = m_launcher.suspendedTitleId();
+    const std::uint64_t checkedUpTo = m_config.playtimeCheckedSequence;
     for (const auto& app : m_allApps) {
         if (!app.isApplication() || app.titleId == 0)
             continue;
-        if (app.titleId == justPlayed || !m_config.hasPlaytime(app.titleId))
+        if (app.titleId == suspended || !m_config.hasPlaytime(app.titleId) ||
+            m_config.lastOpenedAt(app.titleId) > checkedUpTo)
             titleIds.push_back(app.titleId);
     }
     if (titleIds.empty())
         return;
 
-    m_homeCore.playtime().start(m_threadPool, std::move(titleIds));
+    // A suspended title is still accruing time, so the batch must not confirm
+    // its launch: it stays in the set until it has exited.
+    std::uint64_t confirms = m_config.lastOpenedSequence;
+    if (suspended != 0) {
+        const std::uint64_t openedAt = m_config.lastOpenedAt(suspended);
+        if (openedAt != 0 && openedAt - 1 < confirms)
+            confirms = openedAt - 1;
+    }
+    m_homeCore.playtime().start(m_threadPool, std::move(titleIds), confirms);
 #endif
 }
 
@@ -8491,6 +8503,9 @@ void WiiUMenuApp::onUpdate(float dt) {
                 m_launcher.setAppHasForeground(false);
                 m_launcher.setSuspendedTitleId(0);
                 m_sysMsg.pushAction(SysAction::HomeButton);
+                // Closed from the menu: its final play time is in pdm now.
+                if (m_config.sortMode == 4)
+                    requestPlaytimeRefresh("application exited");
                 break;
             case switchu::smi::MenuMessage::ApplicationSuspended:
                 m_launcher.setAppRunning(true);

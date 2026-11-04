@@ -129,6 +129,7 @@ bool AppConfig::load() {
     readJsonOpt(j, "lastPageTitleId", lastPageTitleId);
     readJsonOpt(j, "sortMode", sortMode);
     readJsonOpt(j, "lastOpenedSequence", lastOpenedSequence);
+    readJsonOpt(j, "playtimeCheckedSequence", playtimeCheckedSequence);
     lastOpened.clear();
     if (auto it = j.find("lastOpened"); it != j.end() && it->is_object()) {
         for (auto& [k, v] : it->items()) {
@@ -319,6 +320,7 @@ bool AppConfig::save() const {
     j["lastPageTitleId"] = lastPageTitleId;
     j["sortMode"] = sortMode;
     j["lastOpenedSequence"] = lastOpenedSequence;
+    j["playtimeCheckedSequence"] = playtimeCheckedSequence;
     {
         nlohmann::json opened = nlohmann::json::object();
         char key[17];

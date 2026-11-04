@@ -98,13 +98,16 @@ int main() {
   HomeCore pcore;
   AppConfig pcfg;
   assert(pcore.playtime().poll(pcfg)==-1 && !pcore.playtime().running());
-  pcore.playtime().start(pcore.threadPool(), {});
+  assert(!pcore.playtime().start(pcore.threadPool(), {}, 5));
   assert(!pcore.playtime().running());          // empty list: nothing queued
-  pcore.playtime().start(pcore.threadPool(), {1,2});
+  assert(pcore.playtime().start(pcore.threadPool(), {1,2}, 7));
   assert(pcore.playtime().running());
+  assert(!pcore.playtime().start(pcore.threadPool(), {4}, 9)); // one batch at a time
   int r=-1; for(int i=0;i<200 && r<0;++i){ r=pcore.playtime().poll(pcfg); if(r<0) std::this_thread::sleep_for(std::chrono::milliseconds(5)); }
   assert(r==0 && !pcore.playtime().running());
-  pcore.playtime().start(pcore.threadPool(), {3});
+  // No pdm on host, so no title answers: the launch sequence stays unconfirmed.
+  assert(pcfg.playtimeCheckedSequence==0);
+  pcore.playtime().start(pcore.threadPool(), {3}, 8);
   pcore.runShutdownPhase(ShutdownPhase::ProcessExit); // collects it before the pool joins
   assert(!pcore.playtime().running());
  } // C3 HomeCore launcher, pool, config, and quiesce routing contracts
