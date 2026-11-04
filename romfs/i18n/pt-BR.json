@@ -1026,7 +1026,9 @@
       "unpack_failed": "Não foi possível descompactar o pacote do tema.",
       "replace_failed": "Não foi possível instalar o pacote do tema.",
       "finishing": "Concluindo",
-      "no_space": "Espaço insuficiente no cartão SD para este tema"
+      "no_space": "Espaço insuficiente no cartão SD para este tema",
+      "cancelled": "Download cancelado.",
+      "cancelling": "Cancelando..."
     },
     "preview": {
       "loading": "Carregando captura...",

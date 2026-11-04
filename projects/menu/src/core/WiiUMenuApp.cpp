@@ -8693,6 +8693,7 @@ void WiiUMenuApp::onUpdate(float dt) {
         !(m_quickSettings && m_quickSettings->isActive()) &&
         !(m_contextMenu && m_contextMenu->isActive()) &&
         !(m_dialog && m_dialog->isActive()) &&
+        !(m_progressDialog && m_progressDialog->isActive()) &&
         !(m_settings && m_settings->isActive()) &&
         !(m_themeShop && m_themeShop->isActive()) &&
         !(m_gameGallery && m_gameGallery->isActive()) &&

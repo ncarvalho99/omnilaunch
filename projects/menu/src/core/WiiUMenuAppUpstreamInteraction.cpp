@@ -1912,6 +1912,9 @@ void WiiUMenuApp::handleSystemAction(SysAction a) {
             }
             DebugLog::log("[pump] HomeButton -> UI update");
             m_launcher.setAppHasForeground(false);
+            // HOME is the way out of a theme download: stop it. The dialog
+            // shows "Cancelling" and closes once the worker has cleaned up.
+            cancelThemePackageTransfer("home");
 
             std::uint64_t returnFocusId = m_launcher.suspendedTitleId();
             if (returnFocusId == 0 && m_grid) {

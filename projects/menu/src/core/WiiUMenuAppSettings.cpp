@@ -2155,6 +2155,9 @@ void WiiUMenuApp::startThemePackageTransfer(const ThemeCatalogClient::Entry& ent
         m_progressDialog->show(i18n.tr("themeshop.transfer.dialog_title", "Downloading Theme"),
                                preparingLabel,
                                -1.f);
+        m_progressDialog->setCancelAction(i18n.tr("button.cancel", "Cancel"), [this] {
+            cancelThemePackageTransfer("button");
+        });
         focusManager().setFocus(m_progressDialog.get());
     }
 
@@ -2172,7 +2175,9 @@ void WiiUMenuApp::startThemePackageTransfer(const ThemeCatalogClient::Entry& ent
                   entry.id.c_str(),
                   installMode ? 1 : 0);
 
-    m_themePackageTransferFuture = m_threadPool.submit([shared, catalogUrl, entry, mode, unknownTransferError]() {
+    const std::string cancelledMessage = i18n.tr("themeshop.transfer.cancelled", "Download cancelled.");
+    m_themePackageTransferFuture = m_threadPool.submit([shared, catalogUrl, entry, mode, unknownTransferError,
+                                                        cancelledMessage]() {
         try {
             auto result = ThemePackageInstaller::run(
                 catalogUrl,
@@ -2182,7 +2187,8 @@ void WiiUMenuApp::startThemePackageTransfer(const ThemeCatalogClient::Entry& ent
                     std::lock_guard<std::mutex> lk(shared->mutex);
                     shared->state.update(std::move(label), progress);
                     ++shared->revision;
-                });
+                },
+                &shared->cancel);
 
             std::lock_guard<std::mutex> lk(shared->mutex);
             shared->destinationPath = result.destinationPath;
@@ -2191,9 +2197,14 @@ void WiiUMenuApp::startThemePackageTransfer(const ThemeCatalogClient::Entry& ent
             DebugLog::log("[themeshop] package transfer success: %s", result.themeId.c_str());
         } catch (const std::exception& ex) {
             std::lock_guard<std::mutex> lk(shared->mutex);
-            shared->state.fail(ex.what());
+            if (shared->cancel.load(std::memory_order_acquire)) {
+                shared->state.fail(cancelledMessage);
+                DebugLog::log("[themeshop] package transfer cancelled: %s", ex.what());
+            } else {
+                shared->state.fail(ex.what());
+                DebugLog::log("[themeshop] package transfer failed: %s", ex.what());
+            }
             ++shared->revision;
-            DebugLog::log("[themeshop] package transfer failed: %s", ex.what());
         } catch (...) {
             std::lock_guard<std::mutex> lk(shared->mutex);
             shared->state.fail(unknownTransferError);
@@ -2303,6 +2314,23 @@ void WiiUMenuApp::syncThemePackageTransfer() {
     }
 
     m_themePackageTransferHandledRevision = revision;
+}
+
+void WiiUMenuApp::cancelThemePackageTransfer(const char* reason) {
+    auto shared = m_themePackageTransfer;
+    if (!shared || !m_themePackageTransferFuture.valid()
+        || m_themePackageTransferFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+        return;
+    if (shared->cancel.exchange(true, std::memory_order_acq_rel))
+        return;
+    DebugLog::log("[themeshop] package transfer cancel requested (%s): id=%s",
+                  reason ? reason : "?", shared->themeId.c_str());
+    // The worker stops at its next cancel point (download callback, or
+    // before the old theme is replaced); syncThemePackageTransfer() then
+    // hides the dialog. Until then it shows that it is cancelling.
+    if (m_progressDialog && m_progressDialog->isActive())
+        m_progressDialog->markCancelling(nxui::I18n::instance().tr(
+            "themeshop.transfer.cancelling", "Cancelling..."));
 }
 
 std::vector<ThemeShopScreen::ThemeShopEntry> WiiUMenuApp::buildThemeShopEntries() {

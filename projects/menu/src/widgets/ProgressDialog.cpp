@@ -1,6 +1,7 @@
 #include "ProgressDialog.hpp"
 #include "../settings/SettingsGlassTuning.hpp"
 #include <nxui/core/GpuDevice.hpp>
+#include <nxui/core/Input.hpp>
 #include <nxui/core/Renderer.hpp>
 #include <algorithm>
 #include <cmath>
@@ -41,13 +42,48 @@ ProgressDialog::ProgressDialog() {
 }
 
 nxui::Rect ProgressDialog::panelRect() const {
-    return {(1280.f - kPanelW) * 0.5f, (720.f - kPanelH) * 0.5f, kPanelW, kPanelH};
+    const float h = m_onCancel ? kPanelHWithButton : kPanelH;
+    return {(1280.f - kPanelW) * 0.5f, (720.f - h) * 0.5f, kPanelW, h};
+}
+
+nxui::Rect ProgressDialog::cancelButtonRect(const nxui::Rect& panel) const {
+    constexpr float w = 200.f, h = 44.f;
+    return {panel.x + (panel.width - w) * 0.5f, panel.bottom() - h - 22.f, w, h};
+}
+
+void ProgressDialog::setCancelAction(const std::string& label, std::function<void()> onCancel) {
+    m_cancelLabel = label;
+    m_onCancel = std::move(onCancel);
+    m_cancelRequested = false;
+    clearActions();
+    if (m_onCancel) {
+        addAction(static_cast<uint64_t>(nxui::Button::A), [this] { requestCancel(); });
+        addAction(static_cast<uint64_t>(nxui::Button::B), [this] { requestCancel(); });
+    }
+}
+
+void ProgressDialog::requestCancel() {
+    if (!m_active || !m_onCancel || m_cancelRequested)
+        return;
+    m_cancelRequested = true;
+    auto cb = m_onCancel;
+    cb();
+}
+
+void ProgressDialog::markCancelling(const std::string& message) {
+    m_cancelRequested = true;
+    m_message = message;
+    m_progress01 = -1.f;
 }
 
 void ProgressDialog::show(const std::string& title, const std::string& message, float progress01) {
     m_title = title;
     m_message = message;
     m_progress01 = progress01;
+    m_onCancel = nullptr;
+    m_cancelLabel.clear();
+    m_cancelRequested = false;
+    clearActions();
     m_active = true;
     m_animatingOut = false;
     m_overlayAlpha.setImmediate(0.f);
@@ -60,6 +96,8 @@ void ProgressDialog::show(const std::string& title, const std::string& message, 
 }
 
 void ProgressDialog::updateState(const std::string& message, float progress01) {
+    if (m_cancelRequested)
+        return; // keep the "cancelling" text until the owner hides the dialog
     m_message = message;
     m_progress01 = progress01;
     if (progress01 >= 0.f)
@@ -184,5 +222,20 @@ void ProgressDialog::render(nxui::Renderer& ren) {
         float phase = std::fmod(m_spinnerT * 0.65f, 1.f);
         nxui::Rect fill = {track.x + travel * phase, track.y, segmentW, track.height};
         ren.drawRoundedRect(fill, m_theme->cursorNormal.withAlpha(0.82f * alpha), 9.f);
+    }
+
+    if (m_onCancel) {
+        const nxui::Rect btn = cancelButtonRect(panel);
+        const float a = (m_cancelRequested ? 0.45f : 1.f) * alpha;
+        ren.drawRoundedRect(btn, m_theme->cursorNormal.withAlpha(0.30f * a), 22.f);
+        ren.drawRoundedRectOutline(btn, m_theme->cursorNormal.withAlpha(0.90f * a), 22.f, 2.f);
+        if (m_smallFont) {
+            const nxui::Vec2 size = m_smallFont->measure(m_cancelLabel);
+            const float scale = 0.85f;
+            ren.drawText(m_cancelLabel,
+                         {btn.x + (btn.width - size.x * scale) * 0.5f,
+                          btn.y + (btn.height - size.y * scale) * 0.5f},
+                         m_smallFont, m_theme->textPrimary.withAlpha(a), scale);
+        }
     }
 }

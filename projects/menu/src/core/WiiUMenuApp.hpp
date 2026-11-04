@@ -495,6 +495,7 @@ private:
     std::vector<ThemeShopScreen::ThemeShopEntry> buildThemeShopEntries();
     void startThemePackageTransfer(const ThemeCatalogClient::Entry& entry, bool installMode);
     void syncThemePackageTransfer();
+    void cancelThemePackageTransfer(const char* reason);
     void activateThemePreset(ThemePreset* preset, bool applyBundledSound);
     // False when the preset's video wallpaper cannot be played on this console
     // (codec, resolution, frame rate, unreadable file). `reason` is human-readable.
@@ -757,6 +758,7 @@ private:
         bool installMode = false;
         std::string destinationPath;
         std::uint64_t revision = 0;
+        std::atomic<bool> cancel{false}; // Cancel button or HOME
     };
 
     struct GameArtworkSaveShared {

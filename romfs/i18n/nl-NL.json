@@ -942,7 +942,9 @@
       "unpack_failed": "Het themapakket kon niet worden uitgepakt.",
       "replace_failed": "Het themapakket kon niet worden geïnstalleerd.",
       "finishing": "Afronden",
-      "no_space": "Onvoldoende ruimte op de SD-kaart voor dit thema"
+      "no_space": "Onvoldoende ruimte op de SD-kaart voor dit thema",
+      "cancelled": "Download geannuleerd.",
+      "cancelling": "Annuleren..."
     },
     "preview": {
       "loading": "Screenshot laden...",

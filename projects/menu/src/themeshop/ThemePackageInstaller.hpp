@@ -2,6 +2,7 @@
 
 #include "ThemeCatalogClient.hpp"
 
+#include <atomic>
 #include <functional>
 #include <string>
 
@@ -26,5 +27,8 @@ public:
     static Result run(const std::string& catalogUrl,
                       const ThemeCatalogClient::Entry& entry,
                       Mode mode,
-                      ProgressCallback onProgress = {});
+                      ProgressCallback onProgress = {},
+                      // Set by the UI (Cancel/HOME). Checked between stages and inside the
+                      // package download; the theme already on the card is kept.
+                      const std::atomic<bool>* cancel = nullptr);
 };

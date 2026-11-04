@@ -942,7 +942,9 @@
       "unpack_failed": "Das Themenpaket konnte nicht entpackt werden.",
       "replace_failed": "Das Themenpaket konnte nicht installiert werden.",
       "finishing": "Abschließen",
-      "no_space": "Nicht genug Speicherplatz auf der SD-Karte für dieses Thema"
+      "no_space": "Nicht genug Speicherplatz auf der SD-Karte für dieses Thema",
+      "cancelled": "Download abgebrochen.",
+      "cancelling": "Wird abgebrochen..."
     },
     "preview": {
       "loading": "Screenshot wird geladen...",

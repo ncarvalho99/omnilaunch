@@ -1026,7 +1026,9 @@
       "unpack_failed": "Theme package could not be unpacked.",
       "replace_failed": "Theme package could not be installed.",
       "finishing": "Finishing",
-      "no_space": "Not enough space on the SD card for this theme"
+      "no_space": "Not enough space on the SD card for this theme",
+      "cancelled": "Download cancelled.",
+      "cancelling": "Cancelling..."
     },
     "preview": {
       "loading": "Loading screenshot...",

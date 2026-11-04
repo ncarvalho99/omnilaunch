@@ -756,7 +756,13 @@ std::string ThemePackageInstaller::destinationRootFor(const std::string& themeId
 ThemePackageInstaller::Result ThemePackageInstaller::run(const std::string& catalogUrl,
                                                          const ThemeCatalogClient::Entry& entry,
                                                          Mode mode,
-                                                         ProgressCallback onProgress) {
+                                                         ProgressCallback onProgress,
+                                                         const std::atomic<bool>* cancel) {
+    // Cancel points sit only before the known-good theme is replaced, each
+    // after that stage's own cleanup; once replaced, the install completes.
+    const auto cancelRequested = [cancel] {
+        return cancel && cancel->load(std::memory_order_acquire);
+    };
     if (!isSafeThemeId(entry.id))
         throw std::runtime_error("Catalog entry has an unsafe theme id");
     if ((!entry.path.empty() && !isSafeRelativePath(trimSlashes(entry.path)))
@@ -822,7 +828,8 @@ ThemePackageInstaller::Result ThemePackageInstaller::run(const std::string& cata
                                        // meter below extraction rather than jumping backward.
                                        : std::min(0.54f, 0.05f + 0.5f * (float)received / 52428800.f));
                     }
-                });
+                },
+                cancel);
         } catch (...) {
             std::remove(archivePath.c_str());
             removeDirectoryRecursive(stagingPath);
@@ -978,6 +985,12 @@ ThemePackageInstaller::Result ThemePackageInstaller::run(const std::string& cata
                                    0.55f + 0.4f * (float)done / (float)total);
                     }
                 });
+            // A cancel during extraction is honoured here, before replacement.
+            if (cancelRequested()) {
+                std::remove(archivePath.c_str());
+                removeDirectoryRecursive(stagingPath);
+                throw std::runtime_error("Theme transfer cancelled");
+            }
 
             std::remove(archivePath.c_str());   // o pacote nao fica no cartao
 
@@ -1001,6 +1014,11 @@ ThemePackageInstaller::Result ThemePackageInstaller::run(const std::string& cata
             }
         }
 
+        if (cancelRequested()) {
+            std::remove(archivePath.c_str());
+            removeDirectoryRecursive(stagingPath);
+            throw std::runtime_error("Theme transfer cancelled");
+        }
         std::string replaceError;
         if (!replaceDirectoryFromStaging(result.destinationPath, stagingPath, replaceError)) {
             removeDirectoryRecursive(stagingPath);
@@ -1055,6 +1073,8 @@ ThemePackageInstaller::Result ThemePackageInstaller::run(const std::string& cata
         }
 
         try {
+            if (cancelRequested())
+                throw std::runtime_error("Theme transfer cancelled");
             if (!isSafeRelativePath(file.relativePath))
                 throw std::runtime_error("Refusing unsafe file path in theme package: " + file.relativePath);
             const std::string body = themeshop::http::getText(file.downloadUrl);
@@ -1073,6 +1093,10 @@ ThemePackageInstaller::Result ThemePackageInstaller::run(const std::string& cata
         throw std::runtime_error("Theme package is incomplete.");
     }
 
+    if (cancelRequested()) {
+        discardLegacyStaging();
+        throw std::runtime_error("Theme transfer cancelled");
+    }
     std::string legacyReplaceError;
     if (!replaceDirectoryFromStaging(result.destinationPath, legacyStaging, legacyReplaceError)) {
         discardLegacyStaging();

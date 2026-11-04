@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <list>
 #include <string>
@@ -42,7 +43,10 @@ std::vector<std::uint8_t> getBytes(const std::string& url,
 // Devolve o total de bytes escritos. Lanca em erro de HTTP ou de escrita.
 std::uint64_t getToFile(const std::string& url,
                         const std::string& destinationPath,
-                        const std::function<void(std::uint64_t, std::uint64_t)>& onProgress = {});
+                        const std::function<void(std::uint64_t, std::uint64_t)>& onProgress = {},
+                        // Optional per-transfer cancel (user pressed Cancel/HOME). Checked by
+                        // the transfer callbacks; no retry after it is set.
+                        const std::atomic<bool>* cancel = nullptr);
 
 std::string getText(const std::string& url,
                     const std::list<std::string>& headers = {});

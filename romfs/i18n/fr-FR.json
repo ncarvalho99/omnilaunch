@@ -942,7 +942,9 @@
       "unpack_failed": "Le paquet du thème n'a pas pu être décompressé.",
       "replace_failed": "Le paquet du thème n'a pas pu être installé.",
       "finishing": "Finalisation",
-      "no_space": "Espace insuffisant sur la carte SD pour ce thème"
+      "no_space": "Espace insuffisant sur la carte SD pour ce thème",
+      "cancelled": "Téléchargement annulé.",
+      "cancelling": "Annulation..."
     },
     "preview": {
       "loading": "Chargement de la capture...",

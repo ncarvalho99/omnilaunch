@@ -4,6 +4,7 @@
 #include <nxui/core/Animation.hpp>
 #include <nxui/core/Font.hpp>
 #include <nxui/Theme.hpp>
+#include <functional>
 #include <string>
 
 class ProgressDialog : public nxui::GlassWidget {
@@ -18,6 +19,13 @@ public:
     void updateState(const std::string& message, float progress01);
     void hide();
 
+    // Optional Cancel button (A or B while the dialog has focus). Cleared by
+    // show(); call after show() to offer it. The label is shown on the button.
+    void setCancelAction(const std::string& label, std::function<void()> onCancel);
+    // Disables the button and keeps the dialog up until the owner hides it.
+    void markCancelling(const std::string& message);
+    bool cancelRequested() const { return m_cancelRequested; }
+
     bool isActive() const { return m_active || m_animatingOut; }
 
     void update(float dt) override;
@@ -25,6 +33,12 @@ public:
 
 private:
     nxui::Rect panelRect() const;
+    nxui::Rect cancelButtonRect(const nxui::Rect& panel) const;
+    void requestCancel();
+
+    std::function<void()> m_onCancel;
+    std::string m_cancelLabel;
+    bool m_cancelRequested = false;
 
     nxui::Font* m_font = nullptr;
     nxui::Font* m_smallFont = nullptr;
@@ -48,5 +62,6 @@ private:
     static constexpr int kBackdropCacheTarget = 1;
     static constexpr float kPanelW = 620.f;
     static constexpr float kPanelH = 230.f;
+    static constexpr float kPanelHWithButton = 290.f;
     static constexpr float kPanelRadius = 26.f;
 };
