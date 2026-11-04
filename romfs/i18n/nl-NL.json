@@ -1187,6 +1187,19 @@
     "home_style_desc": "Kies hoe het HOME-menu eruitziet.",
     "home_style_classic": "Klassiek",
     "home_style_cards": "Cards",
-    "home_style_restart": "Wordt toegepast na het herstarten van de console"
+    "home_style_restart": "Wordt toegepast na het herstarten van de console",
+    "played_now": "Zojuist gespeeld",
+    "played_min": "{n} minuut geleden gespeeld",
+    "played_mins": "{n} minuten geleden gespeeld",
+    "played_hour": "{n} uur geleden gespeeld",
+    "played_hours": "{n} uur geleden gespeeld",
+    "played_day": "{n} dag geleden gespeeld",
+    "played_days": "{n} dagen geleden gespeeld",
+    "played_on": "Gespeeld op {date}",
+    "sort": "Sorteren",
+    "sort_desc": "Kies de volgorde van je software.",
+    "sort_recent": "Laatst gespeeld",
+    "sort_title": "Titel",
+    "sort_played": "Meest gespeeld"
   }
 }

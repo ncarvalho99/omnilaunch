@@ -1187,6 +1187,19 @@
     "home_style_desc": "Choisissez l'apparence du menu HOME.",
     "home_style_classic": "Classique",
     "home_style_cards": "Cards",
-    "home_style_restart": "Appliqué après le redémarrage de la console"
+    "home_style_restart": "Appliqué après le redémarrage de la console",
+    "played_now": "Joué à l'instant",
+    "played_min": "Joué il y a {n} minute",
+    "played_mins": "Joué il y a {n} minutes",
+    "played_hour": "Joué il y a {n} heure",
+    "played_hours": "Joué il y a {n} heures",
+    "played_day": "Joué il y a {n} jour",
+    "played_days": "Joué il y a {n} jours",
+    "played_on": "Joué le {date}",
+    "sort": "Trier",
+    "sort_desc": "Choisissez l'ordre de vos logiciels.",
+    "sort_recent": "Joués récemment",
+    "sort_title": "Titre",
+    "sort_played": "Les plus joués"
   }
 }

@@ -115,6 +115,7 @@ bool AppConfig::load() {
         readJsonOpt(j, "homeStyle", style);
         homeStyle = home::parseHomeStyle(style);
     }
+    readJsonOpt(j, "cardsSort", cardsSort);
     readJsonOpt(j, "lastUpdateCheckDay", lastUpdateCheckDay);
     readJsonOpt(j, "clockUse12Hour", clockUse12Hour);
     readJsonOpt(j, "backgroundBlur", backgroundBlur);
@@ -225,6 +226,7 @@ bool AppConfig::load() {
     gridColumns = std::clamp(gridColumns, 3, 8);
     gridRows = std::clamp(gridRows, 2, 5);
     if (sortMode < 0 || sortMode >= kSortModeCount) sortMode = 0;
+    if (cardsSort < 0 || cardsSort >= kCardsSortCount) cardsSort = 0;
     if (actionHintStyle != "panel" && actionHintStyle != "capsules")
         actionHintStyle = "capsules";
     if (uiLanguageOverride.empty()) uiLanguageOverride = "auto";
@@ -305,6 +307,7 @@ bool AppConfig::save() const {
     j["defaultProfileUid"] = defaultProfileEnabled ? defaultProfileUid : std::string();
     j["tutorialCompleted"] = tutorialCompleted;
     j["homeStyle"] = home::homeStyleName(homeStyle);
+    j["cardsSort"] = cardsSort;
     j["lastUpdateCheckDay"] = lastUpdateCheckDay;
     j["clockUse12Hour"] = clockUse12Hour;
     j["backgroundBlur"] = backgroundBlur;

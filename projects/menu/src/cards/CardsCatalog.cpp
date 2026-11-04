@@ -36,11 +36,6 @@ bool CardsCatalog::poll(AppListLoader& loader, const AppConfig& config) {
     for (const auto& e : model.entries())
         if (e.isApplication() && e.titleId != 0)
             apps.push_back(e);
-    // Most recently opened first (C-SW-5: the last game is where focus lands).
-    std::stable_sort(apps.begin(), apps.end(), [&config](const AppEntry& a, const AppEntry& b) {
-        return config.lastOpenedAt(a.titleId) > config.lastOpenedAt(b.titleId);
-    });
-
     releaseAll();
     m_entries.clear();
     m_entries.reserve(apps.size());
@@ -49,8 +44,37 @@ bool CardsCatalog::poll(AppListLoader& loader, const AppConfig& config) {
         c.app = std::move(a);
         m_entries.push_back(std::move(c));
     }
-    DebugLog::log("[cards] catalogue %zu titles", m_entries.size());
+    sort(config);
+    DebugLog::log("[cards] catalogue %zu titles (sort %d)", m_entries.size(), config.cardsSort);
     return true;
+}
+
+namespace {
+std::string lowered(const std::string& s) {
+    std::string out(s);
+    for (auto& ch : out)
+        if (ch >= 'A' && ch <= 'Z')
+            ch = static_cast<char>(ch - 'A' + 'a');
+    return out;
+}
+} // namespace
+
+void CardsCatalog::sort(const AppConfig& config) {
+    // Ties keep last-opened order, so "most played" with no figures yet and
+    // equal names stay where the owner expects them.
+    auto recent = [&config](const CardEntry& a, const CardEntry& b) {
+        return config.lastOpenedAt(a.app.titleId) > config.lastOpenedAt(b.app.titleId);
+    };
+    std::stable_sort(m_entries.begin(), m_entries.end(), recent);
+    if (config.cardsSort == 1) {
+        std::stable_sort(m_entries.begin(), m_entries.end(), [](const CardEntry& a, const CardEntry& b) {
+            return lowered(a.app.title) < lowered(b.app.title);
+        });
+    } else if (config.cardsSort == 2) {
+        std::stable_sort(m_entries.begin(), m_entries.end(), [&config](const CardEntry& a, const CardEntry& b) {
+            return config.playtimeOf(a.app.titleId) > config.playtimeOf(b.app.titleId);
+        });
+    }
 }
 
 int CardsCatalog::indexOf(std::uint64_t titleId) const {

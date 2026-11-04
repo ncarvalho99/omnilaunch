@@ -30,9 +30,12 @@ class CardsCatalog {
 public:
     /// Starts an asynchronous catalogue fetch on the Core loader.
     void startLoad(AppListLoader& loader, nxui::ThreadPool& pool);
-    /// Main thread. Adopts a finished fetch, ordered by last opened (newest
-    /// first). Returns true when the list was replaced.
+    /// Main thread. Adopts a finished fetch, ordered by config.cardsSort.
+    /// Returns true when the list was replaced.
     bool poll(AppListLoader& loader, const AppConfig& config);
+    /// Reorders the cards by config.cardsSort (0 last opened, 1 title A-Z,
+    /// 2 most played). Icon textures and pending decodes follow by title id.
+    void sort(const AppConfig& config);
     bool loading() const { return m_loading; }
 
     int count() const { return static_cast<int>(m_entries.size()); }

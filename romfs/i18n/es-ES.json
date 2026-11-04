@@ -1236,6 +1236,19 @@
     "home_style_desc": "Elige el aspecto del menú HOME.",
     "home_style_classic": "Clásico",
     "home_style_cards": "Cards",
-    "home_style_restart": "Se aplica al reiniciar la consola"
+    "home_style_restart": "Se aplica al reiniciar la consola",
+    "played_now": "Jugado hace un momento",
+    "played_min": "Jugado hace {n} minuto",
+    "played_mins": "Jugado hace {n} minutos",
+    "played_hour": "Jugado hace {n} hora",
+    "played_hours": "Jugado hace {n} horas",
+    "played_day": "Jugado hace {n} día",
+    "played_days": "Jugado hace {n} días",
+    "played_on": "Jugado el {date}",
+    "sort": "Ordenar",
+    "sort_desc": "Elige el orden de tus programas.",
+    "sort_recent": "Jugados recientemente",
+    "sort_title": "Título",
+    "sort_played": "Más jugados"
   }
 }

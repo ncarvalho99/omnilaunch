@@ -12,11 +12,15 @@
 #include "cards/CardsChrome.hpp"
 #include "core/AudioManager.hpp"
 #include "core/SystemMessages.hpp"
+#include "widgets/LockScreen.hpp"
 #include <nxui/Activity.hpp>
+#include <nxui/Theme.hpp>
 #include <nxui/core/Font.hpp>
 #include <nxui/core/Texture.hpp>
 #include <cstdint>
+#include <future>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -58,6 +62,12 @@ private:
     void loadAvatar();
     void activateTop();
     void openCardOptions();
+    void openSortSheet();
+    void applySort(int mode);
+    void updateDetails(float dt);
+    void updateLock(float dt);
+    void ensureClockFont();
+    std::string lastPlayedText(std::uint64_t at) const;
     void showToast(const std::string& text);
     void persistLastFocus();
     void finishAudioLoad();
@@ -104,9 +114,29 @@ private:
     float m_launchElapsed = 0.f;
     bool m_refreshQueued = false;
     bool m_audioStarted = false;
-    bool m_wakeGuard = false;
     bool m_playtimeQueued = true;
     int m_refreshDelayFrames = 0;
+
+    // Wake lock screen: Classic's widget (three presses of one button), raised
+    // on sleep and wake. Replaces the D1a wake guard.
+    LockScreen m_lock;
+    nxui::Theme m_lockTheme = nxui::Theme::dark();
+    nxui::Font m_fontClock;
+    bool m_lockLowPowerPrimed = false;
+    float m_sleepPlanTimer = 0.f;
+
+    // Panel details of the selected title, read off the main thread: version
+    // from the control cache, last played from pdm.
+    struct Details {
+        std::uint64_t titleId = 0;
+        std::string version;
+        std::optional<std::uint64_t> lastPlayed;
+    };
+    std::shared_ptr<Details> m_detailsPending;
+    std::future<void> m_detailsFuture;
+    Details m_details;
+    std::uint64_t m_detailsWanted = 0;
+    float m_detailsDelay = 0.f;
 };
 
 } // namespace cards

@@ -7,6 +7,7 @@
 #include "widgets/OverlayDialog.hpp"
 #ifdef SWITCHU_MENU
 #include "smi_commands.hpp"
+#include <switchu/control_cache.hpp>
 #include <switchu/sd_commit.hpp>
 #include <switchu/smi_protocol.hpp>
 #endif
@@ -120,6 +121,32 @@ bool CardsHomeActivity::onCreate() {
     // Kept out of rootBox: the tree renders before onRender, and the dialog
     // must sit above the card row. Updated and drawn by this activity.
 
+    // Lock screen (Classic's widget). The clock font loads on first lock.
+    m_lock.setFonts(&m_fontClock, &m_fontSmall);
+    m_lock.setTheme(&m_lockTheme);
+    m_lock.setUse12HourClock(m_core.config().clockUse12Hour);
+    m_lock.onSleepRequested([this]() {
+        if (m_userSelect)
+            m_userSelect->hide();
+#ifdef SWITCHU_MENU
+        m_core.launcher().enterSleep();
+#endif
+    });
+    m_lock.onLocked([this]() {
+        // Whatever was open goes with it, as Classic.
+        if (m_userSelect)
+            m_userSelect->hide();
+        m_closeConfirmQueued = false;
+        m_topZone = false;
+        m_panelZone = false;
+        m_audio.stopAll();
+    });
+    m_lock.onUnlocked([this]() {
+        if (m_core.config().musicEnabled && m_audioStarted)
+            m_audio.play();
+        m_audio.playSfx(Sfx::ModalHide);
+    });
+
     m_catalog.startLoad(m_core.catalog(), m_core.threadPool());
 
     // Bluetooth is a Core service; starting it is idempotent.
@@ -179,6 +206,10 @@ void CardsHomeActivity::onDestroy() {
 #endif
     // Stop our decodes and wait for our pool work before the Core loader is
     // handed to the next frontend.
+    if (m_detailsPending)
+        m_detailsPending.reset();
+    if (m_detailsFuture.valid())
+        m_detailsFuture.wait();
     m_catalog.releaseAll();
     m_art.releaseAll();
     m_core.catalog().waitIdle();
@@ -198,6 +229,8 @@ void CardsHomeActivity::onDestroy() {
 }
 
 nxui::Widget* CardsHomeActivity::focusRoot() {
+    if (m_lock.isLocked())
+        return nullptr;
     if (m_userSelect && m_userSelect->isActive())
         return m_userSelect.get();
     // The row handles its own input; nothing in the widget tree is focusable.
@@ -231,7 +264,7 @@ void CardsHomeActivity::finishAudioLoad() {
     const auto& config = m_core.config();
     m_audio.setVolume(config.musicVolume);
     m_audio.setSfxVolume(config.sfxVolume);
-    if (config.musicEnabled)
+    if (config.musicEnabled && !m_lock.isLocked())
         m_audio.play();
     m_audioStarted = true;
     DebugLog::log("[cards] audio ready (music=%d)", config.musicEnabled ? 1 : 0);
@@ -243,7 +276,13 @@ void CardsHomeActivity::pollPlaytime() {
     auto& config = m_core.config();
     if (playtime.running()) {
         const int changed = playtime.poll(config);
-        (void)changed;
+        if (changed > 0 && config.cardsSort == 2 && m_catalog.count() > 0) {
+            const std::uint64_t keep = m_catalog.at(m_selected).app.titleId;
+            m_catalog.sort(config);
+            const int index = m_catalog.indexOf(keep);
+            m_selected = index >= 0 ? index : 0;
+            m_scroll = static_cast<float>(m_selected);
+        }
         return;
     }
     if (!m_playtimeQueued || m_catalog.loading() || m_catalog.count() == 0)
@@ -288,6 +327,17 @@ void CardsHomeActivity::onUpdate(float dt) {
         std::uint64_t want = previousId;
         if (want == 0)
             want = m_core.launcher().suspendedTitleId();
+        if (want == 0) {
+            // Whatever the sort, land on the last-opened title.
+            std::uint64_t best = 0;
+            for (int i = 0; i < m_catalog.count(); ++i) {
+                const std::uint64_t at = m_core.config().lastOpenedAt(m_catalog.at(i).app.titleId);
+                if (at > best) {
+                    best = at;
+                    want = m_catalog.at(i).app.titleId;
+                }
+            }
+        }
         int index = want != 0 ? m_catalog.indexOf(want) : -1;
         if (index < 0)
             index = 0;
@@ -304,10 +354,25 @@ void CardsHomeActivity::onUpdate(float dt) {
     finishAudioLoad();
     m_audio.update();
     pollPlaytime();
-    if (m_userSelect) {
+    updateLock(dt);
+    if (!m_lock.isLocked()) {
+        if (m_userSelect) {
+            m_userSelect->update(dt);
+            if (m_userSelect->isActive())
+                m_userSelect->handleTouch(app().input());
+        }
+#ifdef SWITCHU_MENU
+        if (m_closeConfirmQueued && !(m_userSelect && m_userSelect->isActive())) {
+            m_closeConfirmQueued = false;
+            if (m_selected >= 0 && m_selected < m_catalog.count() &&
+                m_core.launcher().isAppSuspended(m_catalog.at(m_selected).app.titleId))
+                confirmCloseSuspended();
+        }
+#endif
+        if (!m_launching && !(m_userSelect && m_userSelect->isActive()))
+            handleInput();
+    } else if (m_userSelect) {
         m_userSelect->update(dt);
-        if (m_userSelect->isActive())
-            m_userSelect->handleTouch(app().input());
     }
     if (m_launching) {
         m_launchElapsed += dt;
@@ -317,23 +382,7 @@ void CardsHomeActivity::onUpdate(float dt) {
         }
     }
     pollDaemonNotifications();
-#ifdef SWITCHU_MENU
-    if (m_closeConfirmQueued && !(m_userSelect && m_userSelect->isActive())) {
-        m_closeConfirmQueued = false;
-        if (m_selected >= 0 && m_selected < m_catalog.count() &&
-            m_core.launcher().isAppSuspended(m_catalog.at(m_selected).app.titleId))
-            confirmCloseSuspended();
-    }
-#endif
-    if (m_wakeGuard) {
-        auto& in = app().input();
-        if (in.isDown(nxui::Button::A) || in.isDown(nxui::Button::B) || in.touchDown()) {
-            m_wakeGuard = false;
-            DebugLog::log("[cards] wake guard dismissed");
-        }
-    } else if (!m_launching && !(m_userSelect && m_userSelect->isActive())) {
-        handleInput();
-    }
+    updateDetails(dt);
 
     // Ease the row toward the selection.
     const float target = static_cast<float>(m_selected);
@@ -429,6 +478,131 @@ void CardsHomeActivity::loadAvatar() {
 #endif
 }
 
+void CardsHomeActivity::ensureClockFont() {
+    if (m_fontClock.valid())
+        return;
+    const std::string fontPath = std::string(kAssets) + "/fonts/DejaVuSans.ttf";
+    if (!m_fontClock.load(app().gpu(), app().renderer(), fontPath, 72))
+        DebugLog::log("[cards] clock font load failed");
+}
+
+#ifdef SWITCHU_MENU
+namespace {
+// Same table as Classic (WiiUMenuApp.cpp sleepPlanSeconds).
+float sleepPlanSeconds(bool docked, std::uint8_t plan) {
+    static const float kHandheld[] = {60.f, 180.f, 300.f, 600.f, 1800.f};
+    static const float kDocked[] = {3600.f, 7200.f, 10800.f, 21600.f, 43200.f};
+    const int index = static_cast<int>(plan);
+    if (index < 0 || index > 4)
+        return -1.f;
+    return docked ? kDocked[index] : kHandheld[index];
+}
+} // namespace
+#endif
+
+void CardsHomeActivity::updateLock(float dt) {
+    // As Classic (WiiUMenuApp onUpdate tail): the suspend countdown is held
+    // off while a title runs or a launch is under way; the black low-power
+    // frame stops presentation after one frame.
+#ifdef SWITCHU_MENU
+    const bool sleepSuppressed = m_launching || m_core.launcher().isAppRunning() ||
+                                 (!app().renderEnabled() && !m_lockLowPowerPrimed);
+    m_sleepPlanTimer += dt;
+    if (m_sleepPlanTimer >= 3.f) {
+        m_sleepPlanTimer = 0.f;
+        SetSysSleepSettings plan{};
+        if (R_SUCCEEDED(setsysGetSleepSettings(&plan))) {
+            const bool docked = appletGetOperationMode() != AppletOperationMode_Handheld;
+            m_lock.setSleepDelaySeconds(
+                sleepPlanSeconds(docked, docked ? plan.console_sleep_plan : plan.handheld_sleep_plan));
+        }
+    }
+#else
+    const bool sleepSuppressed = true;
+#endif
+    m_lock.update(dt, app().input(), sleepSuppressed);
+    if (!m_lock.hidesScene()) {
+        m_lockLowPowerPrimed = false;
+        if (!app().renderEnabled())
+            app().setRenderEnabled(true);
+    } else if (!m_lockLowPowerPrimed) {
+        m_lockLowPowerPrimed = true;
+    } else if (app().renderEnabled()) {
+        DebugLog::log("[cards] lock low power: presentation stopped");
+        app().setRenderEnabled(false);
+    }
+}
+
+std::string CardsHomeActivity::lastPlayedText(std::uint64_t at) const {
+    auto& i18n = nxui::I18n::instance();
+    const std::uint64_t now = static_cast<std::uint64_t>(std::time(nullptr));
+    if (at == 0 || now < 1000000000ULL)
+        return {};
+    const std::uint64_t s = now > at ? now - at : 0;
+    auto ago = [&i18n](std::uint64_t n, const char* one, const char* oneFb, const char* many,
+                       const char* manyFb) {
+        std::string t = n == 1 ? i18n.tr(one, oneFb) : i18n.tr(many, manyFb);
+        const auto pos = t.find("{n}");
+        if (pos != std::string::npos)
+            t.replace(pos, 3, std::to_string(n));
+        return t;
+    };
+    if (s < 60)
+        return i18n.tr("cards.played_now", "Played just now");
+    if (s < 3600)
+        return ago(s / 60, "cards.played_min", "Played {n} minute ago", "cards.played_mins",
+                   "Played {n} minutes ago");
+    if (s < 86400)
+        return ago(s / 3600, "cards.played_hour", "Played {n} hour ago", "cards.played_hours",
+                   "Played {n} hours ago");
+    if (s < 30ULL * 86400ULL)
+        return ago(s / 86400, "cards.played_day", "Played {n} day ago", "cards.played_days",
+                   "Played {n} days ago");
+    const std::time_t t = static_cast<std::time_t>(at);
+    std::tm local{};
+    localtime_r(&t, &local);
+    char date[16];
+    std::snprintf(date, sizeof(date), "%02d/%02d/%04d", local.tm_mday, local.tm_mon + 1, local.tm_year + 1900);
+    std::string text = i18n.tr("cards.played_on", "Played on {date}");
+    const auto pos = text.find("{date}");
+    if (pos != std::string::npos)
+        text.replace(pos, 6, date);
+    return text;
+}
+
+void CardsHomeActivity::updateDetails(float dt) {
+    // Adopt a finished query.
+    if (m_detailsFuture.valid() &&
+        m_detailsFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        m_detailsFuture.get();
+        if (m_detailsPending && m_detailsPending->titleId == m_detailsWanted)
+            m_details = *m_detailsPending;
+        m_detailsPending.reset();
+    }
+    const std::uint64_t id =
+        (m_selected >= 0 && m_selected < m_catalog.count()) ? m_catalog.at(m_selected).app.titleId : 0;
+    if (id != m_detailsWanted) {
+        m_detailsWanted = id;
+        m_detailsDelay = 0.2f; // let fast scrolling settle before asking pdm
+    }
+    if (id == 0 || m_details.titleId == id || m_detailsFuture.valid() || m_launching)
+        return;
+    m_detailsDelay -= dt;
+    if (m_detailsDelay > 0.f)
+        return;
+    auto pending = std::make_shared<Details>();
+    pending->titleId = id;
+    m_detailsPending = pending;
+    m_detailsFuture = m_core.threadPool().submit([pending]() {
+#ifdef SWITCHU_MENU
+        switchu::control_cache::Meta meta{};
+        if (switchu::control_cache::readMeta(pending->titleId, meta) && meta.display_version[0] != '\0')
+            pending->version = meta.display_version;
+        pending->lastPlayed = switchu::menu::playtime::queryLastPlayed(pending->titleId);
+#endif
+    });
+}
+
 void CardsHomeActivity::showToast(const std::string& text) {
     m_toast = text;
     m_toastUntil = m_time + 2.5f;
@@ -476,6 +650,9 @@ void CardsHomeActivity::activateTop() {
             config.homeStyle = style;
             if (!config.save())
                 DebugLog::log("[cards] homeStyle save failed");
+#ifdef SWITCHU_MENU
+            switchu::commitSdCard("cards home style");
+#endif
             showToast(nxui::I18n::instance().tr("cards.home_style_restart",
                                                 "Applies after the console restarts"));
         };
@@ -492,10 +669,50 @@ void CardsHomeActivity::activateTop() {
         focusManager().setFocus(m_userSelect.get());
         return;
     }
+    if (m_userSelect && button == TopButton::Sort) {
+        openSortSheet();
+        return;
+    }
     m_audio.playSfx(Sfx::Activate);
-    // The other sheets (menu, Discord, sort, users, notifications, music)
-    // arrive in later steps.
+    // The other sheets (menu, Discord, users, notifications, music) arrive in
+    // later steps.
     showToast(i18n.tr("cards.coming_soon", "Coming in a later update"));
+}
+
+void CardsHomeActivity::openSortSheet() {
+    auto& i18n = nxui::I18n::instance();
+    m_audio.playSfx(Sfx::ModalShow);
+    m_userSelect->show(
+        i18n.tr("cards.sort", "Sort"),
+        i18n.tr("cards.sort_desc", "Choose the order of your software."),
+        {
+            {i18n.tr("cards.sort_recent", "Last played"), [this]() { applySort(0); }, true},
+            {i18n.tr("cards.sort_title", "Title"), [this]() { applySort(1); }, true},
+            {i18n.tr("cards.sort_played", "Most played"), [this]() { applySort(2); }, true},
+        },
+        m_core.config().cardsSort, {});
+    focusManager().setFocus(m_userSelect.get());
+}
+
+void CardsHomeActivity::applySort(int mode) {
+    auto& config = m_core.config();
+    if (config.cardsSort == mode)
+        return;
+    config.cardsSort = mode;
+    if (!config.save())
+        DebugLog::log("[cards] cardsSort save failed");
+#ifdef SWITCHU_MENU
+    switchu::commitSdCard("cards sort");
+#endif
+    if (m_catalog.count() == 0)
+        return;
+    // Keep the chosen card in focus where it lands.
+    const std::uint64_t keep = m_catalog.at(m_selected).app.titleId;
+    m_catalog.sort(config);
+    const int index = m_catalog.indexOf(keep);
+    m_selected = index >= 0 ? index : 0;
+    m_scroll = static_cast<float>(m_selected);
+    DebugLog::log("[cards] sort %d", mode);
 }
 
 void CardsHomeActivity::moveSelection(int delta) {
@@ -802,13 +1019,17 @@ void CardsHomeActivity::pollDaemonNotifications() {
             m_refreshDelayFrames = 3;
             break;
         case switchu::smi::MenuMessage::SleepSequence:
-            m_wakeGuard = true;
+            // Lock on the way under; WakeUp locks too in case Horizon
+            // suspended the applet first (as Classic).
+            ensureClockFont();
+            m_lock.lockNow();
             break;
         case switchu::smi::MenuMessage::WakeUp:
-            // D1a has no lock screen yet: the first press after waking only
-            // dismisses this guard, so a button pressed to wake the console
-            // cannot launch or close software.
-            m_wakeGuard = true;
+            ensureClockFont();
+            m_lock.lockNow();
+            m_lock.showAfterSystemWake();
+            m_lock.resetSleepCountdown();
+            m_lockLowPowerPrimed = false;
             app().setRenderEnabled(true);
             break;
         case switchu::smi::MenuMessage::AppViewFlagsUpdate:
@@ -826,6 +1047,13 @@ void CardsHomeActivity::pollDaemonNotifications() {
 void CardsHomeActivity::handleSystemAction(SysAction action) {
     switch (action) {
     case SysAction::HomeDismiss:
+        // HOME is a system-authenticated unlock, as in Classic.
+        if (m_lock.isLocked()) {
+            m_lock.unlockNow();
+            m_lockLowPowerPrimed = false;
+            app().setRenderEnabled(true);
+            break;
+        }
         if (m_userSelect && m_userSelect->isActive()) {
             m_userSelect->hide();
             break;
@@ -918,7 +1146,18 @@ void CardsHomeActivity::drawPanel(nxui::Renderer& ren) {
         line = switchu::menu::playtime::format(played);
     else
         line = i18n.tr("cards.not_played", "Not played yet");
-    m_chrome.textMid(ren, m_chrome.smallFont(), line, tx, p.y + 72.f, dim);
+    if (m_details.titleId == id && m_details.lastPlayed && *m_details.lastPlayed > 0) {
+        const std::string ago = lastPlayedText(*m_details.lastPlayed);
+        if (!ago.empty())
+            line += "    " + ago;
+    }
+    m_chrome.textMid(ren, m_chrome.smallFont(), m_chrome.fit(m_chrome.smallFont(), line, maxW), tx,
+                     p.y + 72.f, dim);
+    // Version tag, as CardsNX.
+    if (m_details.titleId == id && !m_details.version.empty()) {
+        m_chrome.icon(ren, "tag", tx + 8.f, p.y + 97.f, 16.f, dim);
+        m_chrome.textMid(ren, m_chrome.smallFont(), m_details.version, tx + 22.f, p.y + 97.f, dim);
+    }
 
     // Primary pill (Play / Resume), white with dark text, and the "..." circle.
 #ifdef SWITCHU_MENU
@@ -984,9 +1223,7 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
     }
     drawPanel(ren);
 
-    auto& i18n = nxui::I18n::instance();
-    std::string banner = m_wakeGuard ? i18n.tr("cards.wake_hint", "Press A to continue")
-                                     : (m_time < m_toastUntil ? m_toast : std::string());
+    const std::string banner = m_time < m_toastUntil ? m_toast : std::string();
     if (!banner.empty()) {
         auto& f = m_chrome.labelFont();
         const float w = f.measure(banner).x + 48.f;
@@ -996,6 +1233,7 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
     }
     if (m_userSelect && m_userSelect->isActive())
         m_userSelect->render(ren);
+    m_lock.render(ren);
 }
 
 } // namespace cards

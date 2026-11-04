@@ -1187,6 +1187,19 @@
     "home_style_desc": "Выберите вид меню HOME.",
     "home_style_classic": "Классический",
     "home_style_cards": "Cards",
-    "home_style_restart": "Применится после перезапуска консоли"
+    "home_style_restart": "Применится после перезапуска консоли",
+    "played_now": "Запускалось только что",
+    "played_min": "Запускалось {n} минуту назад",
+    "played_mins": "Запускалось {n} мин. назад",
+    "played_hour": "Запускалось {n} час назад",
+    "played_hours": "Запускалось {n} ч. назад",
+    "played_day": "Запускалось {n} день назад",
+    "played_days": "Запускалось {n} дн. назад",
+    "played_on": "Запускалось {date}",
+    "sort": "Сортировка",
+    "sort_desc": "Выберите порядок программ.",
+    "sort_recent": "Недавние",
+    "sort_title": "Название",
+    "sort_played": "Самые популярные"
   }
 }

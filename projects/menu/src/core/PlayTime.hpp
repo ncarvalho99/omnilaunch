@@ -30,6 +30,11 @@ std::vector<std::pair<std::uint64_t, std::uint64_t>> queryAll(
     const std::vector<std::uint64_t>& titleIds,
     const std::atomic<bool>* cancelled = nullptr);
 
+// When the system last recorded this title being played, as POSIX seconds;
+// zero for a title never played, nullopt when pdm could not answer. One IPC
+// round trip, so it belongs on a worker thread.
+std::optional<std::uint64_t> queryLastPlayed(std::uint64_t titleId);
+
 // "12 h 5 min", or "40 min" under an hour. Empty for zero.
 std::string format(std::uint64_t nanoseconds);
 

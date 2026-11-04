@@ -1187,6 +1187,19 @@
     "home_style_desc": "Wähle das Aussehen des HOME-Menüs.",
     "home_style_classic": "Klassisch",
     "home_style_cards": "Cards",
-    "home_style_restart": "Wird nach dem Neustart der Konsole übernommen"
+    "home_style_restart": "Wird nach dem Neustart der Konsole übernommen",
+    "played_now": "Gerade eben gespielt",
+    "played_min": "Vor {n} Minute gespielt",
+    "played_mins": "Vor {n} Minuten gespielt",
+    "played_hour": "Vor {n} Stunde gespielt",
+    "played_hours": "Vor {n} Stunden gespielt",
+    "played_day": "Vor {n} Tag gespielt",
+    "played_days": "Vor {n} Tagen gespielt",
+    "played_on": "Gespielt am {date}",
+    "sort": "Sortieren",
+    "sort_desc": "Wähle die Reihenfolge deiner Software.",
+    "sort_recent": "Zuletzt gespielt",
+    "sort_title": "Titel",
+    "sort_played": "Meistgespielt"
   }
 }

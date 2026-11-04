@@ -34,6 +34,10 @@ struct AppConfig {
     bool  tutorialCompleted = false;
     // HOME frontend (HomeNX C7). Saved as "classic"/"cards"; Classic default.
     home::HomeStyle homeStyle = home::HomeStyle::Classic;
+    // Cards HOME row order (HomeNX D1c), separate from Classic's sortMode:
+    // 0 = last opened (default), 1 = title A-Z, 2 = most played.
+    int cardsSort = 0;
+    static constexpr int kCardsSortCount = 3;
     // Day number of the last update check, so the console asks GitHub once a
     // day rather than on every return from a game.
     int   lastUpdateCheckDay = 0;
