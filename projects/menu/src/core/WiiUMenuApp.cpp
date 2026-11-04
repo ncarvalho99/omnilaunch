@@ -621,6 +621,7 @@ bool WiiUMenuApp::onCreate() {
     m_homeCore.setFrontendQuiesce([this]() {
         quiesceWritersForPowerAction();
     });
+    m_homeCore.frontendStarted();
 
 #ifdef SWITCHU_MENU
     m_transitionOriginTick = m_homeCore.transitionOriginTick();
@@ -705,9 +706,7 @@ bool WiiUMenuApp::onCreate() {
         m_deferredBluetoothInitFrames = 120;
         DebugLog::log("[init] Bluetooth manager initialization deferred for fast return");
     } else {
-        bluetooth::Initialize();
-        DebugLog::log("[init] Bluetooth manager %s",
-                      bluetooth::IsAvailable() ? "initialized" : "unavailable");
+        m_homeCore.startBluetooth();
     }
     DebugLog::log("[init] Theme Shop HTTP runtime deferred until first request");
 
@@ -845,17 +844,20 @@ void WiiUMenuApp::quiesceWritersForPowerAction() {
 void WiiUMenuApp::onDestroy() {
     m_homeCore.setFrontendQuiesce(nullptr);
 #ifdef SWITCHU_MENU
-    switchu::smi::MenuClosingArgs closingTrace{};
+    // The trace belongs to HomeCore: it stamps the HTTP/Bluetooth teardown in
+    // the Services phase and sends MenuClosing in ProcessExit.
+    auto& closingTrace = m_homeCore.closingTrace();
     const auto& shutdownTrace = app().shutdownTrace();
     closingTrace.shutdown_start_tick = shutdownTrace.shutdownStartTick;
     closingTrace.gpu_drain_start_tick = shutdownTrace.gpuDrainStartTick;
     closingTrace.gpu_drain_end_tick = shutdownTrace.gpuDrainEndTick;
     closingTrace.on_destroy_start_tick = shutdownTrace.activityDestroyStartTick;
 #endif
-    // Wake any libcurl transfer before shutdown tries to take its mutex or the
-    // worker pool joins. Without this, a stalled package transfer can hold the
-    // outgoing menu process for its 30-second low-speed window.
-    themeshop::http::cancelPendingRequests();
+    // Wake this frontend's libcurl transfers before the worker pool drains.
+    // Without this, a stalled package transfer can hold the outgoing menu
+    // process for its 30-second low-speed window. Scoped, not terminal: a
+    // frontend switch must leave the network usable for the next frontend.
+    m_homeCore.frontendStopping();
 #ifdef SWITCHU_MENU
     closingTrace.http_cancel_done_tick = armGetSystemTick();
 #endif
@@ -916,18 +918,8 @@ void WiiUMenuApp::onDestroy() {
 
     stopEditGhost();
 
-    themeshop::http::shutdown();
-#ifdef SWITCHU_MENU
-    closingTrace.http_shutdown_done_tick = armGetSystemTick();
-#endif
-
-    bluetooth::Finalize();
-
-#ifdef SWITCHU_MENU
-    closingTrace.bluetooth_done_tick = armGetSystemTick();
-    closingTrace.core = svcGetCurrentProcessorNumber();
-    switchu::menu::smi_cmd::menuClosing(closingTrace);
-#endif
+    // HTTP runtime, Bluetooth and the MenuClosing notification are
+    // process-lifetime services finalized by HomeCore (Services/ProcessExit).
     if (m_layoutDirty)
         saveMenuLayout();
     m_animalesePlayer.clear();
@@ -8460,9 +8452,8 @@ void WiiUMenuApp::onUpdate(float dt) {
     if (m_deferredBluetoothInitFrames > 0) {
         --m_deferredBluetoothInitFrames;
         if (m_deferredBluetoothInitFrames == 0) {
-            bluetooth::Initialize();
-            DebugLog::log("[init] Bluetooth manager %s (deferred)",
-                          bluetooth::IsAvailable() ? "initialized" : "unavailable");
+            DebugLog::log("[init] Bluetooth manager start (deferred)");
+            m_homeCore.startBluetooth();
             // Deferred with the rest of the network-dependent startup so the
             // grid is already on screen before anything reaches for the wire.
             publishUpdateState();   // bundled notes, before any network call

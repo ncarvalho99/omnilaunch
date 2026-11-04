@@ -1,4 +1,5 @@
 #include "ThemeHttp.hpp"
+#include "ThemeHttpScope.hpp"
 
 #include "core/DebugLog.hpp"
 #include "ClientKey.hpp"
@@ -18,7 +19,7 @@ std::mutex g_themeHttpMutex;
 bool g_nifmInitialized = false;
 bool g_socketInitialized = false;
 bool g_curlInitialized = false;
-std::atomic<bool> g_cancelPendingRequests{false};
+themeshop::http::CancelScope g_cancelScope;
 
 constexpr int kRequestAttemptCount = 2;
 
@@ -125,13 +126,14 @@ size_t appendResponse(char* data, size_t size, size_t count, void* userData) {
 
 struct BytesProgressContext {
     const themeshop::http::ProgressCallback* onProgress = nullptr;
+    const themeshop::http::CancelScope::Token* token = nullptr;
 };
 
 int reportBytesProgress(void* userData, curl_off_t total, curl_off_t downloaded,
                         curl_off_t, curl_off_t) {
-    if (g_cancelPendingRequests.load(std::memory_order_acquire))
-        return 1;
     auto* context = static_cast<BytesProgressContext*>(userData);
+    if (context && context->token && g_cancelScope.cancelled(*context->token))
+        return 1;
     if (context && context->onProgress && *context->onProgress) {
         try {
             (*context->onProgress)(downloaded > 0 ? static_cast<std::uint64_t>(downloaded) : 0,
@@ -143,8 +145,9 @@ int reportBytesProgress(void* userData, curl_off_t total, curl_off_t downloaded,
     return 0;
 }
 
-int cancelIfAppletHandoff(void*, curl_off_t, curl_off_t, curl_off_t, curl_off_t) {
-    return g_cancelPendingRequests.load(std::memory_order_acquire) ? 1 : 0;
+int cancelIfScopeClosed(void* userData, curl_off_t, curl_off_t, curl_off_t, curl_off_t) {
+    const auto* token = static_cast<const themeshop::http::CancelScope::Token*>(userData);
+    return token && g_cancelScope.cancelled(*token) ? 1 : 0;
 }
 
 struct FileWriteContext {
@@ -152,12 +155,13 @@ struct FileWriteContext {
     std::uint64_t written = 0;
     bool writeFailed = false;
     const std::function<void(std::uint64_t, std::uint64_t)>* onProgress = nullptr;
+    const themeshop::http::CancelScope::Token* token = nullptr;
 };
 
 size_t writeDownload(char* data, size_t size, size_t count, void* userData) {
     auto* ctx = static_cast<FileWriteContext*>(userData);
     const size_t bytes = size * count;
-    if (g_cancelPendingRequests.load(std::memory_order_acquire))
+    if (ctx->token && g_cancelScope.cancelled(*ctx->token))
         return 0;
     if (std::fwrite(data, 1, bytes, ctx->out) != bytes) {
         ctx->writeFailed = true;
@@ -178,6 +182,7 @@ size_t writeDownload(char* data, size_t size, size_t count, void* userData) {
 std::vector<std::uint8_t> performRequestBytes(const std::string& url,
                                               const std::list<std::string>& headers,
                                               const themeshop::http::ProgressCallback& onProgress,
+                                              const themeshop::http::CancelScope::Token& token,
                                               const std::string& postBody = "") {
     CURL* request = curl_easy_init();
     if (!request)
@@ -201,7 +206,7 @@ std::vector<std::uint8_t> performRequestBytes(const std::string& url,
     curl_easy_setopt(request, CURLOPT_WRITEFUNCTION, appendResponse);
     curl_easy_setopt(request, CURLOPT_WRITEDATA, &response);
     curl_easy_setopt(request, CURLOPT_NOPROGRESS, 0L);
-    BytesProgressContext progressContext{&onProgress};
+    BytesProgressContext progressContext{&onProgress, &token};
     curl_easy_setopt(request, CURLOPT_XFERINFOFUNCTION, reportBytesProgress);
     curl_easy_setopt(request, CURLOPT_XFERINFODATA, &progressContext);
 
@@ -225,9 +230,8 @@ std::vector<std::uint8_t> performRequestBytes(const std::string& url,
         curl_slist_free_all(requestHeaders);
     if (result != CURLE_OK) {
         curl_easy_cleanup(request);
-        if (result == CURLE_ABORTED_BY_CALLBACK &&
-            g_cancelPendingRequests.load(std::memory_order_acquire)) {
-            throw std::runtime_error("HTTP request cancelled for system applet handoff");
+        if (result == CURLE_ABORTED_BY_CALLBACK && g_cancelScope.cancelled(token)) {
+            throw std::runtime_error("HTTP request cancelled");
         }
         throw std::runtime_error(std::string("HTTP request failed: ") + curl_easy_strerror(result));
     }
@@ -246,19 +250,22 @@ std::vector<std::uint8_t> performBytes(const std::string& url,
                                        const std::list<std::string>& headers,
                                        const themeshop::http::ProgressCallback& onProgress = {},
                                        const std::string& postBody = "") {
+    // Taken before the mutex: a request queued behind another one still
+    // belongs to the scope that issued it.
+    const auto token = g_cancelScope.begin();
     std::lock_guard<std::mutex> lk(g_themeHttpMutex);
 
     std::string lastError = "Theme Shop HTTP request failed";
     for (int attempt = 1; attempt <= kRequestAttemptCount; ++attempt) {
         try {
-            if (g_cancelPendingRequests.load(std::memory_order_acquire))
-                throw std::runtime_error("HTTP request cancelled for system applet handoff");
+            if (g_cancelScope.cancelled(token))
+                throw std::runtime_error("HTTP request cancelled");
             if (!initializeRuntimeLocked()) {
                 throw std::runtime_error("Theme Shop HTTP runtime is unavailable");
             }
 
             ensureInternetConnectionReady(url);
-            auto bytes = performRequestBytes(url, headers, onProgress, postBody);
+            auto bytes = performRequestBytes(url, headers, onProgress, token, postBody);
             if (attempt > 1) {
                 DebugLog::log("[themeshop] request recovered on retry %d: %s", attempt, url.c_str());
             }
@@ -278,7 +285,7 @@ std::vector<std::uint8_t> performBytes(const std::string& url,
                           url.c_str());
         }
 
-        if (g_cancelPendingRequests.load(std::memory_order_acquire))
+        if (g_cancelScope.cancelled(token))
             break;
 
         if (attempt < kRequestAttemptCount) {
@@ -309,7 +316,15 @@ bool isInitialized() {
 }
 
 void cancelPendingRequests() {
-    g_cancelPendingRequests.store(true, std::memory_order_release);
+    g_cancelScope.cancelTerminal();
+}
+
+void openFrontendScope() {
+    g_cancelScope.openFrontend();
+}
+
+void closeFrontendScope() {
+    g_cancelScope.closeFrontend();
 }
 
 std::vector<std::uint8_t> getBytes(const std::string& url,
@@ -321,12 +336,13 @@ std::vector<std::uint8_t> getBytes(const std::string& url,
 std::uint64_t getToFile(const std::string& url,
                         const std::string& destinationPath,
                         const std::function<void(std::uint64_t, std::uint64_t)>& onProgress) {
+    const auto token = g_cancelScope.begin();
     std::lock_guard<std::mutex> lk(g_themeHttpMutex);
 
     std::string lastError = "Theme package download failed";
     for (int attempt = 1; attempt <= kRequestAttemptCount; ++attempt) {
-        if (g_cancelPendingRequests.load(std::memory_order_acquire))
-            throw std::runtime_error("HTTP request cancelled for applet handoff");
+        if (g_cancelScope.cancelled(token))
+            throw std::runtime_error("HTTP request cancelled");
         if (!initializeRuntimeLocked())
             throw std::runtime_error("Theme Shop HTTP runtime is unavailable");
         ensureInternetConnectionReady(url);
@@ -341,7 +357,7 @@ std::uint64_t getToFile(const std::string& url,
                 throw std::runtime_error("Could not create HTTP request");
 
             const bool official = isOfficialHost(url);
-            FileWriteContext writeCtx{out, 0, false, &onProgress};
+            FileWriteContext writeCtx{out, 0, false, &onProgress, &token};
             const std::string agent = std::string("SwitchU/") + SWITCHU_VERSION;
             curl_easy_setopt(request, CURLOPT_URL, url.c_str());
             curl_easy_setopt(request, CURLOPT_FOLLOWLOCATION, official ? 0L : 1L);
@@ -358,7 +374,8 @@ std::uint64_t getToFile(const std::string& url,
             curl_easy_setopt(request, CURLOPT_WRITEFUNCTION, writeDownload);
             curl_easy_setopt(request, CURLOPT_WRITEDATA, &writeCtx);
             curl_easy_setopt(request, CURLOPT_NOPROGRESS, 0L);
-            curl_easy_setopt(request, CURLOPT_XFERINFOFUNCTION, cancelIfAppletHandoff);
+            curl_easy_setopt(request, CURLOPT_XFERINFOFUNCTION, cancelIfScopeClosed);
+            curl_easy_setopt(request, CURLOPT_XFERINFODATA, &token);
 
             struct curl_slist* requestHeaders = nullptr;
             if (official && switchu::auth::kClientKey && switchu::auth::kClientKey[0] != '\0') {
@@ -378,8 +395,8 @@ std::uint64_t getToFile(const std::string& url,
             curl_easy_cleanup(request);
 
             if (result != CURLE_OK) {
-                if (g_cancelPendingRequests.load(std::memory_order_acquire))
-                    throw std::runtime_error("HTTP request cancelled for applet handoff");
+                if (g_cancelScope.cancelled(token))
+                    throw std::runtime_error("HTTP request cancelled");
                 throw std::runtime_error(std::string("HTTP request failed: ")
                                          + curl_easy_strerror(result));
             }
@@ -396,7 +413,7 @@ std::uint64_t getToFile(const std::string& url,
             lastError = ex.what();
             DebugLog::log("[themeshop] package download failed (%d/%d): %s -> %s",
                           attempt, kRequestAttemptCount, url.c_str(), lastError.c_str());
-            if (g_cancelPendingRequests.load(std::memory_order_acquire))
+            if (g_cancelScope.cancelled(token))
                 break;
             if (attempt < kRequestAttemptCount)
                 shutdownRuntimeLocked();

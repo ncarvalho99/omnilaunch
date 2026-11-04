@@ -15,10 +15,18 @@ bool initialize();
 void shutdown();
 bool isInitialized();
 
-// Cancels catalogue and file requests that are still in flight while the menu
-// hands control to another applet/application. Partial files are removed by
-// getToFile(); transition latency takes priority over a background transfer.
+// Terminal cancel: the menu is handing control to another applet/application
+// or exiting. Aborts every request and refuses new ones for the rest of the
+// process. Partial files are removed by getToFile(); transition latency takes
+// priority over a background transfer.
 void cancelPendingRequests();
+
+// Frontend scope. Each request belongs to the scope open when it started.
+// closeFrontendScope() aborts that frontend's requests and refuses new ones;
+// openFrontendScope() lets the next frontend use the network again. Neither
+// clears a terminal cancel. HomeCore calls these around each frontend.
+void openFrontendScope();
+void closeFrontendScope();
 
 std::vector<std::uint8_t> getBytes(const std::string& url,
                                    const std::list<std::string>& headers = {},

@@ -1,6 +1,8 @@
 // Host contract tests: production HomeAudio/HomeCore/ThreadPool, fake devices.
 // These validate ownership/snapshot/order logic, not SDL/espeak or console sound.
 #include "home/HomeCore.hpp"
+#include "themeshop/ThemeHttp.hpp"
+#include "bluetooth/BluetoothManager.hpp"
 #include <cassert>
 #include <chrono>
 #include <future>
@@ -54,6 +56,25 @@ int main() {
  assert(!service.loadFuture.valid());
  // Finalization after detach consumes an outstanding load before speech/mixer.
  service.queuePreset(pool,"wiiu",config,{});
+ // C4 HTTP cancel scope: a frontend switch cancels only the leaving frontend's
+ // requests; the next frontend can use the network. The terminal cancel stays.
+ {
+  using themeshop::http::scope;
+  auto oldReq = scope.begin();            // Classic request in flight
+  assert(!scope.cancelled(oldReq));
+  core.frontendStopping();                // Classic leaving
+  assert(scope.cancelled(oldReq));
+  auto during = scope.begin();            // issued between the two frontends
+  assert(scope.cancelled(during));
+  core.frontendStarted();                 // Cards starting
+  assert(scope.cancelled(oldReq) && scope.cancelled(during)); // not revived
+  auto newReq = scope.begin();
+  assert(!scope.cancelled(newReq));       // network usable after the switch
+  core.frontendStopping(); core.frontendStarted();
+  assert(scope.cancelled(newReq) && !scope.cancelled(scope.begin()));
+ }
+ core.startBluetooth();
+ assert(bluetooth::initializeCalls==1);
  std::vector<int> order;
  core.addShutdownHook(ShutdownPhase::ActivityReleased,"activity",[&]{order.push_back(0);});
  core.addShutdownHook(ShutdownPhase::GpuResources,"gpu",[&]{order.push_back(1);});
@@ -63,7 +84,13 @@ int main() {
  assert(speechReleasedBeforeMixer);
  core.runShutdownPhase(ShutdownPhase::ProcessExit);
  assert(audio.closes==1 && speechShutdowns==1);
-
+ // C4 Services phase: pool joined, then HTTP runtime, then Bluetooth; once each.
+ assert(themeshop::http::shutdownCalls==1 && bluetooth::finalizeCalls==1);
+ assert((fake::serviceOrder==std::vector<std::string>{"http","bluetooth"}));
+ // Terminal cancel (launch handoff/exit) is permanent: reopening a scope does not clear it.
+ themeshop::http::cancelPendingRequests();
+ core.frontendStarted();
+ assert(themeshop::http::scope.cancelled(themeshop::http::scope.begin()));
  // C3 HomeCore launcher, pool, config, and quiesce routing contracts
  bool quiesceCalled = false;
  core.setFrontendQuiesce([&quiesceCalled] { quiesceCalled = true; });
@@ -74,5 +101,5 @@ int main() {
  assert(core.config().soundPreset == "wiiu");
  assert(!core.threadPool().acceptingTasks()); // Pool was shut down in Services phase above
 
- std::cout<<"PASS tutorial reuse, unchanged/changed playlist, serialized snapshots, drain/shutdown order, C3 launcher/pool contracts\n";
+ std::cout<<"PASS tutorial reuse, unchanged/changed playlist, serialized snapshots, drain/shutdown order, C3 launcher/pool contracts, C4 http scope/service order\n";
 }

@@ -1,6 +1,9 @@
 #include "home/HomeCore.hpp"
 #include "core/DebugLog.hpp"
+#include "themeshop/ThemeHttp.hpp"
+#include "bluetooth/BluetoothManager.hpp"
 #ifdef SWITCHU_MENU
+#include "smi_commands.hpp"
 #include <switchu/sd_commit.hpp>
 #endif
 
@@ -18,12 +21,49 @@ const char* shutdownPhaseName(ShutdownPhase phase) {
 }
 
 HomeCore::HomeCore() {
+    // Hooks of one phase run in reverse registration order. Services must run
+    // pool -> HTTP -> Bluetooth: workers can still be inside a request until
+    // the pool has joined, and the HTTP runtime owns the shared socket ref.
+    addShutdownHook(ShutdownPhase::Services, "bluetooth", [this] {
+        bluetooth::Finalize();
+#ifdef SWITCHU_MENU
+        m_closingTrace.bluetooth_done_tick = armGetSystemTick();
+#endif
+    });
+    addShutdownHook(ShutdownPhase::Services, "http runtime", [this] {
+        themeshop::http::shutdown();
+#ifdef SWITCHU_MENU
+        m_closingTrace.http_shutdown_done_tick = armGetSystemTick();
+#endif
+    });
     addShutdownHook(ShutdownPhase::Services, "thread pool", [this] {
         m_threadPool.shutdown();
     });
     addShutdownHook(ShutdownPhase::Audio, "audio and accessibility", [this] {
         m_audio.shutdown();
     });
+#ifdef SWITCHU_MENU
+    addShutdownHook(ShutdownPhase::ProcessExit, "daemon closing notification", [this] {
+        if (!m_closingArmed)
+            return;
+        m_closingTrace.core = svcGetCurrentProcessorNumber();
+        switchu::menu::smi_cmd::menuClosing(m_closingTrace);
+    });
+#endif
+}
+
+void HomeCore::frontendStarted() {
+    themeshop::http::openFrontendScope();
+}
+
+void HomeCore::frontendStopping() {
+    themeshop::http::closeFrontendScope();
+}
+
+void HomeCore::startBluetooth() {
+    bluetooth::Initialize();
+    DebugLog::log("[home-core] Bluetooth manager %s",
+                  bluetooth::IsAvailable() ? "initialized" : "unavailable");
 }
 
 HomeCore::~HomeCore() {

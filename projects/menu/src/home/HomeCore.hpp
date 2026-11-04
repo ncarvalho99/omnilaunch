@@ -9,6 +9,8 @@
 // C1: ordered shutdown phases and GPU teardown hook.
 // C2: audio, accessibility, preset resolution, playlist management.
 // C3: AppletLauncher, ThreadPool, AppConfig, daemon SystemStatus & trace state.
+// C4: per-frontend HTTP cancel scope, HTTP runtime and Bluetooth lifetime,
+//     final MenuClosing notification.
 
 #include "home/HomeAudio.hpp"
 #include "launcher/AppletLauncher.hpp"
@@ -58,6 +60,18 @@ public:
     void setFrontendQuiesce(std::function<void()> quiesce) { m_frontendQuiesce = std::move(quiesce); }
     void quiesceWriters();
 
+    /// Frontend network scope (C4). frontendStarted() lets the new frontend
+    /// issue HTTP requests; frontendStopping() aborts the leaving frontend's
+    /// requests without the process-wide terminal cancel, so the next frontend
+    /// can use the network. Launch handoff and process exit still use
+    /// themeshop::http::cancelPendingRequests().
+    void frontendStarted();
+    void frontendStopping();
+
+    /// Bluetooth is process-lifetime: started once (immediately or deferred by
+    /// the frontend on fast return) and finalized in the Services phase.
+    void startBluetooth();
+
 #ifdef SWITCHU_MENU
     void setStartupStatus(const switchu::smi::SystemStatus& status);
     void setMenuMainTrace(uint64_t tick, uint32_t core) { m_menuMainTick = tick; m_menuMainCore = core; }
@@ -69,6 +83,15 @@ public:
     bool safeModeNotice() const { return m_safeModeNotice; }
     uint64_t menuMainTick() const { return m_menuMainTick; }
     uint32_t menuMainCore() const { return m_menuMainCore; }
+    /// Exit trace. The frontend fills its fields in onDestroy; the Services
+    /// phase stamps HTTP/Bluetooth; ProcessExit sends it to the daemon.
+    /// Taking it arms the notification: MenuClosing tells the boot guard the
+    /// exit was orderly, so it is sent only after a frontend's onDestroy ran
+    /// (the pre-C4 behaviour), never from an early-return/init-failure path.
+    switchu::smi::MenuClosingArgs& closingTrace() {
+        m_closingArmed = true;
+        return m_closingTrace;
+    }
 #endif
 
     /// Register work for a phase. Hooks of one phase run in reverse
@@ -102,6 +125,8 @@ private:
     uint32_t m_menuMainCore = 0;
     bool m_safeModeRequested = false;
     bool m_safeModeNotice = false;
+    switchu::smi::MenuClosingArgs m_closingTrace{};
+    bool m_closingArmed = false;
 #endif
 
     std::vector<NamedHook> m_hooks[kShutdownPhaseCount];
