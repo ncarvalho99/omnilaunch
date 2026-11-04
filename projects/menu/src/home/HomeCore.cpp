@@ -21,6 +21,12 @@ const char* shutdownPhaseName(ShutdownPhase phase) {
 }
 
 HomeCore::HomeCore() {
+    // Process exit is terminal for HTTP, unlike a frontend switch (which only
+    // closes the frontend scope). Runs after the last Activity is gone and
+    // before the pool joins, also when no frontend closed its scope.
+    addShutdownHook(ShutdownPhase::ActivityReleased, "http terminal cancel", [] {
+        themeshop::http::cancelPendingRequests();
+    });
     // Hooks of one phase run in reverse registration order. Services must run
     // pool -> HTTP -> Bluetooth: workers can still be inside a request until
     // the pool has joined, and the HTTP runtime owns the shared socket ref.

@@ -86,8 +86,9 @@ public:
     /// Exit trace. The frontend fills its fields in onDestroy; the Services
     /// phase stamps HTTP/Bluetooth; ProcessExit sends it to the daemon.
     /// Taking it arms the notification: MenuClosing tells the boot guard the
-    /// exit was orderly, so it is sent only after a frontend's onDestroy ran
-    /// (the pre-C4 behaviour), never from an early-return/init-failure path.
+    /// exit was orderly, so it is sent only after a frontend's onDestroy ran,
+    /// as before C4. (Application::shutdown() also runs onDestroy after a
+    /// failed initialize, so that path can still arm it; unchanged by C4.)
     switchu::smi::MenuClosingArgs& closingTrace() {
         m_closingArmed = true;
         return m_closingTrace;
