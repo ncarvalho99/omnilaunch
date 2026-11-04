@@ -46,6 +46,11 @@ HomeCore::HomeCore() {
     addShutdownHook(ShutdownPhase::Services, "thread pool", [this] {
         m_threadPool.shutdown();
     });
+    // Registered after the pool so it runs before the pool joins: cancel the
+    // pdm batch and collect its future while the worker is still alive.
+    addShutdownHook(ShutdownPhase::Services, "play-time refresh", [this] {
+        m_playtime.shutdown();
+    });
     addShutdownHook(ShutdownPhase::Audio, "audio and accessibility", [this] {
         m_audio.shutdown();
     });

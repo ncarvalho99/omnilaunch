@@ -721,16 +721,8 @@ private:
     // is what losing a race with an in-flight write looks like.
     std::future<void>    m_configSaveFuture;
     std::future<void>    m_themeDeleteFuture;
-    // Written by the worker, read on the main thread once m_playtimeFuture is
-    // ready. The pool hands back only std::future<void>.
-    struct PlaytimeRefreshState {
-        std::vector<std::pair<std::uint64_t, std::uint64_t>> playtime;
-        // Raised when the console is about to be handed to a game: the batch
-        // stops where it is rather than making the player wait for it.
-        std::atomic<bool> cancelled{false};
-    };
-    std::shared_ptr<PlaytimeRefreshState> m_playtimeRefresh;
-    std::future<void>    m_playtimeFuture;
+    // The batch itself is HomeCore's (HomePlaytime); the frontend keeps only
+    // when to ask and how to re-sort.
     bool                 m_playtimeRefreshQueued = false;
     bool                 m_playtimeResortPending = false;
     bool&                m_audioStarted;

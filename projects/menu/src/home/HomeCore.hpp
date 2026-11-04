@@ -11,8 +11,10 @@
 // C3: AppletLauncher, ThreadPool, AppConfig, daemon SystemStatus & trace state.
 // C4: per-frontend HTTP cancel scope, HTTP runtime and Bluetooth lifetime,
 //     final MenuClosing notification.
+// C5a: play-time refresh (HomePlaytime).
 
 #include "home/HomeAudio.hpp"
+#include "home/HomePlaytime.hpp"
 #include "launcher/AppletLauncher.hpp"
 #include "core/Config.hpp"
 #include <nxui/core/ThreadPool.hpp>
@@ -51,6 +53,7 @@ public:
     HomeCore& operator=(const HomeCore&) = delete;
 
     HomeAudio& audioServices() { return m_audio; }
+    HomePlaytime& playtime() { return m_playtime; }
     AppConfig& config() { return m_config; }
     const AppConfig& config() const { return m_config; }
     nxui::ThreadPool& threadPool() { return m_threadPool; }
@@ -113,6 +116,7 @@ private:
     };
 
     HomeAudio m_audio;
+    HomePlaytime m_playtime;
     AppConfig m_config;
     nxui::ThreadPool m_threadPool{2};
     AppletLauncher m_launcher;

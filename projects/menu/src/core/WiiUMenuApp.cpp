@@ -864,8 +864,7 @@ void WiiUMenuApp::onDestroy() {
 
     finishAudioLoad(true);
 #ifdef SWITCHU_MENU
-    if (m_playtimeRefresh)
-        m_playtimeRefresh->cancelled.store(true);
+    m_homeCore.playtime().cancel();
 #endif
 
     // Theme Shop, Gallery, metadata, icon, and artwork work all shares this
@@ -1427,27 +1426,10 @@ void WiiUMenuApp::requestPlaytimeRefresh(const char* reason) {
 
 void WiiUMenuApp::pollPlaytimeRefresh() {
 #ifdef SWITCHU_MENU
-    if (m_playtimeFuture.valid()) {
-        if (m_playtimeFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
-            return;
-        auto state = std::move(m_playtimeRefresh);
-        bool failed = false;
-        try {
-            m_playtimeFuture.get();
-        } catch (...) {
-            // The pool refusing work during shutdown; the cache stays as it was.
-            failed = true;
-        }
-        int changed = 0;
-        if (!failed && state) {
-            for (const auto& [titleId, nanoseconds] : state->playtime)
-                changed += m_config.setPlaytime(titleId, nanoseconds) ? 1 : 0;
-        }
-        DebugLog::log("[playtime] refresh done titles=%zu changed=%d",
-                      state ? state->playtime.size() : static_cast<std::size_t>(0), changed);
-        // Nothing is saved here. Every launch writes the config before the
-        // handoff, and that write carries this cache with it; a write of its
-        // own would be one more SD commit for a copy pdm can always rebuild.
+    if (m_homeCore.playtime().running()) {
+        const int changed = m_homeCore.playtime().poll(m_config);
+        if (changed < 0)
+            return; // batch still running, as before C5a
         if (changed > 0 && m_config.sortMode == 4)
             m_playtimeResortPending = true;
     }
@@ -1515,12 +1497,7 @@ void WiiUMenuApp::pollPlaytimeRefresh() {
     if (titleIds.empty())
         return;
 
-    auto state = std::make_shared<PlaytimeRefreshState>();
-    m_playtimeRefresh = state;
-    m_playtimeFuture = m_threadPool.submit(
-        [state, titleIds = std::move(titleIds)]() {
-            state->playtime = switchu::menu::playtime::queryAll(titleIds, &state->cancelled);
-        });
+    m_homeCore.playtime().start(m_threadPool, std::move(titleIds));
 #endif
 }
 

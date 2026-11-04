@@ -1,4 +1,6 @@
 #pragma once
+#include <cstdint>
+#include <map>
 #include <string>
 struct AppConfig {
  bool accessibilityEnabled=false, accessibilitySpeakHints=true,
@@ -7,4 +9,6 @@ struct AppConfig {
  int accessibilitySpeechRate=175;
  std::string soundPreset="wiiu", audioSourcePreference="theme_only";
  bool safeMode() const { return true; } // No host writes to sdmc:/ paths.
+ std::map<std::uint64_t,std::uint64_t> playtime;
+ bool setPlaytime(std::uint64_t id,std::uint64_t ns){ auto& v=playtime[id]; if(v==ns) return false; v=ns; return true; }
 };

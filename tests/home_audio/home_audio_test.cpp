@@ -6,6 +6,7 @@
 #include <cassert>
 #include <chrono>
 #include <future>
+#include <thread>
 #include <iostream>
 
 int main() {
@@ -91,7 +92,21 @@ int main() {
  // reopening a frontend scope afterwards does not clear it.
  core.frontendStarted();
  assert(themeshop::http::scope.cancelled(themeshop::http::scope.begin()));
- // C3 HomeCore launcher, pool, config, and quiesce routing contracts
+ // C5a play-time service: host build has no pdm, so a batch yields no figures.
+ {
+  HomeCore pcore;
+  AppConfig pcfg;
+  assert(pcore.playtime().poll(pcfg)==-1 && !pcore.playtime().running());
+  pcore.playtime().start(pcore.threadPool(), {});
+  assert(!pcore.playtime().running());          // empty list: nothing queued
+  pcore.playtime().start(pcore.threadPool(), {1,2});
+  assert(pcore.playtime().running());
+  int r=-1; for(int i=0;i<200 && r<0;++i){ r=pcore.playtime().poll(pcfg); if(r<0) std::this_thread::sleep_for(std::chrono::milliseconds(5)); }
+  assert(r==0 && !pcore.playtime().running());
+  pcore.playtime().start(pcore.threadPool(), {3});
+  pcore.runShutdownPhase(ShutdownPhase::ProcessExit); // collects it before the pool joins
+  assert(!pcore.playtime().running());
+ } // C3 HomeCore launcher, pool, config, and quiesce routing contracts
  bool quiesceCalled = false;
  core.setFrontendQuiesce([&quiesceCalled] { quiesceCalled = true; });
  core.quiesceWriters();
