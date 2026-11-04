@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cstdint>
 #include <list>
+#include <stdexcept>
 #include <string>
 #include <functional>
 #include <vector>
@@ -28,6 +29,27 @@ void cancelPendingRequests();
 // clears a terminal cancel. HomeCore calls these around each frontend.
 void openFrontendScope();
 void closeFrontendScope();
+
+// Thrown when a request stops because it was cancelled (frontend scope,
+// terminal cancel, or the per-transfer flag below). Lets callers tell a user
+// cancel from a real failure without re-reading a flag that may have been
+// raised after the failure.
+struct Cancelled : std::runtime_error {
+    Cancelled() : std::runtime_error("HTTP request cancelled") {}
+};
+
+// Per-transfer cancel for every request made on this thread while it is
+// alive (getBytes/getText/postJson/getToFile). A worker that runs a whole
+// install sets it once instead of threading a flag through every call.
+class ThreadCancelGuard {
+public:
+    explicit ThreadCancelGuard(const std::atomic<bool>* cancel);
+    ~ThreadCancelGuard();
+    ThreadCancelGuard(const ThreadCancelGuard&) = delete;
+    ThreadCancelGuard& operator=(const ThreadCancelGuard&) = delete;
+private:
+    const std::atomic<bool>* m_previous;
+};
 
 std::vector<std::uint8_t> getBytes(const std::string& url,
                                    const std::list<std::string>& headers = {},

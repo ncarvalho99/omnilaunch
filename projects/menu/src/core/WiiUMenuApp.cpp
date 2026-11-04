@@ -822,8 +822,13 @@ bool WiiUMenuApp::onCreate() {
 void WiiUMenuApp::quiesceWritersForPowerAction() {
     if (m_configSaveFuture.valid())
         m_configSaveFuture.get();
-    if (m_themePackageTransferFuture.valid())
+    if (m_themePackageTransferFuture.valid()) {
+        // Stop at the installer's next safe point (it never cancels while
+        // replacing the installed theme) instead of finishing a download.
+        if (m_themePackageTransfer)
+            m_themePackageTransfer->cancel.store(true, std::memory_order_release);
         m_themePackageTransferFuture.wait();
+    }
     if (m_gameArtworkSaveFuture.valid())
         m_gameArtworkSaveFuture.wait();
     if (m_layoutDirty)

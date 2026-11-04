@@ -578,12 +578,16 @@ std::vector<RemoteFile> listThemeFiles(const std::string& catalogUrl,
     if (parseRawGitHubUrl(catalogUrl, repo)) {
         try {
             files = listThemeFilesFromTree(repo, themePath);
+        } catch (const themeshop::http::Cancelled&) {
+            throw;
         } catch (const std::exception& ex) {
             DebugLog::log("[themeshop] tree listing failed for %s: %s", themePath.c_str(), ex.what());
         }
         if (files.empty()) {
             try {
                 files = listThemeFilesFromContents(repo, themePath);
+            } catch (const themeshop::http::Cancelled&) {
+                throw;
             } catch (const std::exception& ex) {
                 DebugLog::log("[themeshop] contents listing failed for %s: %s", themePath.c_str(), ex.what());
             }
@@ -627,6 +631,8 @@ std::vector<RemoteFile> listThemeFiles(const std::string& catalogUrl,
                     remotePath = joinPath(themePath, assetPath);
                 addRelativeFile(assetPath, joinUrl(catalogUrl, remotePath));
             }
+        } catch (const themeshop::http::Cancelled&) {
+            throw;
         } catch (const std::exception& ex) {
             DebugLog::log("[themeshop] manifest asset fallback failed for %s: %s",
                           manifestPath.c_str(),
@@ -763,6 +769,9 @@ ThemePackageInstaller::Result ThemePackageInstaller::run(const std::string& cata
     const auto cancelRequested = [cancel] {
         return cancel && cancel->load(std::memory_order_acquire);
     };
+    // Every HTTP request of this install (listings, manifest, music, cover,
+    // legacy files) observes the same flag.
+    themeshop::http::ThreadCancelGuard cancelGuard(cancel);
     if (!isSafeThemeId(entry.id))
         throw std::runtime_error("Catalog entry has an unsafe theme id");
     if ((!entry.path.empty() && !isSafeRelativePath(trimSlashes(entry.path)))
@@ -960,6 +969,10 @@ ThemePackageInstaller::Result ThemePackageInstaller::run(const std::string& cata
                         const std::string mUrl = joinUrl(catalogUrl, "themes/" + entry.id + "/" + trimSlashes(mRel));
                         themeshop::http::getToFile(mUrl, mDest);
                         DebugLog::log("[themeshop] fetched video theme audio: %s", mUrl.c_str());
+                    } catch (const themeshop::http::Cancelled&) {
+                        std::remove(archivePath.c_str());
+                        removeDirectoryRecursive(stagingPath);
+                        throw;
                     } catch (const std::exception& e) {
                         DebugLog::log("[themeshop] optional audio fetch failed: %s", e.what());
                     }
@@ -971,6 +984,10 @@ ThemePackageInstaller::Result ThemePackageInstaller::run(const std::string& cata
                 try {
                     themeshop::http::getToFile(joinUrl(catalogUrl, entry.cover),
                                                stagingPath + "/media/screenshots/00.jpg");
+                } catch (const themeshop::http::Cancelled&) {
+                    std::remove(archivePath.c_str());
+                    removeDirectoryRecursive(stagingPath);
+                    throw;
                 } catch (...) {}
             }
         } else {
@@ -989,7 +1006,7 @@ ThemePackageInstaller::Result ThemePackageInstaller::run(const std::string& cata
             if (cancelRequested()) {
                 std::remove(archivePath.c_str());
                 removeDirectoryRecursive(stagingPath);
-                throw std::runtime_error("Theme transfer cancelled");
+                throw themeshop::http::Cancelled();
             }
 
             std::remove(archivePath.c_str());   // o pacote nao fica no cartao
@@ -1017,7 +1034,7 @@ ThemePackageInstaller::Result ThemePackageInstaller::run(const std::string& cata
         if (cancelRequested()) {
             std::remove(archivePath.c_str());
             removeDirectoryRecursive(stagingPath);
-            throw std::runtime_error("Theme transfer cancelled");
+            throw themeshop::http::Cancelled();
         }
         std::string replaceError;
         if (!replaceDirectoryFromStaging(result.destinationPath, stagingPath, replaceError)) {
@@ -1074,7 +1091,7 @@ ThemePackageInstaller::Result ThemePackageInstaller::run(const std::string& cata
 
         try {
             if (cancelRequested())
-                throw std::runtime_error("Theme transfer cancelled");
+                throw themeshop::http::Cancelled();
             if (!isSafeRelativePath(file.relativePath))
                 throw std::runtime_error("Refusing unsafe file path in theme package: " + file.relativePath);
             const std::string body = themeshop::http::getText(file.downloadUrl);
@@ -1095,7 +1112,7 @@ ThemePackageInstaller::Result ThemePackageInstaller::run(const std::string& cata
 
     if (cancelRequested()) {
         discardLegacyStaging();
-        throw std::runtime_error("Theme transfer cancelled");
+        throw themeshop::http::Cancelled();
     }
     std::string legacyReplaceError;
     if (!replaceDirectoryFromStaging(result.destinationPath, legacyStaging, legacyReplaceError)) {

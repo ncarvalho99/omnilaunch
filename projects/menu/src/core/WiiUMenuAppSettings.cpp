@@ -1372,7 +1372,10 @@ void WiiUMenuApp::createThemeShop() {
             isRunning = m_themePackageTransfer->state.isRunning();
         }
 
-        if (isRunning)
+        // syncThemePackageTransfer() owns completion: it consumes the future
+        // and hides the dialog. Until it has, keep the state, or a transfer
+        // that ends while the shop closes leaves its dialog up forever.
+        if (isRunning || m_themePackageTransferFuture.valid())
             return;
 
         m_themePackageTransfer.reset();
@@ -2195,16 +2198,18 @@ void WiiUMenuApp::startThemePackageTransfer(const ThemeCatalogClient::Entry& ent
             shared->state.succeed(result.message);
             ++shared->revision;
             DebugLog::log("[themeshop] package transfer success: %s", result.themeId.c_str());
+        } catch (const themeshop::http::Cancelled&) {
+            // Classified by what stopped the work, not by the flag: a real
+            // failure that races a late Cancel keeps its own message.
+            std::lock_guard<std::mutex> lk(shared->mutex);
+            shared->state.fail(cancelledMessage);
+            ++shared->revision;
+            DebugLog::log("[themeshop] package transfer cancelled: %s", shared->themeId.c_str());
         } catch (const std::exception& ex) {
             std::lock_guard<std::mutex> lk(shared->mutex);
-            if (shared->cancel.load(std::memory_order_acquire)) {
-                shared->state.fail(cancelledMessage);
-                DebugLog::log("[themeshop] package transfer cancelled: %s", ex.what());
-            } else {
-                shared->state.fail(ex.what());
-                DebugLog::log("[themeshop] package transfer failed: %s", ex.what());
-            }
+            shared->state.fail(ex.what());
             ++shared->revision;
+            DebugLog::log("[themeshop] package transfer failed: %s", ex.what());
         } catch (...) {
             std::lock_guard<std::mutex> lk(shared->mutex);
             shared->state.fail(unknownTransferError);
@@ -2304,13 +2309,31 @@ void WiiUMenuApp::syncThemePackageTransfer() {
             m_themeShop->setPackageTransferState(state, themeId, installMode);
     }
 
-    if (m_themeShop && !state.label().empty())
+    const bool shopVisible = m_themeShop && m_themeShop->isActive();
+    if (shopVisible && !state.label().empty())
         m_themeShop->requestToast(state.label(), state.hasFailed() ? 3.5f : 2.8f);
     if (m_progressDialog && m_progressDialog->isActive()) {
         m_progressDialog->updateState(state.label(), state.progress01());
         m_progressDialog->hide();
-        if (m_themeShop && m_themeShop->isActive())
-            focusManager().setFocus(m_themeShop.get());
+    }
+    // The hidden dialog stays in the tree and focusable: never leave focus on
+    // it. Back to the shop if it is still up, otherwise to the HOME grid.
+    if (shopVisible) {
+        focusManager().setFocus(m_themeShop.get());
+    } else {
+        if (focusManager().current() == m_progressDialog.get())
+            focusGridSelection();
+        // The shop (and its toasts) is gone, e.g. HOME cancelled the download
+        // while it closed: report a cancel or failure where it can be seen.
+        if (state.hasFailed() && !state.label().empty() && m_dialog
+            && !m_dialog->isActive()) {
+            auto& i18n = nxui::I18n::instance();
+            m_dialogReturnFocus = focusManager().current();
+            m_dialog->show(i18n.tr("themeshop.transfer.dialog_title", "Downloading Theme"),
+                           state.label(),
+                           {{i18n.tr("button.ok", "OK"), {}, true}});
+            focusManager().setFocus(m_dialog.get());
+        }
     }
 
     m_themePackageTransferHandledRevision = revision;
