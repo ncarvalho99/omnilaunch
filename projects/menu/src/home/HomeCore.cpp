@@ -4,6 +4,7 @@
 #include "bluetooth/BluetoothManager.hpp"
 #ifdef SWITCHU_MENU
 #include "smi_commands.hpp"
+#include <switchu/file_log.hpp>
 #include <switchu/sd_commit.hpp>
 #endif
 
@@ -53,6 +54,11 @@ HomeCore::HomeCore() {
         if (!m_closingArmed)
             return;
         m_closingTrace.core = svcGetCurrentProcessorNumber();
+        // The daemon may end this process as soon as MenuClosing arrives,
+        // before __appExit closes the log. Write the buffered exit lines
+        // (shutdown phases) to the card first.
+        DebugLog::log("[home-core] sending closing notification");
+        switchu::FileLog::flush();
         switchu::menu::smi_cmd::menuClosing(m_closingTrace);
     });
 #endif
