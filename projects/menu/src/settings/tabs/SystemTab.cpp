@@ -652,6 +652,21 @@ SettingsScreen::Tab settings::tabs::SystemTab::build(SettingsScreen& screen) {
     }
 
     {
+        // HomeNX D2: live switch to the Cards frontend.
+        SettingItem it;
+        it.label = i18n.tr("cards.home_style", "HOME style");
+        it.description = i18n.tr("settings.system.home_style_desc",
+                                 "Switch to the Cards HOME. Cards can switch back from its settings button.");
+        it.type = ItemType::Action;
+        it.infoText = i18n.tr("cards.home_style_classic", "Classic");
+        it.buttonLabel = i18n.tr("settings.system.home_style_switch", "Switch to Cards");
+        it.onChange = [&screen](SettingItem& /* self */) {
+            if (screen.m_switchToCardsCb) screen.m_switchToCardsCb();
+        };
+        t.items.push_back(std::move(it));
+    }
+
+    {
         SettingItem it; it.label = i18n.tr("settings.system.usb30", "USB 3.0"); it.type = ItemType::Toggle;
         it.description = i18n.tr("settings.system.usb30_desc", "Enable USB 3.0 for faster transfer speeds.");
         bool val = false;

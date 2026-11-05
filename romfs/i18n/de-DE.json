@@ -237,6 +237,8 @@
       "timezone": "Zeitzone",
       "clock_12h": "12-Stunden-Uhr",
       "clock_12h_desc": "Zeit im 12-Stunden-Format anzeigen.",
+      "home_style_desc": "Wechselt zum Cards-HOME. In Cards über die Einstellungstaste zurückwechseln.",
+      "home_style_switch": "Zu Cards wechseln",
       "usb30": "USB 3.0",
       "usb30_desc": "USB 3.0 für schnellere Übertragungsraten aktivieren.",
       "battery_lot": "Akku-Charge",

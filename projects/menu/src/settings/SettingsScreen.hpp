@@ -29,6 +29,8 @@ public:
     void onUiLanguageChange(StringCb cb) { m_uiLanguageCb = std::move(cb); }
     void onDefaultProfileChange(StringCb cb) { m_defaultProfileCb = std::move(cb); }
     void onClockUse12HourChange(BoolCb cb) { m_clockUse12HourCb = std::move(cb); }
+    /// System > "HOME style": switch to the Cards frontend (HomeNX D2).
+    void onSwitchToCardsRequest(VoidCb cb) { m_switchToCardsCb = std::move(cb); }
     // Glass sharpness, background speed and background blur were here; they are
     // controlled from the Themes screen now and nothing on this one reads them.
     void onAccessibilityEnabledChange(BoolCb cb) { m_accessibilityEnabledCb = std::move(cb); }
@@ -131,6 +133,7 @@ private:
     StringCb m_uiLanguageCb;
     StringCb m_defaultProfileCb;
     BoolCb m_clockUse12HourCb;
+    VoidCb m_switchToCardsCb;
     BoolCb m_accessibilityEnabledCb;
     BoolCb m_accessibilitySpeakHintsCb;
     BoolCb m_accessibilitySpeakContextEveryFocusCb;

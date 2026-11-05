@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <nlohmann/json.hpp>
+#include <mutex>
 #include <system_error>
 
 namespace {
@@ -86,8 +87,11 @@ bool AppConfig::load() {
             appLayoutMode = AppLayoutMode::List;
         else if (mode == "metro" || mode == "tiles")
             appLayoutMode = AppLayoutMode::Metro;
-        else if (mode == "cards")
-            appLayoutMode = AppLayoutMode::Cards;
+        else if (mode == "cards") {
+            // Legacy IconGrid cards mode (HomeNX Part 3 MVP): migrate to Grid,
+            // as Cards is now an independent frontend (HomeStyle::Cards, D1/D2).
+            appLayoutMode = AppLayoutMode::Grid;
+        }
         else if (mode == "grid")
             appLayoutMode = AppLayoutMode::Grid;
     }
@@ -254,6 +258,10 @@ bool AppConfig::load() {
 }
 
 bool AppConfig::save() const {
+    // Saves come from the UI thread and from pool workers (snapshots). They
+    // share the staging and backup paths, so one runs at a time.
+    static std::mutex s_saveMutex;
+    std::lock_guard<std::mutex> saveLock(s_saveMutex);
     std::error_code ec;
     std::filesystem::create_directory("sdmc:/config", ec);
     ec.clear();
@@ -288,7 +296,6 @@ bool AppConfig::save() const {
                        : appLayoutMode == AppLayoutMode::Xmb         ? "xmb"
                        : appLayoutMode == AppLayoutMode::List        ? "list"
                        : appLayoutMode == AppLayoutMode::Metro       ? "metro"
-                       : appLayoutMode == AppLayoutMode::Cards       ? "cards"
                                                                      : "grid";
     if (!metroTileSpans.empty()) {
         nlohmann::json spansObj = nlohmann::json::object();

@@ -110,6 +110,7 @@ static std::atomic<bool> s_cancelRequested{false};
 static bool s_ntpThreadCreated = false;
 static NtpClient::SyncCallback s_ntpCallback;
 static std::mutex s_ntpSyncMutex;
+static std::mutex s_ntpCallbackRunMutex;
 
 static void ntpWorkerThreadFunc(void* arg) {
     (void)arg;
@@ -121,18 +122,31 @@ static void ntpWorkerThreadFunc(void* arg) {
         switchu::FileLog::log("[ntp] apply sync result: 0x%X (ok=%d)", rc, ok ? 1 : 0);
     }
 
-    NtpClient::SyncCallback cb;
+    // Held while the callback runs, so detachCallback() can wait it out.
     {
-        std::lock_guard<std::mutex> lock(s_ntpSyncMutex);
-        cb = std::move(s_ntpCallback);
-    }
-    if (cb && !s_cancelRequested.load()) {
-        cb(ok, timestamp);
+        std::lock_guard<std::mutex> invoke(s_ntpCallbackRunMutex);
+        NtpClient::SyncCallback cb;
+        {
+            std::lock_guard<std::mutex> lock(s_ntpSyncMutex);
+            cb = std::move(s_ntpCallback);
+        }
+        if (cb && !s_cancelRequested.load()) {
+            cb(ok, timestamp);
+        }
     }
     s_ntpRunning.store(false);
 }
 
 } // namespace
+
+void NtpClient::detachCallback() {
+    // Wait for a callback that is already running, then drop the pending one.
+    // The worker takes the callback under s_ntpSyncMutex while holding the run
+    // mutex, so once both are released here no callback can reach the owner.
+    std::lock_guard<std::mutex> invoke(s_ntpCallbackRunMutex);
+    std::lock_guard<std::mutex> lock(s_ntpSyncMutex);
+    s_ntpCallback = nullptr;
+}
 
 const std::vector<std::string>& NtpClient::serverList() {
     return s_ntpServers;

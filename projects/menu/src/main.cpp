@@ -376,6 +376,8 @@ int main(int argc, char* argv[]) {
             auto tutorial = std::make_unique<TutorialActivity>(homeCore, makeMenuActivity);
             app.setActivity(std::move(tutorial));
         }
+        // D2: a live switch whose frontend fails to start falls back to Classic.
+        home::installFrontendRecovery(app, homeCore);
         DebugLog::log("[hb] app.initialize...");
         app.setLogSink([](const char* msg) { DebugLog::log("%s", msg); });
         nxui::GpuDevice::setDebugSink([](const char* msg) {
@@ -407,6 +409,8 @@ int main(int argc, char* argv[]) {
             auto tutorial = std::make_unique<TutorialActivity>(homeCore, makeMenuActivity);
             app.setActivity(std::move(tutorial));
         }
+        // D2: a live switch whose frontend fails to start falls back to Classic.
+        home::installFrontendRecovery(app, homeCore);
         DebugLog::log("[menu] app.initialize...");
         {
             u64 total = 0;

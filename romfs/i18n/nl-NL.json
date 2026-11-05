@@ -237,6 +237,8 @@
       "timezone": "Tijdzone",
       "clock_12h": "12-uursklok",
       "clock_12h_desc": "Toon de tijd in 12-uursformaat.",
+      "home_style_desc": "Schakel over naar Cards-HOME. Ga in Cards terug via de instellingenknop.",
+      "home_style_switch": "Overschakelen naar Cards",
       "usb30": "USB 3.0",
       "usb30_desc": "Activeer USB 3.0 voor snellere overdracht.",
       "battery_lot": "Batterijpartij",

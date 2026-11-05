@@ -100,8 +100,7 @@ public:
     void onLayoutModeChange(LayoutModeCb cb) { m_layoutModeCb = std::move(cb); }
     void setLayoutModeState(AppLayoutMode mode) {
         m_layoutMode = mode;
-        const int val = mode == AppLayoutMode::Cards ? 9
-                      : mode == AppLayoutMode::Metro ? 8
+        const int val = mode == AppLayoutMode::Metro ? 8
                       : mode == AppLayoutMode::List  ? 7
                       : mode == AppLayoutMode::Xmb   ? 6
                       : mode == AppLayoutMode::Cover ? 5
@@ -111,7 +110,7 @@ public:
                       : mode == AppLayoutMode::DynamicLine ? 1 : 0;
         for (auto& tab : m_tabs) {
             for (auto& item : tab.items) {
-                if (item.type == ItemType::Selector && item.options.size() == 10) {
+                if (item.type == ItemType::Selector && item.options.size() == 9) {
                     item.intVal = val;
                 }
             }

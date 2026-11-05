@@ -930,6 +930,15 @@ private:
 #endif
     bool m_suppressNextNavigateSfx    = false;
     bool m_pendingNetConnect          = false;
+    // HomeNX D2: switch to Cards requested from Settings; run from onUpdate.
+    bool m_frontendSwitchQueued       = false;
+    bool frontendSwitchBlocked() const;
+    void updateFrontendSwitch(float dt);
+    // Raw-input paths in onUpdate check this too (focusRoot covers dispatch).
+    bool transitionInputBlocked() const { return m_frontendSwitchFade >= 0.f || m_switchWaitRelease; }
+    float m_frontendSwitchFade        = -1.f;
+    bool m_switchWaitRelease          = false;
+    float m_switchFadeIn              = 0.f;
     int  m_deferredBluetoothInitFrames = 0;
     int  m_deferredInitialAssetFrames = 0;
     std::string m_deferredVideoWallpaperPath;

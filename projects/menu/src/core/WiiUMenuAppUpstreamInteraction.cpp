@@ -1886,6 +1886,14 @@ void WiiUMenuApp::handleTouch() {
 void WiiUMenuApp::handleSystemAction(SysAction a) {
     switch (a) {
         case SysAction::HomeDismiss: {
+            // HomeNX D2: HOME during a frontend switch cancels the switch; the
+            // next HOME then behaves as usual (resume or close overlays).
+            if (m_frontendSwitchQueued || m_frontendSwitchFade >= 0.f) {
+                m_frontendSwitchQueued = false;
+                m_frontendSwitchFade = -1.f;
+                DebugLog::log("[home] switch to cards cancelled by HOME");
+                break;
+            }
             // Like the stock HOME menu: with nothing left to dismiss, HOME goes
             // back to the suspended game instead of doing nothing (PoloNX #150).
             // A first HOME still closes folders and overlays below.

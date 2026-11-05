@@ -12,6 +12,7 @@
 #include "cards/CardsChrome.hpp"
 #include "core/AudioManager.hpp"
 #include "core/SystemMessages.hpp"
+#include "home/HomeStyle.hpp"
 #include "widgets/LockScreen.hpp"
 #include <nxui/Activity.hpp>
 #include <nxui/Theme.hpp>
@@ -67,6 +68,7 @@ private:
     void updateDetails(float dt);
     void updateLock(float dt);
     void ensureClockFont();
+    void updateFrontendSwitch(float dt);
     std::string lastPlayedText(std::uint64_t at) const;
     void showToast(const std::string& text);
     void persistLastFocus();
@@ -93,6 +95,15 @@ private:
     bool m_panelZone = false;
     int m_panelIndex = 0;
     bool m_closeConfirmQueued = false;  // card options -> Close software
+    // Live frontend switch (D2): queued by the style sheet, then a short fade
+    // to black before home::switchFrontend.
+    bool m_switchQueued = false;
+    home::HomeStyle m_switchTarget = home::HomeStyle::Classic;
+    float m_switchFade = -1.f;  // < 0: not fading
+    // Arrived by a switch: ignore buttons until everything has been released,
+    // so the press that confirmed the switch does nothing here.
+    bool m_waitRelease = false;
+    float m_fadeIn = 1.f;  // 1 -> 0 over the first frames after a switch
     // Background cross-fade.
     std::uint64_t m_bgId = 0;
     std::uint64_t m_bgPrevId = 0;

@@ -808,6 +808,9 @@ nxui::Widget* WiiUMenuApp::focusRoot() {
     // nullptr blocks the frame's whole input dispatch, which is exactly the
     // guarantee this screen has to make; it reads its own presses from the pad.
     if (m_lockScreen.isLocked()) return nullptr;
+    // HomeNX D2: nothing during the switch fade, and after arriving by a
+    // switch nothing until the confirming press has been released.
+    if (m_frontendSwitchFade >= 0.f || m_switchWaitRelease) return nullptr;
     if (m_leaveCapturePending) return nullptr;
     if (leaveSplashActive()) return nullptr;
     if (m_launchAnim && m_launchAnim->isPlaying()) return nullptr;

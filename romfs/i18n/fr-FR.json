@@ -237,6 +237,8 @@
       "timezone": "Fuseau horaire",
       "clock_12h": "Horloge 12 heures",
       "clock_12h_desc": "Affiche l'horloge du menu avec AM et PM.",
+      "home_style_desc": "Passe au HOME Cards. Dans Cards, revenez avec le bouton des paramètres.",
+      "home_style_switch": "Passer à Cards",
       "usb30": "USB 3.0",
       "usb30_desc": "Active l'USB 3.0 pour des transferts plus rapides.",
       "battery_lot": "Lot de batterie",

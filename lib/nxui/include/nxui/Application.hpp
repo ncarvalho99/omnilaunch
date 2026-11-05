@@ -52,6 +52,15 @@ public:
 
     /// Queue an activity change from inside the main loop.
     void requestActivity(std::unique_ptr<Activity> activity);
+    /// True while a requested activity has not been installed yet.
+    bool activityChangePending() const { return m_pendingActivity != nullptr; }
+
+    /// Builds a replacement when a requested activity's onCreate() fails during
+    /// a live change. Without it (or if the replacement fails too) the loop
+    /// stops, as before. Not used for the first activity in initialize().
+    void setActivityRecovery(std::function<std::unique_ptr<Activity>()> factory) {
+        m_activityRecovery = std::move(factory);
+    }
 
     /// Initialise GPU, Renderer, Input, then call activity->onCreate().
     bool initialize();
@@ -114,6 +123,7 @@ private:
 
     std::unique_ptr<Activity> m_activity;
     std::unique_ptr<Activity> m_pendingActivity;
+    std::function<std::unique_ptr<Activity>()> m_activityRecovery;
     bool m_running = true;
     std::function<void(const char*)> m_logSink;
     std::function<void()> m_beforeGpuShutdown;

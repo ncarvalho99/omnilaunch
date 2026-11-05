@@ -3,6 +3,7 @@
 #include "core/DebugLog.hpp"
 #include "core/PlayTime.hpp"
 #include "home/HomeCore.hpp"
+#include "home/HomeFrontend.hpp"
 #include "themeshop/ThemeHttp.hpp"
 #include "widgets/OverlayDialog.hpp"
 #ifdef SWITCHU_MENU
@@ -37,6 +38,9 @@ constexpr const char* kAssets = "sdmc:/switch/OmniLaunch";
 
 constexpr float kRepeatDelay = 0.35f;
 constexpr float kRepeatRate = 0.09f;
+constexpr float kSwitchFadeOut = 0.18f;
+constexpr float kSwitchFadeIn = 0.25f;
+
 
 #ifdef SWITCHU_MENU
 // Same 32-hex-digit form Classic stores (WiiUMenuApp.cpp hexToAccountUid).
@@ -70,6 +74,16 @@ CardsHomeActivity::~CardsHomeActivity() = default;
 
 bool CardsHomeActivity::onCreate() {
     DebugLog::log("[cards] activity create");
+    if (m_core.frontendSwitchActivation()) {
+        // Reached by a live switch (D2): fade in, and wait for the buttons
+        // that confirmed the switch to be released before reacting.
+        m_core.frontendSwitchConsumed();
+        m_waitRelease = true;
+        m_fadeIn = 1.f;
+        DebugLog::log("[cards] activated by frontend switch");
+    } else {
+        m_fadeIn = 0.f;
+    }
     m_core.setFrontendQuiesce([this] {
         m_catalog.releaseAll();
         m_art.releaseAll();
@@ -137,6 +151,8 @@ bool CardsHomeActivity::onCreate() {
         if (m_userSelect)
             m_userSelect->hide();
         m_closeConfirmQueued = false;
+        m_switchQueued = false;
+        m_switchFade = -1.f;
         m_topZone = false;
         m_panelZone = false;
         m_audio.stopAll();
@@ -267,6 +283,9 @@ void CardsHomeActivity::finishAudioLoad() {
     if (config.musicEnabled && !m_lock.isLocked())
         m_audio.play();
     m_audioStarted = true;
+    // Shared with Classic: a later startClassic keeps the mixer and track
+    // instead of reloading them after a live switch (D2).
+    audio.started = true;
     DebugLog::log("[cards] audio ready (music=%d)", config.musicEnabled ? 1 : 0);
 }
 
@@ -369,11 +388,21 @@ void CardsHomeActivity::onUpdate(float dt) {
                 confirmCloseSuspended();
         }
 #endif
-        if (!m_launching && !(m_userSelect && m_userSelect->isActive()))
+        // D2: input is held off during the switch fade and, after arriving by
+        // a switch, until the confirming press is released.
+        if (m_switchFade >= 0.f) {
+            // no input
+        } else if (m_waitRelease) {
+            if (!home::anyInputHeld(app().input()))
+                m_waitRelease = false;
+        } else if (!m_launching && !(m_userSelect && m_userSelect->isActive())) {
             handleInput();
+        }
     } else if (m_userSelect) {
         m_userSelect->update(dt);
     }
+    if (m_fadeIn > 0.f)
+        m_fadeIn = std::max(0.f, m_fadeIn - dt / kSwitchFadeIn);
     if (m_launching) {
         m_launchElapsed += dt;
         if (m_launchElapsed > 5.f) {
@@ -382,6 +411,7 @@ void CardsHomeActivity::onUpdate(float dt) {
         }
     }
     pollDaemonNotifications();
+    updateFrontendSwitch(dt);
     updateDetails(dt);
 
     // Ease the row toward the selection.
@@ -476,6 +506,34 @@ void CardsHomeActivity::loadAvatar() {
     }
     accountProfileClose(&profile);
 #endif
+}
+
+void CardsHomeActivity::updateFrontendSwitch(float dt) {
+    // D2. Runs after daemon notifications, so a HOME, sleep or launch handled
+    // this frame vetoes the switch before it is requested.
+    const bool blocked = m_launching || m_lock.isLocked() || !app().isRunning();
+    if (m_switchQueued && !(m_userSelect && m_userSelect->isActive())) {
+        m_switchQueued = false;
+        if (!blocked && m_switchFade < 0.f) {
+            m_switchFade = 0.f;
+            m_audio.playSfx(Sfx::Activate);
+        } else {
+            DebugLog::log("[cards] frontend switch refused (busy)");
+        }
+    }
+    if (m_switchFade < 0.f)
+        return;
+    if (blocked) {
+        m_switchFade = -1.f;
+        DebugLog::log("[cards] frontend switch cancelled");
+        return;
+    }
+    m_switchFade += dt;
+    if (m_switchFade < kSwitchFadeOut)
+        return;
+    m_switchFade = -1.f;
+    if (!home::switchFrontend(app(), m_core, m_switchTarget))
+        DebugLog::log("[cards] frontend switch not started");
 }
 
 void CardsHomeActivity::ensureClockFont() {
@@ -640,21 +698,14 @@ void CardsHomeActivity::activateTop() {
         return;
     }
     if (m_userSelect && button == TopButton::Settings) {
-        // HOME style. Saved now, applied by the next menu start until the
-        // live switch (D2) exists.
+        // HOME style: a live switch (D2). The choice is only queued here; the
+        // fade and the swap run from onUpdate once this dialog has closed.
         m_audio.playSfx(Sfx::ModalShow);
         auto choose = [this](home::HomeStyle style) {
-            auto& config = m_core.config();
-            if (config.homeStyle == style)
+            if (style == home::HomeStyle::Cards)
                 return;
-            config.homeStyle = style;
-            if (!config.save())
-                DebugLog::log("[cards] homeStyle save failed");
-#ifdef SWITCHU_MENU
-            switchu::commitSdCard("cards home style");
-#endif
-            showToast(nxui::I18n::instance().tr("cards.home_style_restart",
-                                                "Applies after the console restarts"));
+            m_switchQueued = true;
+            m_switchTarget = style;
         };
         m_userSelect->show(
             i18n.tr("cards.home_style", "HOME style"),
@@ -665,7 +716,7 @@ void CardsHomeActivity::activateTop() {
                 {i18n.tr("cards.home_style_cards", "Cards"),
                  [choose]() { choose(home::HomeStyle::Cards); }, true},
             },
-            m_core.config().homeStyle == home::HomeStyle::Cards ? 1 : 0, {});
+            1, {});
         focusManager().setFocus(m_userSelect.get());
         return;
     }
@@ -1047,6 +1098,13 @@ void CardsHomeActivity::pollDaemonNotifications() {
 void CardsHomeActivity::handleSystemAction(SysAction action) {
     switch (action) {
     case SysAction::HomeDismiss:
+        // D2: HOME during a frontend switch cancels it.
+        if (m_switchQueued || m_switchFade >= 0.f) {
+            m_switchQueued = false;
+            m_switchFade = -1.f;
+            DebugLog::log("[cards] frontend switch cancelled by HOME");
+            break;
+        }
         // HOME is a system-authenticated unlock, as in Classic.
         if (m_lock.isLocked()) {
             m_lock.unlockNow();
@@ -1233,6 +1291,12 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
     }
     if (m_userSelect && m_userSelect->isActive())
         m_userSelect->render(ren);
+    // D2 switch: fade to black on the way out, from black on the way in.
+    float black = m_fadeIn;
+    if (m_switchFade >= 0.f)
+        black = std::max(black, std::min(1.f, m_switchFade / kSwitchFadeOut));
+    if (black > 0.f)
+        ren.drawRect({0.f, 0.f, 1280.f, 720.f}, {0.f, 0.f, 0.f, black});
     m_lock.render(ren);
 }
 

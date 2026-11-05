@@ -237,6 +237,8 @@
       "timezone": "Fuso orario",
       "clock_12h": "Orologio 12 ore",
       "clock_12h_desc": "Mostra l’ora in formato 12 ore.",
+      "home_style_desc": "Passa all'HOME Cards. In Cards, torna indietro dal pulsante impostazioni.",
+      "home_style_switch": "Passa a Cards",
       "usb30": "USB 3.0",
       "usb30_desc": "Abilita USB 3.0 per trasferimenti più veloci.",
       "battery_lot": "Lotto batteria",

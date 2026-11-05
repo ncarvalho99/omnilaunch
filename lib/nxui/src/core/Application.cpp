@@ -34,12 +34,39 @@ bool Application::applyPendingActivity() {
 
     m_activity = std::move(m_pendingActivity);
     m_navDebounce = 0;
+    m_navHoldFrames = 0;
+    // The outgoing activity may have held a settled offscreen capture (the
+    // settings overlay does); nothing of its frame belongs to the next one.
+    if (m_renderer)
+        m_renderer->setHoldOffscreenCapture(false);
+    // A first-frame callback the outgoing activity registered but that has
+    // not fired yet must not keep its `this`; the incoming onCreate registers
+    // its own. Presentation always resumes for the incoming activity.
+    m_firstFrameCallback = nullptr;
+    m_renderEnabled = true;
 
-    if (m_activity) {
-        m_activity->m_rootBox->setRect({0, 0, (float)m_gpu.width(), (float)m_gpu.height()});
-        return m_activity->onCreate();
-    }
-    return true;
+    if (!m_activity)
+        return true;
+    m_activity->m_rootBox->setRect({0, 0, (float)m_gpu.width(), (float)m_gpu.height()});
+    if (m_activity->onCreate())
+        return true;
+
+    // A live change failed. Release what the failed activity built, then try
+    // the owner's replacement once instead of ending the run loop.
+    std::fprintf(stderr, "[Application] activity onCreate() failed during a live change\n");
+    if (m_logSink) m_logSink("[nxui] activity onCreate failed during a live change");
+    if (!m_activityRecovery)
+        return false;
+    AnimationManager::instance().clear();
+    m_activity->onDestroy();
+    m_activity = m_activityRecovery();
+    if (!m_activity)
+        return false;
+    m_activity->m_app = this;
+    m_activity->m_rootBox->setRect({0, 0, (float)m_gpu.width(), (float)m_gpu.height()});
+    const bool ok = m_activity->onCreate();
+    if (m_logSink) m_logSink(ok ? "[nxui] recovery activity installed" : "[nxui] recovery activity failed");
+    return ok;
 }
 
 bool Application::initialize() {
@@ -286,6 +313,11 @@ void Application::run() {
 
         if (m_activity) {
             m_activity->onUpdate(dt);
+            // An exit requested this frame (a launch or resume hands the
+            // console over) wins over a queued activity change: the change is
+            // dropped rather than creating an activity that is destroyed at once.
+            if (!m_running)
+                m_pendingActivity.reset();
             if (!applyPendingActivity()) {
                 m_running = false;
                 break;

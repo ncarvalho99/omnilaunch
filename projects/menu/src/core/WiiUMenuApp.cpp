@@ -5,6 +5,7 @@
 #include <switchu/control_cache.hpp>
 #include <switchu/hardware_status.hpp>
 #include "core/PlayTime.hpp"
+#include "home/HomeFrontend.hpp"
 #include "widgets/GlossyIcon.hpp"
 #include "widgets/FolderPalette.hpp"
 #include "themeshop/ThemeHttp.hpp"
@@ -624,6 +625,14 @@ bool WiiUMenuApp::onCreate() {
         quiesceWritersForPowerAction();
     });
     m_homeCore.frontendStarted();
+    if (m_homeCore.frontendSwitchActivation()) {
+        // HomeNX D2: reached by a live switch. Fade in from black and ignore
+        // input until the press that confirmed the switch is released.
+        m_homeCore.frontendSwitchConsumed();
+        m_switchWaitRelease = true;
+        m_switchFadeIn = 1.f;
+        DebugLog::log("[home] classic activated by frontend switch");
+    }
 
 #ifdef SWITCHU_MENU
     m_transitionOriginTick = m_homeCore.transitionOriginTick();
@@ -666,6 +675,13 @@ bool WiiUMenuApp::onCreate() {
                   static_cast<unsigned>(m_transitionReason),
                   m_launcher.suspendedTitleId());
     m_appLayoutMode = m_config.appLayoutMode;
+    // Legacy IconGrid cards mode inside Classic is retired (HomeNX I3): migrate
+    // to default Grid so Classic always displays the clean Classic UI.
+    if (m_appLayoutMode == AppLayoutMode::Cards) {
+        m_appLayoutMode = AppLayoutMode::Grid;
+        m_config.appLayoutMode = AppLayoutMode::Grid;
+        m_config.save();
+    }
     applyGlassSharpness(m_config.glassSharpness);
     loadMenuLayout();
     // The menu is recreated on every return from a game, so this is also the
@@ -865,6 +881,10 @@ void WiiUMenuApp::onDestroy() {
     // process for its 30-second low-speed window. Scoped, not terminal: a
     // frontend switch must leave the network usable for the next frontend.
     m_homeCore.frontendStopping();
+    // The NTP callbacks capture this activity (auto sync) or its Settings
+    // screen (manual sync) and run on the NTP thread; a live switch destroys
+    // both while the query may still be running (HomeNX D2).
+    switchu::services::NtpClient::detachCallback();
 #ifdef SWITCHU_MENU
     closingTrace.http_cancel_done_tick = armGetSystemTick();
 #endif
@@ -5297,7 +5317,7 @@ void WiiUMenuApp::toggleAppLayoutMode() {
         case AppLayoutMode::Cover:       setAppLayoutMode(AppLayoutMode::Xmb);         break;
         case AppLayoutMode::Xmb:         setAppLayoutMode(AppLayoutMode::List);        break;
         case AppLayoutMode::List:        setAppLayoutMode(AppLayoutMode::Metro);       break;
-        case AppLayoutMode::Metro:       setAppLayoutMode(AppLayoutMode::Cards);       break;
+        case AppLayoutMode::Metro:       setAppLayoutMode(AppLayoutMode::Grid);        break;
         case AppLayoutMode::Cards:       setAppLayoutMode(AppLayoutMode::Grid);        break;
     }
 }
@@ -7861,6 +7881,13 @@ void WiiUMenuApp::setupLockScreen() {
 }
 
 void WiiUMenuApp::onUpdate(float dt) {
+    // HomeNX D2: the switch decision is taken at the end of this update
+    // (updateFrontendSwitch), after daemon notifications and the lock screen.
+    // Here only the wait-for-release and fade-in of an incoming switch run.
+    if (m_switchWaitRelease && !home::anyInputHeld(app().input()))
+        m_switchWaitRelease = false;
+    if (m_switchFadeIn > 0.f)
+        m_switchFadeIn = std::max(0.f, m_switchFadeIn - dt / 0.25f);
     logControllerState(dt);
     m_animalesePlayer.update(dt);
     m_audio.update();
@@ -8615,8 +8642,10 @@ void WiiUMenuApp::onUpdate(float dt) {
 
     // Shortcuts that read the pad straight rather than going through focus
     // dispatch, so blocking focusRoot() is not enough to stop them: the lock
-    // screen has to be asked about here too.
-    const bool lockScreenUp = m_lockScreen.isLocked();
+    // screen has to be asked about here too. A frontend switch (HomeNX D2)
+    // blocks the same raw paths during its fade and until the confirming
+    // press is released.
+    const bool lockScreenUp = m_lockScreen.isLocked() || transitionInputBlocked();
 
     if (!lockScreenUp && handleAccessibilityToggleCombo()) {
         m_plusExitPending = false;
@@ -9051,6 +9080,43 @@ void WiiUMenuApp::onUpdate(float dt) {
         // that yield, reduced locked input polling to about 3 Hz, and dropped
         // short unlock presses after wake or undock.
     }
+
+    updateFrontendSwitch(dt);
+}
+
+bool WiiUMenuApp::frontendSwitchBlocked() const {
+    return (m_launchAnim && m_launchAnim->isPlaying()) || m_lockScreen.isLocked() ||
+           m_leaveCapturePending || m_leaveSplashPhase != LeaveSplashPhase::None ||
+           !app().isRunning();
+}
+
+void WiiUMenuApp::updateFrontendSwitch(float dt) {
+    // HomeNX D2. Runs last in onUpdate, so a HOME, sleep or launch handled
+    // this frame vetoes the switch before it is requested.
+    if (m_frontendSwitchQueued && !(m_settings && m_settings->isActive())) {
+        m_frontendSwitchQueued = false;
+        if (!frontendSwitchBlocked() && m_frontendSwitchFade < 0.f)
+            m_frontendSwitchFade = 0.f;
+        else
+            DebugLog::log("[home] switch to cards refused (busy)");
+    }
+    if (m_frontendSwitchFade < 0.f)
+        return;
+    if (frontendSwitchBlocked()) {
+        m_frontendSwitchFade = -1.f;
+        DebugLog::log("[home] switch to cards cancelled");
+        return;
+    }
+    m_frontendSwitchFade += dt;
+    if (m_frontendSwitchFade < 0.18f)
+        return;
+    m_frontendSwitchFade = -1.f;
+    // A config snapshot queued by closing Settings must land before the switch
+    // saves the new style, or it would write Classic back over it.
+    if (m_configSaveFuture.valid())
+        m_configSaveFuture.wait();
+    if (!home::switchFrontend(app(), m_homeCore, home::HomeStyle::Cards))
+        DebugLog::log("[home] switch to cards not started");
 }
 
 std::vector<WiiUMenuApp::ActionHint> WiiUMenuApp::buildActionHints() {
@@ -10186,6 +10252,13 @@ void WiiUMenuApp::onRender(nxui::Renderer& ren) {
         else
             renderActionHintBar(ren);
     }
+
+    // HomeNX D2: fade to black before the frontend switch, from black after.
+    float switchBlack = m_switchFadeIn;
+    if (m_frontendSwitchFade >= 0.f)
+        switchBlack = std::max(switchBlack, std::min(1.f, m_frontendSwitchFade / 0.18f));
+    if (switchBlack > 0.f)
+        ren.drawRect({0.f, 0.f, 1280.f, 720.f}, {0.f, 0.f, 0.f, switchBlack});
 
     // Over the hint bar as well: while the lock screen is up none of those
     // buttons do anything, so showing them would be a lie.

@@ -411,6 +411,12 @@ void WiiUMenuApp::createSettings() {
             m_clock->setUse12HourClock(enabled);
         m_lockScreen.setUse12HourClock(enabled);
     });
+    m_settings->onSwitchToCardsRequest([this]() {
+        // HomeNX D2. Queued: this runs inside the settings input dispatch, and
+        // the swap itself happens from onUpdate once the overlay has closed.
+        m_frontendSwitchQueued = true;
+        if (m_settings) m_settings->hide();
+    });
     m_settings->onAccessibilityEnabledChange([this](bool enabled) {
         if (m_config.accessibilityEnabled == enabled)
             return;
@@ -675,6 +681,9 @@ void WiiUMenuApp::createSettings() {
         });
     m_settings->onClosed([this]() {
         m_navigator.routeDidClose(switchu::navigation::Route::Settings);
+        // Snapshots must land in submission order (HomeNX D2 review).
+        if (m_configSaveFuture.valid())
+            m_configSaveFuture.wait();
         m_configSaveFuture = m_threadPool.submit([cfg = m_config]() {
             cfg.save();
         });
@@ -1769,6 +1778,9 @@ void WiiUMenuApp::createThemeShop() {
     });
     m_themeShop->onClosed([this, clearCompletedThemeTransferState]() {
         m_themeShop->resetMusicTabState();
+        // Snapshots must land in submission order (HomeNX D2 review).
+        if (m_configSaveFuture.valid())
+            m_configSaveFuture.wait();
         m_configSaveFuture = m_threadPool.submit([cfg = m_config]() {
             cfg.save();
         });

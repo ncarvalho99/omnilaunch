@@ -24,25 +24,25 @@ int main() {
     std::system("mkdir -p 'sdmc:/config/OmniLaunch'");
     const char* kPath = AppConfig::kConfigPath;
 
-    // 1. Verify serialization of Cards mode
+    // 1. Verify migration of legacy Cards layout mode to Grid (HomeNX I3 / D2)
     {
-        AppConfig cfg;
-        cfg.appLayoutMode = AppLayoutMode::Cards;
-        TEST_ASSERT(cfg.save());
+        nlohmann::json j;
+        j["appLayoutMode"] = "cards";
+        std::ofstream f(kPath);
+        f << j.dump(2);
+        f.close();
 
-        auto j = readCfg(kPath);
-        TEST_ASSERT(j.contains("appLayoutMode"));
-        TEST_ASSERT(j["appLayoutMode"] == "cards");
-    }
-
-    // 2. Verify deserialization of Cards mode
-    {
         AppConfig loaded;
         TEST_ASSERT(loaded.load());
-        TEST_ASSERT(loaded.appLayoutMode == AppLayoutMode::Cards);
+        TEST_ASSERT(loaded.appLayoutMode == AppLayoutMode::Grid);
+
+        // Next save writes "grid", completing migration on disk
+        TEST_ASSERT(loaded.save());
+        auto migrated = readCfg(kPath);
+        TEST_ASSERT(migrated["appLayoutMode"] == "grid");
     }
 
-    // 3. Verify all other layout modes round-trip cleanly without regression
+    // 2. Verify all valid layout modes round-trip cleanly without regression
     struct TestCase {
         AppLayoutMode mode;
         const char* expectedStr;
@@ -58,7 +58,6 @@ int main() {
         {AppLayoutMode::Xmb, "xmb"},
         {AppLayoutMode::List, "list"},
         {AppLayoutMode::Metro, "metro"},
-        {AppLayoutMode::Cards, "cards"},
     };
 
     for (const auto& tc : cases) {

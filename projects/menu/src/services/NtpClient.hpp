@@ -23,6 +23,12 @@ public:
     // Wait for worker thread to finish if running and release resources.
     static void cleanup();
 
+    // Drops the pending completion callback without stopping the query, after
+    // waiting for one that is already running. An owner whose callback
+    // captured it calls this before being destroyed (a live frontend switch
+    // destroys Classic and its Settings screen while a sync may be in flight).
+    static void detachCallback();
+
     static const std::vector<std::string>& serverList();
 };
 

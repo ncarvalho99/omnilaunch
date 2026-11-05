@@ -83,6 +83,14 @@ public:
     /// the frontend on fast return) and finalized in the Services phase.
     void startBluetooth();
 
+    /// Live frontend switch (D2). True while the frontend being created was
+    /// reached by a switch rather than by boot or a return from an applet;
+    /// the incoming frontend reads it in onCreate (D3 return mode) and clears
+    /// it with frontendSwitchConsumed().
+    bool frontendSwitchActivation() const { return m_frontendSwitch; }
+    void frontendSwitchConsumed() { m_frontendSwitch = false; }
+    void markFrontendSwitch() { m_frontendSwitch = true; }
+
 #ifdef SWITCHU_MENU
     void setStartupStatus(const switchu::smi::SystemStatus& status);
     void setMenuMainTrace(uint64_t tick, uint32_t core) { m_menuMainTick = tick; m_menuMainCore = core; }
@@ -132,6 +140,7 @@ private:
     AppletLauncher m_launcher;
     std::function<void()> m_requestExit;
     std::function<void()> m_frontendQuiesce;
+    bool m_frontendSwitch = false;
 
 #ifdef SWITCHU_MENU
     switchu::smi::SystemStatus m_systemStatus{};
