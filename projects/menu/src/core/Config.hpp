@@ -35,15 +35,52 @@ struct AppConfig {
     // HOME frontend (HomeNX C7). Saved as "classic"/"cards"; Classic default.
     home::HomeStyle homeStyle = home::HomeStyle::Classic;
     // Cards HOME row order (HomeNX D1c), separate from Classic's sortMode:
-    // 0 = last opened (default), 1 = title A-Z, 2 = most played.
+    // 0 = last opened (default), 1 = title A-Z, 2 = most played,
+    // 3 = my order (Move mode, HomeNX E2).
     int cardsSort = 0;
-    static constexpr int kCardsSortCount = 3;
+    static constexpr int kCardsSortCount = 4;
     // Cards launch animation style (HomeNX D4, C-UI-17 partial):
     // 0 = simple fade (default), 1 = card zoom ("Salto do cartão").
     int cardsLaunchStyle = 0;
     static constexpr int kCardsLaunchStyleCount = 2;
     // Ask who's playing before launching a title in Cards (HomeNX D4).
     bool cardsAskUser = false;
+    // Cards-only preferences (HomeNX E1-E11), saved as one "cards" object.
+    // Settings shared with Classic (volumes, music, language) stay top level.
+    struct CardsPrefs {
+        // Page ids: 0 Games, 1 Homebrew (Part F; not listed until F3),
+        // 2 Nintendo, 3 Media. The first shown page is where Cards opens.
+        static constexpr int kGames = 0;
+        static constexpr int kHomebrew = 1;
+        static constexpr int kNintendo = 2;
+        static constexpr int kMedia = 3;
+        std::vector<int> pageOrder = {kGames, kNintendo, kMedia};
+        std::vector<int> hiddenPages;
+        std::vector<std::uint64_t> gamesOrder;  // "My order" on Games
+        std::vector<std::uint64_t> mediaOrder;  // order on Media
+        std::vector<std::uint64_t> mediaTitles; // moved to Media by hand
+        std::vector<std::string> settingsOrder; // settings section keys
+        bool tutorialDone = false;
+        std::uint64_t panelTitleId = 0; // right panel shortcut, 0 = none
+        std::vector<std::uint64_t> iconTitles; // use the installed icon, not a cover
+        std::vector<std::uint64_t> coverBackgroundTitles; // cover instead of hero
+        std::vector<std::uint64_t> plainBackgroundTitles; // no game background
+        std::vector<std::uint64_t> logoTitles; // local title logo when available
+
+        bool pageHidden(int page) const {
+            for (int h : hiddenPages)
+                if (h == page) return true;
+            return false;
+        }
+        bool isMedia(std::uint64_t titleId) const {
+            for (auto id : mediaTitles)
+                if (id == titleId) return true;
+            return false;
+        }
+        /// Keeps pageOrder a permutation of the listed pages and at least one
+        /// page shown. Called after load and after every edit.
+        void normalize();
+    } cards;
     // Day number of the last update check, so the console asks GitHub once a
     // day rather than on every return from a game.
     int   lastUpdateCheckDay = 0;

@@ -47,6 +47,7 @@ std::optional<std::uint64_t> queryLastPlayed(std::uint64_t titleId) {
 #ifdef SWITCHU_MENU
     if (titleId == 0)
         return std::nullopt;
+    std::lock_guard<std::mutex> lock(g_pdmMutex);
     if (R_FAILED(pdmqryInitialize()))
         return std::nullopt;
     PdmPlayStatistics stats{};
@@ -65,6 +66,24 @@ std::optional<std::uint64_t> queryLastPlayed(std::uint64_t titleId) {
 #endif
 }
 
+std::optional<std::uint32_t> queryLaunches(std::uint64_t titleId) {
+#ifdef SWITCHU_MENU
+    if (titleId == 0)
+        return std::nullopt;
+    std::lock_guard<std::mutex> lock(g_pdmMutex);
+    if (R_FAILED(pdmqryInitialize()))
+        return std::nullopt;
+    PdmPlayStatistics stats{};
+    const Result rc = pdmqryQueryPlayStatisticsByApplicationId(titleId, true, &stats);
+    pdmqryExit();
+    if (R_FAILED(rc))
+        return std::nullopt;
+    return stats.total_launches;
+#else
+    (void)titleId;
+    return std::nullopt;
+#endif
+}
 std::vector<std::pair<std::uint64_t, std::uint64_t>> queryAll(
     const std::vector<std::uint64_t>& titleIds,
     const std::atomic<bool>* cancelled) {

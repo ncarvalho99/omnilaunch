@@ -1,5 +1,7 @@
 #include "cards/CardsHomeActivity.hpp"
 #include "cards/CardsLayout.hpp"
+#include "cards/CardsAchievements.hpp"
+#include "cards/CardsPages.hpp"
 #include "core/DebugLog.hpp"
 #include "core/LeaveFrameCache.hpp"
 #include "core/PlayTime.hpp"
@@ -385,6 +387,7 @@ bool CardsHomeActivity::onCreate() {
                              m_core.transitionReason() == switchu::smi::MenuTransitionReason::Unknown ||
                              m_core.startMode() == switchu::smi::MenuStartMode::StartupBoot);
     m_fastReturn = !isSwitch && (!isColdBoot || m_core.launcher().suspendedTitleId() != 0);
+    m_tutorialBlocked = m_fastReturn; // first-frame code clears m_fastReturn
     m_fastReturnStartupTick = m_fastReturn ? createStartTick : 0;
     initPerfLog(isSwitch, isColdBoot);
     DebugLog::log("[cards] return mode: fastReturn=%d (startMode=%u reason=%u switch=%d suspended=0x%016llX)",
@@ -454,6 +457,13 @@ bool CardsHomeActivity::onCreate() {
         // Whatever was open goes with it, as Classic.
         if (m_userSelect)
             m_userSelect->hide();
+        m_sheet.close();
+        if (m_quick && m_quick->isActive())
+            m_quick->hide();
+        if (m_text && m_text->isActive())
+            m_text->hide(false);
+        if (m_moving)
+            finishMove(false);
         m_closeConfirmQueued = false;
         m_switchQueued = false;
         m_switchFade = -1.f;
@@ -467,6 +477,24 @@ bool CardsHomeActivity::onCreate() {
         m_audio.playSfx(Sfx::ModalHide);
     });
 
+    // Sheets (E3+): sfx hooks; QS / keyboard reuse Classic's widgets (E6, E9).
+    m_sheet.onNavigate([this] { m_audio.playSfx(Sfx::Navigate); });
+    m_sheet.onActivate([this] { m_audio.playSfx(Sfx::Activate); });
+    m_sheet.onClosed([this] { m_audio.playSfx(Sfx::ModalHide); });
+    m_fontIcons.load(gpu, ren, std::string(kAssets) + "/fonts/switch_icons.ttf", 24);
+    m_text = std::make_shared<TextEntryScreen>();
+    m_text->setFont(&m_font);
+    m_text->setSmallFont(&m_fontSmall);
+    m_text->setTheme(&m_overlayTheme);
+    m_text->onKeySfx([this]() { m_audio.playSfx(Sfx::Activate); });
+    m_text->onNavigateSfx([this]() { m_audio.playSfx(Sfx::Navigate); });
+    m_text->onCloseSfx([this]() { m_audio.playSfx(Sfx::ModalHide); });
+
+    // Pages (E1): open on the first shown page of the user's order.
+    m_page = pages::first(m_core.config().cards);
+    m_art.setConfig(&m_core.config());
+    m_catalog.setAssetsRoot(kAssets);
+    m_catalog.setPage(m_page, m_core.config());
     m_catalog.startLoad(m_core.catalog(), m_core.threadPool());
 
 #ifdef SWITCHU_MENU
@@ -558,6 +586,10 @@ void CardsHomeActivity::onDestroy() {
 #endif
     if (m_userSelect)
         m_userSelect->hide();
+    m_sheet.close();
+    m_moving = false;
+    m_quick.reset();
+    m_text.reset();
     // Frontend-owned GPU resources (audit §6.1 rule 3).
     m_chrome.release();
     m_avatar.reset();
@@ -569,7 +601,11 @@ nxui::Widget* CardsHomeActivity::focusRoot() {
         return nullptr;
     if (m_userSelect && m_userSelect->isActive())
         return m_userSelect.get();
-    // The row handles its own input; nothing in the widget tree is focusable.
+    if (m_text && m_text->isActive())
+        return m_text.get();
+    if (m_quick && m_quick->isActive())
+        return m_quick.get();
+    // The row and the sheets handle their own input.
     return nullptr;
 }
 
@@ -578,7 +614,7 @@ void CardsHomeActivity::persistLastFocus() {
         return;
     auto& config = m_core.config();
     const std::uint64_t id = m_catalog.at(m_selected).app.titleId;
-    if (config.lastPageTitleId == id)
+    if (pages::isSystemId(id) || config.lastPageTitleId == id)
         return;
     config.lastPageTitleId = id;
     config.save();
@@ -615,7 +651,10 @@ void CardsHomeActivity::pollPlaytime() {
     auto& config = m_core.config();
     if (playtime.running()) {
         const int changed = playtime.poll(config);
-        if (changed > 0 && config.cardsSort == 2 && m_catalog.count() > 0) {
+        if (changed > 0 && config.cardsSort == 2 && m_moving)
+            m_playtimeSortDeferred = true;
+        if (changed > 0 && config.cardsSort == 2 && m_page == AppConfig::CardsPrefs::kGames && !m_moving &&
+            m_catalog.count() > 0) {
             const std::uint64_t keep = m_catalog.at(m_selected).app.titleId;
             m_catalog.sort(config);
             const int index = m_catalog.indexOf(keep);
@@ -624,15 +663,16 @@ void CardsHomeActivity::pollPlaytime() {
         }
         return;
     }
-    if (!m_playtimeQueued || m_catalog.loading() || m_catalog.count() == 0)
+    if (!m_playtimeQueued || m_catalog.loading() || m_catalog.all().empty())
         return;
     m_playtimeQueued = false;
     // Same rule as Classic (CL 258): titles with no figure, opened since the
     // cache was confirmed, or still suspended.
     const std::uint64_t suspended = m_core.launcher().suspendedTitleId();
     std::vector<std::uint64_t> ids;
-    for (int i = 0; i < m_catalog.count(); ++i) {
-        const std::uint64_t id = m_catalog.at(i).app.titleId;
+    // Every installed title, whatever page is shown (E1).
+    for (const auto& entry : m_catalog.all()) {
+        const std::uint64_t id = entry.titleId;
         if (id == suspended || !config.hasPlaytime(id) ||
             config.lastOpenedAt(id) > config.playtimeCheckedSequence)
             ids.push_back(id);
@@ -666,7 +706,7 @@ void CardsHomeActivity::onUpdate(float dt) {
 
     const std::uint64_t previousId =
         (m_selected >= 0 && m_selected < m_catalog.count()) ? m_catalog.at(m_selected).app.titleId : 0;
-    if (m_catalog.poll(m_core.catalog(), m_core.config())) {
+    if (!m_moving && !m_sheet.isOpen() && !overlayActive() && m_catalog.poll(m_core.catalog(), m_core.config())) {
         // Keep the card in focus; on first load, prefer the suspended title,
         // then the leave-session title (PoloNX #104), then the last-opened one (C-SW-5).
         std::uint64_t want = previousId;
@@ -689,14 +729,23 @@ void CardsHomeActivity::onUpdate(float dt) {
             }
         }
         int index = want != 0 ? m_catalog.indexOf(want) : -1;
+        // The title to land on may live on the Media page (E1).
+        if (index < 0 && want != 0 && previousId == 0 && m_page != AppConfig::CardsPrefs::kMedia &&
+            m_core.config().cards.isMedia(want) &&
+            !m_core.config().cards.pageHidden(AppConfig::CardsPrefs::kMedia)) {
+            m_page = AppConfig::CardsPrefs::kMedia;
+            m_catalog.setPage(m_page, m_core.config());
+            index = m_catalog.indexOf(want);
+        }
         if (index < 0)
             index = 0;
         m_selected = std::clamp(index, 0, std::max(0, m_catalog.count() - 1));
         m_scroll = static_cast<float>(m_selected);
         m_leaveSession.valid = false;
+        maybeShowTutorial();
     }
 
-    if (m_refreshQueued && --m_refreshDelayFrames <= 0 && !m_catalog.loading()) {
+    if (m_refreshQueued && !m_moving && !m_sheet.isOpen() && --m_refreshDelayFrames <= 0 && !m_catalog.loading()) {
         m_refreshQueued = false;
         refreshCatalogue();
     }
@@ -711,12 +760,23 @@ void CardsHomeActivity::onUpdate(float dt) {
     m_audio.update();
     pollPlaytime();
     updateLock(dt);
+    m_sheet.update(dt);
+    if (m_quick)
+        m_quick->update(dt);
+    if (m_text)
+        m_text->update(dt);
+    if (m_pageIn < 1.f)
+        m_pageIn = std::min(1.f, m_pageIn + dt / 0.22f);
+    if (m_tutorialCard > 0)
+        m_tutorialIn = std::min(1.f, m_tutorialIn + dt / 0.2f);
     if (!m_lock.isLocked()) {
         if (m_userSelect) {
             m_userSelect->update(dt);
             if (m_userSelect->isActive())
                 m_userSelect->handleTouch(app().input());
         }
+        if (m_text && m_text->isActive())
+            m_text->handleTouch(app().input());
 #ifdef SWITCHU_MENU
         if (m_closeConfirmQueued && !(m_userSelect && m_userSelect->isActive())) {
             m_closeConfirmQueued = false;
@@ -732,12 +792,38 @@ void CardsHomeActivity::onUpdate(float dt) {
         } else if (m_waitRelease) {
             if (!home::anyInputHeld(app().input()))
                 m_waitRelease = false;
-        } else if (!m_launching && !(m_userSelect && m_userSelect->isActive())) {
-            handleInput();
+        } else if (m_overlayLatch || overlayActive()) {
+            // An overlay that was open when this frame's input was dispatched
+            // (and may have closed on it) owns the press: wait for release.
+            if (!home::anyInputHeld(app().input()))
+                m_overlayLatch = false;
+        } else if (!m_launching) {
+            if (m_tutorialCard > 0) {
+                auto& in = app().input();
+                if (in.isDown(nxui::Button::A)) {
+                    m_audio.playSfx(Sfx::Navigate);
+                    if (++m_tutorialCard > 4)
+                        m_tutorialCard = 0;
+                } else if (in.isDown(nxui::Button::B)) {
+                    m_tutorialCard = 0;
+                }
+                if (m_tutorialCard == 0) {
+                    m_core.config().cards.tutorialDone = true;
+                    saveConfig("cards tutorial");
+                }
+            } else if (m_sheet.isOpen()) {
+                m_sheet.handleInput(app().input(), dt);
+            } else if (m_moving) {
+                handleMoveInput();
+            } else {
+                handleInput();
+            }
         }
     } else if (m_userSelect) {
         m_userSelect->update(dt);
     }
+    if (overlayActive())
+        m_overlayLatch = true;
     if (m_fadeIn > 0.f)
         m_fadeIn = std::max(0.f, m_fadeIn - dt / kSwitchFadeIn);
     if (m_leaving) {
@@ -823,10 +909,13 @@ void CardsHomeActivity::ensureVisibleIcons() {
     m_catalog.pumpIcons(app().gpu(), app().renderer(), m_core.threadPool(), first, last, 4, 2);
     std::vector<std::uint64_t> wanted, keep;
     for (int i = std::max(0, first); i <= std::min(m_catalog.count() - 1, last); ++i)
-        wanted.push_back(m_catalog.at(i).app.titleId);
+        if (!m_catalog.at(i).system)
+            wanted.push_back(m_catalog.at(i).app.titleId);
     for (int i = std::max(0, first - 3); i <= std::min(m_catalog.count() - 1, last + 3); ++i)
-        keep.push_back(m_catalog.at(i).app.titleId);
-    m_art.pump(app().gpu(), app().renderer(), m_core.threadPool(), wanted, keep, m_bgId, m_time, 1);
+        if (!m_catalog.at(i).system)
+            keep.push_back(m_catalog.at(i).app.titleId);
+    const std::uint64_t bg = pages::isSystemId(m_bgId) ? 0 : m_bgId;
+    m_art.pump(app().gpu(), app().renderer(), m_core.threadPool(), wanted, keep, bg, m_time, 1);
 }
 
 void CardsHomeActivity::updateStatus(float dt) {
@@ -1025,7 +1114,7 @@ void CardsHomeActivity::updateDetails(float dt) {
         m_detailsWanted = id;
         m_detailsDelay = 0.2f; // let fast scrolling settle before asking pdm
     }
-    if (id == 0 || m_details.titleId == id || m_detailsFuture.valid() || m_launching)
+    if (id == 0 || pages::isSystemId(id) || m_details.titleId == id || m_detailsFuture.valid() || m_launching)
         return;
     m_detailsDelay -= dt;
     if (m_detailsDelay > 0.f)
@@ -1048,177 +1137,6 @@ void CardsHomeActivity::showToast(const std::string& text) {
     m_toastUntil = m_time + 2.5f;
 }
 
-void CardsHomeActivity::activateTop() {
-    auto& i18n = nxui::I18n::instance();
-    const auto button = static_cast<TopButton>(m_topIndex);
-    if (m_userSelect && button == TopButton::Power) {
-        // Same actions as Classic's power dialog (WiiUMenuApp onOpenPower).
-        m_audio.playSfx(Sfx::ModalShow);
-        m_userSelect->show(
-            i18n.tr("power.title", "Power"),
-            i18n.tr("power.choose_action", "Choose a power action."),
-            {
-                {i18n.tr("button.cancel", "Cancel"), []() {}, true},
-                {i18n.tr("power.sleep", "Sleep"), [this]() {
-#ifdef SWITCHU_MENU
-                    m_core.launcher().enterSleep();
-#endif
-                }, true},
-                {i18n.tr("power.reboot", "Restart"), [this]() {
-#ifdef SWITCHU_MENU
-                    m_core.launcher().reboot();
-#endif
-                }, true},
-                {i18n.tr("power.shutdown", "Turn Off"), [this]() {
-#ifdef SWITCHU_MENU
-                    m_core.launcher().shutdown();
-#endif
-                }, true},
-            },
-            0, {});
-        focusManager().setFocus(m_userSelect.get());
-        return;
-    }
-    if (m_userSelect && button == TopButton::Settings) {
-        openSettingsSheet();
-        return;
-    }
-    if (m_userSelect && button == TopButton::Sort) {
-        openSortSheet();
-        return;
-    }
-    m_audio.playSfx(Sfx::Activate);
-    // The other sheets (menu, Discord, users, notifications, music) arrive in
-    // later steps.
-    showToast(i18n.tr("cards.coming_soon", "Coming in a later update"));
-}
-
-void CardsHomeActivity::openSortSheet() {
-    auto& i18n = nxui::I18n::instance();
-    m_audio.playSfx(Sfx::ModalShow);
-    m_userSelect->show(
-        i18n.tr("cards.sort", "Sort"),
-        i18n.tr("cards.sort_desc", "Choose the order of your software."),
-        {
-            {i18n.tr("cards.sort_recent", "Last played"), [this]() { applySort(0); }, true},
-            {i18n.tr("cards.sort_title", "Title"), [this]() { applySort(1); }, true},
-            {i18n.tr("cards.sort_played", "Most played"), [this]() { applySort(2); }, true},
-        },
-        m_core.config().cardsSort, {});
-    focusManager().setFocus(m_userSelect.get());
-}
-
-void CardsHomeActivity::openSettingsSheet() {
-    auto& i18n = nxui::I18n::instance();
-    m_audio.playSfx(Sfx::ModalShow);
-    auto& config = m_core.config();
-
-    std::vector<OverlayDialog::ButtonDef> buttons;
-    buttons.push_back({
-        i18n.tr("cards.home_style", "HOME style") + ": " +
-            (config.homeStyle == home::HomeStyle::Classic ? i18n.tr("cards.home_style_classic", "Classic")
-                                                          : i18n.tr("cards.home_style_cards", "Cards")),
-        [this]() {
-            auto choose = [this](home::HomeStyle style) {
-                if (style == home::HomeStyle::Cards)
-                    return;
-                m_switchQueued = true;
-                m_switchTarget = style;
-            };
-            auto& i18n = nxui::I18n::instance();
-            m_audio.playSfx(Sfx::ModalShow);
-            m_userSelect->show(
-                i18n.tr("cards.home_style", "HOME style"),
-                i18n.tr("cards.home_style_desc", "Choose how the HOME Menu looks."),
-                {
-                    {i18n.tr("cards.home_style_classic", "Classic"),
-                     [choose]() { choose(home::HomeStyle::Classic); }, true},
-                    {i18n.tr("cards.home_style_cards", "Cards"),
-                     [choose]() { choose(home::HomeStyle::Cards); }, true},
-                },
-                1, {});
-        },
-        true
-    });
-
-    const std::string styleName = (config.cardsLaunchStyle == 1)
-        ? i18n.tr("cards.launch_zoom", "Card zoom")
-        : i18n.tr("cards.launch_fade", "Simple fade");
-    buttons.push_back({
-        i18n.tr("cards.launch_anim", "Launch animation") + ": " + styleName,
-        [this]() { openLaunchSettings(); },
-        true
-    });
-
-    const std::string askName = config.cardsAskUser
-        ? i18n.tr("common.active", "Active")
-        : i18n.tr("common.disabled", "Disabled");
-    buttons.push_back({
-        i18n.tr("cards.ask_user", "Ask who's playing") + ": " + askName,
-        [this]() {
-            auto& cfg = m_core.config();
-            cfg.cardsAskUser = !cfg.cardsAskUser;
-            cfg.save();
-#ifdef SWITCHU_MENU
-            switchu::commitSdCard("cards ask user");
-#endif
-            openSettingsSheet();
-        },
-        true
-    });
-
-    m_userSelect->show(
-        i18n.tr("settings.title", "Settings"),
-        i18n.tr("cards.settings_desc", "Configure the Cards frontend."),
-        std::move(buttons),
-        0, {});
-    focusManager().setFocus(m_userSelect.get());
-}
-
-void CardsHomeActivity::openLaunchSettings() {
-    auto& i18n = nxui::I18n::instance();
-    m_audio.playSfx(Sfx::ModalShow);
-    auto choose = [this](int style) {
-        auto& config = m_core.config();
-        config.cardsLaunchStyle = style;
-        config.save();
-#ifdef SWITCHU_MENU
-        switchu::commitSdCard("cards launch style");
-#endif
-        openSettingsSheet();
-    };
-    m_userSelect->show(
-        i18n.tr("cards.launch_anim", "Launch animation"),
-        i18n.tr("cards.launch_desc", "Choose how software opens."),
-        {
-            {i18n.tr("cards.launch_fade", "Simple fade"), [choose]() { choose(0); }, true},
-            {i18n.tr("cards.launch_zoom", "Card zoom"), [choose]() { choose(1); }, true},
-        },
-        m_core.config().cardsLaunchStyle, {});
-    focusManager().setFocus(m_userSelect.get());
-}
-
-void CardsHomeActivity::applySort(int mode) {
-    auto& config = m_core.config();
-    if (config.cardsSort == mode)
-        return;
-    config.cardsSort = mode;
-    if (!config.save())
-        DebugLog::log("[cards] cardsSort save failed");
-#ifdef SWITCHU_MENU
-    switchu::commitSdCard("cards sort");
-#endif
-    if (m_catalog.count() == 0)
-        return;
-    // Keep the chosen card in focus where it lands.
-    const std::uint64_t keep = m_catalog.at(m_selected).app.titleId;
-    m_catalog.sort(config);
-    const int index = m_catalog.indexOf(keep);
-    m_selected = index >= 0 ? index : 0;
-    m_scroll = static_cast<float>(m_selected);
-    DebugLog::log("[cards] sort %d", mode);
-}
-
 void CardsHomeActivity::moveSelection(int delta) {
     if (m_catalog.count() == 0)
         return;
@@ -1232,13 +1150,22 @@ void CardsHomeActivity::moveSelection(int delta) {
 void CardsHomeActivity::handleInput() {
     auto& in = app().input();
     using B = nxui::Button;
+    // Global shortcuts are available from every focus zone.
+    if (in.isDown(B::ZL) || in.isDown(B::ZR)) {
+        const int d = in.isDown(B::ZR) ? 1 : -1;
+        goToPage(pages::step(m_core.config().cards, m_page, d), d);
+        return;
+    }
+    if (in.isDown(B::R)) { openQuickSettings(); return; }
+    if (in.isDown(B::Y)) { openSortSheet(); return; }
+    if (in.isDown(B::Plus)) { openCardOptions(); return; }
     if (m_topZone) {
         constexpr int kTopCount = static_cast<int>(TopButton::Count);
-        const bool l = in.isDown(B::DLeft) || in.isDown(B::LStickL);
-        const bool r = in.isDown(B::DRight) || in.isDown(B::LStickR);
+        const bool l = in.isDown(B::DLeft) || (in.isDown(B::LStickL) || in.isDown(B::RStickL));
+        const bool r = in.isDown(B::DRight) || (in.isDown(B::LStickR) || in.isDown(B::RStickR));
         if (l && m_topIndex > 0) { --m_topIndex; m_audio.playSfx(Sfx::Navigate); }
         if (r && m_topIndex < kTopCount - 1) { ++m_topIndex; m_audio.playSfx(Sfx::Navigate); }
-        if (in.isDown(B::DDown) || in.isDown(B::LStickD) || in.isDown(B::B)) {
+        if (in.isDown(B::DDown) || (in.isDown(B::LStickD) || in.isDown(B::RStickD)) || in.isDown(B::B)) {
             m_topZone = false;
             m_audio.playSfx(Sfx::Navigate);
         } else if (in.isDown(B::A)) {
@@ -1251,11 +1178,11 @@ void CardsHomeActivity::handleInput() {
             m_panelZone = false;
             return;
         }
-        const bool l = in.isDown(B::DLeft) || in.isDown(B::LStickL);
-        const bool r = in.isDown(B::DRight) || in.isDown(B::LStickR);
+        const bool l = in.isDown(B::DLeft) || (in.isDown(B::LStickL) || in.isDown(B::RStickL));
+        const bool r = in.isDown(B::DRight) || (in.isDown(B::LStickR) || in.isDown(B::RStickR));
         if (l && m_panelIndex > 0) { --m_panelIndex; m_audio.playSfx(Sfx::Navigate); }
-        if (r && m_panelIndex < 1) { ++m_panelIndex; m_audio.playSfx(Sfx::Navigate); }
-        if (in.isDown(B::DUp) || in.isDown(B::LStickU) || in.isDown(B::B)) {
+        if (r && m_panelIndex < (m_core.config().cards.panelTitleId ? 2 : 1)) { ++m_panelIndex; m_audio.playSfx(Sfx::Navigate); }
+        if (in.isDown(B::DUp) || (in.isDown(B::LStickU) || in.isDown(B::RStickU)) || in.isDown(B::B)) {
             m_panelZone = false;
             m_audio.playSfx(Sfx::Navigate);
         } else if (in.isDown(B::A)) {
@@ -1263,7 +1190,10 @@ void CardsHomeActivity::handleInput() {
                 activateSelected();
                 return;
             }
-            openCardOptions();
+            if (m_panelIndex == 2)
+                activatePanelShortcut();
+            else
+                openCardOptions();
         }
 #ifdef SWITCHU_MENU
         else if (in.isDown(B::X) && m_core.launcher().isAppSuspended(m_catalog.at(m_selected).app.titleId)) {
@@ -1272,19 +1202,19 @@ void CardsHomeActivity::handleInput() {
 #endif
         return;
     }
-    if (in.isDown(B::DUp) || in.isDown(B::LStickU)) {
+    if (in.isDown(B::DUp) || (in.isDown(B::LStickU) || in.isDown(B::RStickU))) {
         m_topZone = true;
         m_audio.playSfx(Sfx::Navigate);
         return;
     }
-    if ((in.isDown(B::DDown) || in.isDown(B::LStickD)) && m_catalog.count() > 0) {
+    if ((in.isDown(B::DDown) || (in.isDown(B::LStickD) || in.isDown(B::RStickD))) && m_catalog.count() > 0) {
         m_panelZone = true;
         m_panelIndex = 0;
         m_audio.playSfx(Sfx::Navigate);
         return;
     }
-    const bool left = in.isHeld(B::DLeft) || in.isHeld(B::LStickL);
-    const bool right = in.isHeld(B::DRight) || in.isHeld(B::LStickR);
+    const bool left = in.isHeld(B::DLeft) || (in.isHeld(B::LStickL) || in.isHeld(B::RStickL));
+    const bool right = in.isHeld(B::DRight) || (in.isHeld(B::LStickR) || in.isHeld(B::RStickR));
     const int dir = left == right ? 0 : (left ? -1 : 1);
     if (dir != 0 && dir != m_repeatDir) {
         m_repeatDir = dir;
@@ -1300,10 +1230,6 @@ void CardsHomeActivity::handleInput() {
         m_repeatDir = 0;
     }
 
-    if (in.isDown(B::L))
-        moveSelection(-4);
-    if (in.isDown(B::R))
-        moveSelection(4);
     if (in.isDown(B::A)) {
         activateSelected();
         return; // nothing else on the frame a launch/resume starts
@@ -1319,6 +1245,10 @@ void CardsHomeActivity::handleInput() {
 void CardsHomeActivity::activateSelected() {
     if (m_selected < 0 || m_selected >= m_catalog.count())
         return;
+    if (m_catalog.at(m_selected).system) {
+        openSystemTile(m_catalog.at(m_selected).app.titleId);
+        return;
+    }
     launchTitle(m_catalog.at(m_selected));
 }
 
@@ -1438,35 +1368,6 @@ void CardsHomeActivity::confirmCloseSuspended() {
 }
 #endif
 
-// The "..." card options: the title's details, and Close software while it is
-// suspended. Delete, move and art pickers come with later steps.
-void CardsHomeActivity::openCardOptions() {
-    if (!m_userSelect || m_selected < 0 || m_selected >= m_catalog.count())
-        return;
-    auto& i18n = nxui::I18n::instance();
-    const AppEntry& app = m_catalog.at(m_selected).app;
-    char id[24];
-    std::snprintf(id, sizeof(id), "%016llX", static_cast<unsigned long long>(app.titleId));
-    const std::uint64_t played = m_core.config().playtimeOf(app.titleId);
-    std::string body = i18n.tr("game.title_id", "Title ID") + ": " + id + "\n" +
-                       i18n.tr("cards.played", "Played") + ": " +
-                       (played > 0 ? switchu::menu::playtime::format(played)
-                                   : i18n.tr("cards.not_played", "Not played yet"));
-    std::vector<OverlayDialog::ButtonDef> buttons;
-#ifdef SWITCHU_MENU
-    if (m_core.launcher().isAppSuspended(app.titleId)) {
-        buttons.push_back({i18n.tr("cards.close_software", "Close software"),
-                           // Deferred: show() inside the dialog's own button
-                           // handler would rebuild the actions it runs from.
-                           [this]() { m_closeConfirmQueued = true; }, true});
-    }
-#endif
-    buttons.push_back({i18n.tr("button.ok", "OK"), []() {}, true});
-    m_audio.playSfx(Sfx::ModalShow);
-    m_userSelect->show(app.title, body, std::move(buttons), 0, {});
-    focusManager().setFocus(m_userSelect.get());
-}
-
 void CardsHomeActivity::resumeSuspended() {
 #ifdef SWITCHU_MENU
     if (m_launching || m_leaving)
@@ -1570,6 +1471,34 @@ void CardsHomeActivity::handleSystemAction(SysAction action) {
         }
         if (m_userSelect && m_userSelect->isActive()) {
             m_userSelect->hide();
+            m_overlayLatch = true;
+            break;
+        }
+        if (m_text && m_text->isActive()) {
+            m_text->hide(false);
+            m_overlayLatch = true;
+            break;
+        }
+        if (m_quick && m_quick->isActive()) {
+            closeQuickSettings();
+            m_overlayLatch = true;
+            break;
+        }
+        if (m_tutorialCard > 0) {
+            m_tutorialCard = 0;
+            m_core.config().cards.tutorialDone = true;
+            saveConfig("cards tutorial dismissed");
+            m_waitRelease = true;
+            break;
+        }
+        if (m_sheet.isOpen()) {
+            m_sheet.close();
+            m_waitRelease = true;
+            break;
+        }
+        if (m_moving) {
+            finishMove(false);
+            m_waitRelease = true;
             break;
         }
         // HOME with nothing to dismiss returns to the suspended game.
@@ -1590,7 +1519,7 @@ void CardsHomeActivity::drawCard(nxui::Renderer& ren, int index, const nxui::Rec
     ren.drawRoundedRect({card.x - 3.f, card.y + 6.f + 6.f * chosen, card.width + 6.f, card.height + 6.f},
                         {0.f, 0.f, 0.f, shadow}, layout::kCardRadius + 3.f);
 
-    const nxui::Texture* cover = m_art.cover(id);
+    const nxui::Texture* cover = entry.system ? nullptr : m_art.cover(id);
     const float coverIn = cover ? std::min(1.f, m_art.coverAge(id, m_time) / 0.35f) : 0.f;
     if (coverIn < 1.f) {
         // No cover yet (or fading in): the icon on glass with the name.
@@ -1635,6 +1564,7 @@ void CardsHomeActivity::drawPanel(nxui::Renderer& ren) {
         const std::string msg = m_catalog.loading() ? i18n.tr("cards.loading", "Loading...")
                                                     : i18n.tr("cards.empty", "No software installed");
         m_chrome.textMid(ren, m_chrome.labelFont(), msg, p.x + 40.f, p.y + p.height * 0.5f, CardsChrome::kWhite);
+        drawPageDots(ren, p);
         return;
     }
     const auto& entry = m_catalog.at(m_selected);
@@ -1651,8 +1581,13 @@ void CardsHomeActivity::drawPanel(nxui::Renderer& ren) {
         ren.drawCircle({iconRect.x + 39.f, iconRect.y + 39.f}, 39.f, {1.f, 1.f, 1.f, 0.15f * d}, 40);
     const float tx = iconRect.right() + 15.f;
     const float maxW = p.right() - 30.f - tx;
-    m_chrome.textMid(ren, m_chrome.titleFont(), m_chrome.fit(m_chrome.titleFont(), entry.app.title, maxW), tx,
-                     p.y + 40.f, white);
+    if (const auto* logo = m_art.logo(id)) {
+        const float scale = std::min(maxW / static_cast<float>(logo->width()), 48.f / static_cast<float>(logo->height()));
+        ren.drawTexture(logo, {tx, p.y + 12.f, logo->width()*scale, logo->height()*scale}, white);
+    } else {
+        m_chrome.textMid(ren, m_chrome.titleFont(), m_chrome.fit(m_chrome.titleFont(), entry.app.title, maxW), tx,
+                         p.y + 40.f, white);
+    }
 
     // Primary pill (Play / Resume), white with dark text, and the "..." circle.
 #ifdef SWITCHU_MENU
@@ -1665,7 +1600,9 @@ void CardsHomeActivity::drawPanel(nxui::Renderer& ren) {
     // Play time and recency, as "1h 35m   Jogado há 54 minutos".
     std::string line;
     const std::uint64_t played = m_core.config().playtimeOf(id);
-    if (suspended) {
+    if (entry.system) {
+        line = i18n.tr("cards.system_tile", "Nintendo");
+    } else if (suspended) {
         const std::string openNow = i18n.tr("cards.open_now_desc", "Open now: Resume carries on");
         if (played > 0)
             line = switchu::menu::playtime::format(played) + "    " + openNow;
@@ -1710,14 +1647,23 @@ void CardsHomeActivity::drawPanel(nxui::Renderer& ren) {
     m_chrome.textMid(ren, lf, label, triX + 26.f, cy, ink);
     m_chrome.glassCircle(ren, button.right() + 46.f, cy, 72.f, dotsFocus, "dots", 30.f, m_time);
 
-    if (suspended) {
+    if (m_core.config().cards.panelTitleId != 0) {
+        const auto pin = m_core.config().cards.panelTitleId;
+        std::string title;
+        for (const auto& a : m_catalog.all())
+            if (a.titleId == pin) { title = a.title; break; }
+        if (title.empty()) title = i18n.tr("cards.panel_missing", "Software unavailable");
+        const nxui::Rect shortcut{p.right()-440.f, cy-34.f, 416.f, 68.f};
+        ren.drawRoundedRect(shortcut, CardsChrome::glassTint(1.8f), 26.f);
+        if (m_panelZone && m_panelIndex == 2)
+            ren.drawRoundedRectOutline(shortcut, CardsChrome::accent(0.95f), 26.f, 2.f);
+        m_chrome.textMid(ren, lf, m_chrome.fit(lf, title, shortcut.width-30.f), shortcut.x+15.f, cy, white);
+    } else if (suspended) {
         const std::string hint = i18n.tr("cards.hint_close", "X  Close software");
         m_chrome.textMid(ren, m_chrome.smallFont(), hint, button.right() + 100.f, cy, dim);
     }
 
-    // Page dots (one page for now) at the bottom right.
-    ren.drawCircle({p.right() - 52.f, p.bottom() - 16.f}, 3.5f, {1.f, 1.f, 1.f, 0.9f}, 12);
-    ren.drawCircle({p.right() - 40.f, p.bottom() - 16.f}, 3.5f, {1.f, 1.f, 1.f, 0.35f}, 12);
+    drawPageDots(ren, p);
 }
 
 void CardsHomeActivity::drawLaunch(nxui::Renderer& ren) {
@@ -1781,15 +1727,25 @@ void CardsHomeActivity::drawLaunch(nxui::Renderer& ren) {
 void CardsHomeActivity::onRender(nxui::Renderer& ren) {
     samplePerfFrame();
     // Background: the focused title's art, cross-faded from the previous one.
-    const nxui::Texture* bg = m_bgId ? m_art.background(m_bgId) : nullptr;
+    const auto& plainTitles = m_core.config().cards.plainBackgroundTitles;
+    const bool plain = std::find(plainTitles.begin(), plainTitles.end(), m_bgId) != plainTitles.end();
+    const nxui::Texture* bg = !plain && m_bgId ? m_art.background(m_bgId) : nullptr;
     const float bgIn = bg ? std::min(1.f, m_art.backgroundAge(m_bgId, m_time) / 0.6f) : 0.f;
-    const nxui::Texture* prev = m_bgPrevId ? m_art.background(m_bgPrevId) : nullptr;
+    const nxui::Texture* prev = !plain && m_bgPrevId ? m_art.background(m_bgPrevId) : nullptr;
     m_chrome.drawBackground(ren, bg, bgIn, prev, m_time);
 
     m_chrome.drawTopBar(ren, m_status, static_cast<TopButton>(m_topIndex), m_topZone, m_time);
+    auto& tr = nxui::I18n::instance();
+    const std::string pageLabel = m_page == AppConfig::CardsPrefs::kGames ? tr.tr("cards.page_games", "Games")
+        : m_page == AppConfig::CardsPrefs::kNintendo ? tr.tr("cards.page_nintendo", "Nintendo")
+                                                    : tr.tr("cards.page_media", "Media");
+    m_chrome.textMid(ren, m_chrome.smallFont(), "ZL  " + pageLabel + "  ZR", 30.f, 111.f,
+                     {1.f, 1.f, 1.f, 0.72f});
 
     // Neighbours first, focused card last so its outline sits on top.
     const bool zoomLeaving = m_leaving && m_core.config().cardsLaunchStyle == 1;
+    // Page change (E1): the new row slides in from the side it came from.
+    const float slide = (1.f - m_pageIn) * (1.f - m_pageIn) * 160.f * static_cast<float>(m_pageDir);
     for (int i = 0; i < m_catalog.count(); ++i) {
         if (i == m_selected)
             continue;
@@ -1797,15 +1753,24 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
             continue;
         nxui::Rect r;
         float chosen = 0.f;
-        if (layout::cardRect(i, m_scroll, r, chosen))
+        if (layout::cardRect(i, m_scroll, r, chosen)) {
+            r.x += slide;
             drawCard(ren, i, r, chosen);
+        }
     }
     if (m_selected >= 0 && m_selected < m_catalog.count()) {
         if (!(zoomLeaving && m_selected == m_leaveIndex)) {
             nxui::Rect r;
             float chosen = 0.f;
-            if (layout::cardRect(m_selected, m_scroll, r, chosen))
+            if (layout::cardRect(m_selected, m_scroll, r, chosen)) {
+                r.x += slide;
+                if (m_moving)
+                    r.y -= 18.f; // the carried card is lifted (C-IN-5)
                 drawCard(ren, m_selected, r, chosen);
+                if (m_moving)
+                    ren.drawRoundedRectOutline({r.x - 6.f, r.y - 6.f, r.width + 12.f, r.height + 12.f},
+                                               CardsChrome::accent(0.95f), layout::kCardRadius + 6.f, 4.f);
+            }
         }
     }
     drawPanel(ren);
@@ -1819,6 +1784,13 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
         ren.drawRoundedRect(box, {0.08f, 0.09f, 0.12f, 0.82f}, 22.f);
         m_chrome.textMid(ren, f, banner, box.x + 24.f, box.y + 22.f, CardsChrome::kWhite);
     }
+    drawMoveHint(ren);
+    m_sheet.render(ren, m_chrome);
+    drawTutorial(ren);
+    if (m_quick && m_quick->isActive())
+        m_quick->render(ren);
+    if (m_text && m_text->isActive())
+        m_text->render(ren);
     if (m_userSelect && m_userSelect->isActive())
         m_userSelect->render(ren);
     // D2 switch: fade to black on the way out, from black on the way in.

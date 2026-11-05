@@ -24,6 +24,10 @@ struct CardEntry {
     std::unique_ptr<nxui::Texture> icon;
     bool iconRequested = false;
     bool iconFailed = false;
+    // Nintendo page tile (cards::pages::SystemTile): icon from the assets,
+    // opened through AppletLauncher, no play data (HomeNX E1).
+    bool system = false;
+    std::string iconFile;
 };
 
 class CardsCatalog {
@@ -34,9 +38,27 @@ public:
     /// Returns true when the list was replaced.
     bool poll(AppListLoader& loader, const AppConfig& config);
     /// Reorders the cards by config.cardsSort (0 last opened, 1 title A-Z,
-    /// 2 most played). Icon textures and pending decodes follow by title id.
+    /// 2 most played, 3 my order). Media keeps its own order; Nintendo is
+    /// fixed. Icon textures and pending decodes follow by title id.
     void sort(const AppConfig& config);
     bool loading() const { return m_loading; }
+
+    /// Pages (HomeNX E1). Rebuilds the visible cards for `page` from the last
+    /// loaded catalogue; textures of cards leaving the page are released.
+    void setPage(int page, const AppConfig& config);
+    int page() const { return m_page; }
+    /// Rebuilds the current page (after a rename or a move to/from Media).
+    void rebuild(const AppConfig& config) { setPage(m_page, config); }
+    /// Where the Nintendo page finds its tile icons.
+    void setAssetsRoot(std::string root) { m_assetsRoot = std::move(root); }
+    /// Move mode (HomeNX E2): swaps cards i and j on the current page.
+    void swapEntries(int i, int j);
+    /// Title ids of the current page in their shown order.
+    std::vector<std::uint64_t> pageIds() const;
+    /// Number of installed titles on Games + Media (About section).
+    int installedCount() const { return static_cast<int>(m_all.size()); }
+    /// Every installed title (all pages), loader order.
+    const std::vector<AppEntry>& all() const { return m_all; }
 
     int count() const { return static_cast<int>(m_entries.size()); }
     CardEntry& at(int i) { return m_entries[static_cast<std::size_t>(i)]; }
@@ -61,9 +83,12 @@ private:
         std::future<void> future;
     };
 
-    std::vector<CardEntry> m_entries;
+    std::vector<AppEntry> m_all;        // every installed title, loader order
+    std::vector<CardEntry> m_entries;   // the current page
     std::vector<PendingIcon> m_pending;
     bool m_loading = false;
+    int m_page = 0;
+    std::string m_assetsRoot;
 };
 
 } // namespace cards

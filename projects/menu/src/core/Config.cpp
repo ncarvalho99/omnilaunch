@@ -122,6 +122,44 @@ bool AppConfig::load() {
     readJsonOpt(j, "cardsSort", cardsSort);
     readJsonOpt(j, "cardsLaunchStyle", cardsLaunchStyle);
     readJsonOpt(j, "cardsAskUser", cardsAskUser);
+    cards = CardsPrefs{};
+    if (auto it = j.find("cards"); it != j.end() && it->is_object()) {
+        const auto& c = *it;
+        readJsonOpt(c, "sort", cardsSort);
+        readJsonOpt(c, "launchStyle", cardsLaunchStyle);
+        readJsonOpt(c, "askUser", cardsAskUser);
+        readJsonOpt(c, "pageOrder", cards.pageOrder);
+        readJsonOpt(c, "hiddenPages", cards.hiddenPages);
+        readJsonOpt(c, "settingsOrder", cards.settingsOrder);
+        readJsonOpt(c, "tutorialDone", cards.tutorialDone);
+        auto readIds = [&c](const char* key, std::vector<std::uint64_t>& out) {
+            out.clear();
+            auto f = c.find(key);
+            if (f == c.end() || !f->is_array())
+                return;
+            for (const auto& v : *f) {
+                if (!v.is_string())
+                    continue;
+                const std::string s = v.get<std::string>();
+                if (s.size() != 16 || s.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos)
+                    continue;
+                const std::uint64_t id = std::strtoull(s.c_str(), nullptr, 16);
+                if (id != 0 && std::find(out.begin(), out.end(), id) == out.end())
+                    out.push_back(id);
+            }
+        };
+        readIds("gamesOrder", cards.gamesOrder);
+        readIds("mediaOrder", cards.mediaOrder);
+        readIds("mediaTitles", cards.mediaTitles);
+        readIds("iconTitles", cards.iconTitles);
+        readIds("coverBackgroundTitles", cards.coverBackgroundTitles);
+        readIds("plainBackgroundTitles", cards.plainBackgroundTitles);
+        readIds("logoTitles", cards.logoTitles);
+        std::vector<std::uint64_t> panel;
+        readIds("panelTitle", panel);
+        cards.panelTitleId = panel.empty() ? 0 : panel.front();
+    }
+    cards.normalize();
     readJsonOpt(j, "lastUpdateCheckDay", lastUpdateCheckDay);
     readJsonOpt(j, "clockUse12Hour", clockUse12Hour);
     readJsonOpt(j, "backgroundBlur", backgroundBlur);
@@ -317,9 +355,35 @@ bool AppConfig::save() const {
     j["defaultProfileUid"] = defaultProfileEnabled ? defaultProfileUid : std::string();
     j["tutorialCompleted"] = tutorialCompleted;
     j["homeStyle"] = home::homeStyleName(homeStyle);
-    j["cardsSort"] = cardsSort;
-    j["cardsLaunchStyle"] = cardsLaunchStyle;
-    j["cardsAskUser"] = cardsAskUser;
+    {
+        auto ids = [](const std::vector<std::uint64_t>& in) {
+            nlohmann::json arr = nlohmann::json::array();
+            char key[17];
+            for (std::uint64_t tid : in) {
+                std::snprintf(key, sizeof(key), "%016llX", (unsigned long long)tid);
+                arr.push_back(std::string(key));
+            }
+            return arr;
+        };
+        nlohmann::json c = nlohmann::json::object();
+        c["sort"] = cardsSort;
+        c["launchStyle"] = cardsLaunchStyle;
+        c["askUser"] = cardsAskUser;
+        c["pageOrder"] = cards.pageOrder;
+        c["hiddenPages"] = cards.hiddenPages;
+        c["gamesOrder"] = ids(cards.gamesOrder);
+        c["mediaOrder"] = ids(cards.mediaOrder);
+        c["mediaTitles"] = ids(cards.mediaTitles);
+        c["iconTitles"] = ids(cards.iconTitles);
+        c["coverBackgroundTitles"] = ids(cards.coverBackgroundTitles);
+        c["plainBackgroundTitles"] = ids(cards.plainBackgroundTitles);
+        c["logoTitles"] = ids(cards.logoTitles);
+        c["panelTitle"] = ids(cards.panelTitleId ? std::vector<std::uint64_t>{cards.panelTitleId}
+                                               : std::vector<std::uint64_t>{});
+        c["settingsOrder"] = cards.settingsOrder;
+        c["tutorialDone"] = cards.tutorialDone;
+        j["cards"] = std::move(c);
+    }
     j["lastUpdateCheckDay"] = lastUpdateCheckDay;
     j["clockUse12Hour"] = clockUse12Hour;
     j["backgroundBlur"] = backgroundBlur;
@@ -446,4 +510,30 @@ bool AppConfig::save() const {
     // from two threads at once is its own hazard, and the author's build —
     // which does not corrupt — commits nowhere.
     return true;
+}
+
+void AppConfig::CardsPrefs::normalize() {
+    // Pages offered in this build. Homebrew (1) joins with the NRO host (F3).
+    static constexpr int kListed[] = {kGames, kNintendo, kMedia};
+    auto listed = [](int p) {
+        for (int k : kListed)
+            if (k == p) return true;
+        return false;
+    };
+    std::vector<int> order;
+    for (int p : pageOrder)
+        if (listed(p) && std::find(order.begin(), order.end(), p) == order.end())
+            order.push_back(p);
+    for (int k : kListed)
+        if (std::find(order.begin(), order.end(), k) == order.end())
+            order.push_back(k);
+    pageOrder = std::move(order);
+
+    std::vector<int> hidden;
+    for (int p : hiddenPages)
+        if (listed(p) && std::find(hidden.begin(), hidden.end(), p) == hidden.end())
+            hidden.push_back(p);
+    if (hidden.size() >= pageOrder.size()) // one page always shows
+        hidden.erase(std::remove(hidden.begin(), hidden.end(), pageOrder.front()), hidden.end());
+    hiddenPages = std::move(hidden);
 }

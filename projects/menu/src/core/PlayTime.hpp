@@ -35,6 +35,10 @@ std::vector<std::pair<std::uint64_t, std::uint64_t>> queryAll(
 // round trip, so it belongs on a worker thread.
 std::optional<std::uint64_t> queryLastPlayed(std::uint64_t titleId);
 
+// How many times the system recorded this title being started; nullopt when
+// pdm could not answer. One IPC round trip: call it on a worker thread.
+std::optional<std::uint32_t> queryLaunches(std::uint64_t titleId);
+
 // "12 h 5 min", or "40 min" under an hour. Empty for zero.
 std::string format(std::uint64_t nanoseconds);
 

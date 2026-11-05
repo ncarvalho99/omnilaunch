@@ -14,6 +14,8 @@
 #include <unordered_map>
 #include <vector>
 
+struct AppConfig;
+
 namespace nxui { class GpuDevice; class Renderer; class ThreadPool; }
 
 namespace cards {
@@ -35,6 +37,8 @@ public:
               const std::vector<std::uint64_t>& wanted, const std::vector<std::uint64_t>& keep,
               std::uint64_t focused, float now, int uploadBudget);
 
+    void setConfig(const AppConfig* config) { m_config = config; }
+    const nxui::Texture* logo(std::uint64_t titleId) const;
     void releaseAll();
 
     /// Path helpers (also used for "has a cover" decisions). Empty if none.
@@ -50,16 +54,18 @@ private:
     };
     struct Job {
         std::uint64_t titleId = 0;
-        bool background = false;
+        int kind = 0; // 0 cover, 1 background, 2 logo
         std::shared_ptr<nxui::DecodedImage> image;
         std::shared_ptr<std::atomic<bool>> cancelled;
         std::future<void> future;
     };
 
-    void request(nxui::ThreadPool& pool, std::uint64_t titleId, bool background);
+    void request(nxui::ThreadPool& pool, std::uint64_t titleId, int kind);
 
     std::unordered_map<std::uint64_t, Slot> m_covers;
     std::unordered_map<std::uint64_t, Slot> m_backgrounds;
+    std::unordered_map<std::uint64_t, Slot> m_logos;
+    const AppConfig* m_config = nullptr;
     std::vector<Job> m_jobs;
 };
 

@@ -10,17 +10,21 @@
 #include "cards/CardsArt.hpp"
 #include "cards/CardsCatalog.hpp"
 #include "cards/CardsChrome.hpp"
+#include "cards/CardsSheet.hpp"
 #include "core/AudioManager.hpp"
 #include "core/LeaveFrameCache.hpp"
 #include "core/SystemMessages.hpp"
 #include "home/HomeStyle.hpp"
 #include "widgets/LockScreen.hpp"
+#include "widgets/QuickSettingsOverlay.hpp"
+#include "settings/TextEntryScreen.hpp"
 #include <nxui/Activity.hpp>
 #include <nxui/Theme.hpp>
 #include <nxui/core/Font.hpp>
 #include <nxui/core/Texture.hpp>
 #include <cstdint>
 #include <future>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -69,7 +73,6 @@ private:
     void openCardOptions();
     void openSortSheet();
     void openSettingsSheet();
-    void openLaunchSettings();
     void applySort(int mode);
     void updateDetails(float dt);
     void updateLock(float dt);
@@ -91,6 +94,32 @@ private:
     void perfLine(const std::string& line);
     float sinceStartMs() const;
     void samplePerfFrame();
+
+    // HomeNX batch 1 (E1-E11): pages, move mode, sheets.
+    void goToPage(int page, int dir);
+    void drawPageDots(nxui::Renderer& ren, const nxui::Rect& panel);
+    void drawMoveHint(nxui::Renderer& ren);
+    void openSystemTile(std::uint64_t id);
+    void startMove();
+    void finishMove(bool keep);
+    void handleMoveInput();
+    void saveConfig(const char* why);
+    void openDotsMenu();
+    void openUsersSheet();
+    void openNotificationsSheet();
+    void openAchievementsSheet(std::uint64_t titleId);
+    void openQuickSettings();
+    void closeQuickSettings();
+    void requestText(const std::string& title, const std::string& guide, const std::string& initial,
+                     std::function<void(const std::string&)> onAccept);
+    void renameSelected();
+    void openArtSheet(std::uint64_t titleId);
+    void activatePanelShortcut();
+    void reorderSettingsSection(int delta);
+    void maybeShowTutorial();
+    void drawTutorial(nxui::Renderer& ren);
+    bool overlayActive() const;
+    std::vector<CardsSheet::Section> settingsSections();
 
     home::HomeCore& m_core;
     AudioManager& m_audio;
@@ -130,6 +159,31 @@ private:
     float m_toastUntil = 0.f;
     float m_detailChangedAt = 0.f;
     std::shared_ptr<OverlayDialog> m_userSelect;
+
+    // Pages (E1): the shown page and the focus kept per page.
+    int m_page = 0;
+    std::map<int, std::uint64_t> m_pageFocus;
+    float m_pageIn = 1.f;   // 0 -> 1 page slide
+    int m_pageDir = 1;
+    // Move mode (E2).
+    bool m_moving = false;
+    bool m_playtimeSortDeferred = false;
+    int m_moveFrom = -1;
+    std::vector<std::uint64_t> m_moveBackup;
+    // Sheets (E3-E7, E11), quick settings (E6), text entry (E9 part).
+    CardsSheet m_sheet;
+    std::shared_ptr<QuickSettingsOverlay> m_quick;
+    std::shared_ptr<TextEntryScreen> m_text;
+    nxui::Theme m_overlayTheme = nxui::Theme::dark();
+    nxui::Font m_fontIcons;
+    // Welcome tutorial (E9, C-UI-1): 0 = hidden, else card 1..4.
+    int m_tutorialCard = 0;
+    float m_tutorialIn = 0.f;
+    // Achievements newly earned while away, said once on arrival (E11).
+    // An overlay was open this frame: its press must not reach the row.
+    bool m_overlayLatch = false;
+    // This activation was a fast return: no automatic welcome tour.
+    bool m_tutorialBlocked = false;
 
     int m_selected = 0;
     float m_scroll = 0.f;

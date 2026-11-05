@@ -1,5 +1,6 @@
 #include "cards/CardsArt.hpp"
 #include "core/DebugLog.hpp"
+#include "core/Config.hpp"
 #include "steamgriddb/SteamGridDbManager.hpp"
 #include <nxui/core/GpuDevice.hpp>
 #include <nxui/core/Renderer.hpp>
@@ -78,28 +79,33 @@ float CardsArt::backgroundAge(std::uint64_t titleId, float now) const {
     return it != m_backgrounds.end() && it->second.tex ? now - it->second.shownAt : 0.f;
 }
 
-void CardsArt::request(nxui::ThreadPool& pool, std::uint64_t titleId, bool background) {
-    auto& slot = (background ? m_backgrounds : m_covers)[titleId];
+void CardsArt::request(nxui::ThreadPool& pool, std::uint64_t titleId, int kind) {
+    auto& slot = (kind == 2 ? m_logos : kind == 1 ? m_backgrounds : m_covers)[titleId];
     if (slot.tex || slot.requested || slot.missing)
         return;
     slot.requested = true;
     Job job;
     job.titleId = titleId;
-    job.background = background;
+    job.kind = kind;
     job.image = std::make_shared<nxui::DecodedImage>();
     job.cancelled = std::make_shared<std::atomic<bool>>(false);
     auto image = job.image;
     auto cancelled = job.cancelled;
+    const auto contains = [titleId](const std::vector<std::uint64_t>& list) {
+        return std::find(list.begin(), list.end(), titleId) != list.end();
+    };
+    const bool coverBg = m_config && contains(m_config->cards.coverBackgroundTitles);
     try {
-        job.future = pool.submit([image, cancelled, titleId, background]() {
+        job.future = pool.submit([image, cancelled, titleId, kind, coverBg]() {
             if (cancelled->load())
                 return;
-            std::string path = background ? heroPath(titleId) : std::string();
-            if (path.empty())
+            std::string path = kind == 2 ? SteamGridDbManager::logoPath(titleId)
+                             : kind == 1 && !coverBg ? heroPath(titleId) : std::string();
+            if (path.empty() && kind != 2)
                 path = coverPath(titleId);
             if (path.empty() || cancelled->load())
                 return;
-            *image = nxui::Texture::decodeFile(path, background ? kBackgroundMaxSide : kCoverMaxSide);
+            *image = nxui::Texture::decodeFile(path, kind == 1 ? kBackgroundMaxSide : kCoverMaxSide);
         });
     } catch (...) {
         slot.requested = false; // pool shutting down
@@ -121,7 +127,7 @@ void CardsArt::pump(nxui::GpuDevice& gpu, nxui::Renderer& ren, nxui::ThreadPool&
         if (uploadBudget <= 0)
             break;
         try { it->future.get(); } catch (...) {}
-        auto& slot = (it->background ? m_backgrounds : m_covers)[it->titleId];
+        auto& slot = (it->kind == 2 ? m_logos : it->kind == 1 ? m_backgrounds : m_covers)[it->titleId];
         slot.requested = false;
         if (it->image->valid()) {
             auto tex = std::make_unique<nxui::Texture>();
@@ -161,10 +167,26 @@ void CardsArt::pump(nxui::GpuDevice& gpu, nxui::Renderer& ren, nxui::ThreadPool&
         ++it;
     }
 
+    auto has = [](const std::vector<std::uint64_t>& v, std::uint64_t id) {
+        return std::find(v.begin(), v.end(), id) != v.end();
+    };
     for (std::uint64_t id : wanted)
-        request(pool, id, false);
-    if (focused != 0)
-        request(pool, focused, true);
+        if (!m_config || !has(m_config->cards.iconTitles, id))
+            request(pool, id, 0);
+    if (focused != 0) {
+        if (!m_config || !has(m_config->cards.plainBackgroundTitles, focused))
+            request(pool, focused, 1);
+        if (m_config && has(m_config->cards.logoTitles, focused))
+            request(pool, focused, 2);
+    }
+    for (auto it = m_logos.begin(); it != m_logos.end();)
+        if (it->first != focused && !it->second.requested) it = m_logos.erase(it);
+        else ++it;
+}
+
+const nxui::Texture* CardsArt::logo(std::uint64_t titleId) const {
+    const auto it = m_logos.find(titleId);
+    return it == m_logos.end() ? nullptr : it->second.tex.get();
 }
 
 void CardsArt::releaseAll() {
@@ -177,6 +199,7 @@ void CardsArt::releaseAll() {
     m_jobs.clear();
     m_covers.clear();
     m_backgrounds.clear();
+    m_logos.clear();
 }
 
 } // namespace cards
