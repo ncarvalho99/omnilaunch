@@ -38,6 +38,12 @@ struct AppConfig {
     // 0 = last opened (default), 1 = title A-Z, 2 = most played.
     int cardsSort = 0;
     static constexpr int kCardsSortCount = 3;
+    // Cards launch animation style (HomeNX D4, C-UI-17 partial):
+    // 0 = simple fade (default), 1 = card zoom ("Salto do cartão").
+    int cardsLaunchStyle = 0;
+    static constexpr int kCardsLaunchStyleCount = 2;
+    // Ask who's playing before launching a title in Cards (HomeNX D4).
+    bool cardsAskUser = false;
     // Day number of the last update check, so the console asks GitHub once a
     // day rather than on every return from a game.
     int   lastUpdateCheckDay = 0;

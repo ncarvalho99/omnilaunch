@@ -67,6 +67,8 @@ private:
     void activateTop();
     void openCardOptions();
     void openSortSheet();
+    void openSettingsSheet();
+    void openLaunchSettings();
     void applySort(int mode);
     void updateDetails(float dt);
     void updateLock(float dt);
@@ -82,6 +84,7 @@ private:
     bool saveLeaveFrame(nxui::Renderer& ren);
     void updateLeaveSplashHandoff(float dt);
     bool leaveSplashActive() const { return m_leaveSplashPhase != LeaveSplashPhase::None; }
+    void drawLaunch(nxui::Renderer& ren);
 
     home::HomeCore& m_core;
     AudioManager& m_audio;
@@ -131,6 +134,14 @@ private:
     // Seconds since a launch/resume command was sent. The launcher closes the
     // menu on success; if it did not (enqueue failure), input comes back.
     float m_launchElapsed = 0.f;
+    // Launch animations (HomeNX D4, C-UI-17 partial).
+    bool m_leaving = false;
+    bool m_leaveIsResume = false;
+    float m_leaveT = 0.f;
+    float m_leaveDur = 0.45f;
+    int m_leaveIndex = -1;
+    std::uint64_t m_leaveTitleId = 0;
+    AccountUid m_leaveUid = {};
     bool m_refreshQueued = false;
     bool m_audioStarted = false;
     bool m_playtimeQueued = true;
