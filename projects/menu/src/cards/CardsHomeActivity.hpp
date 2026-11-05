@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <future>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -85,6 +86,11 @@ private:
     void updateLeaveSplashHandoff(float dt);
     bool leaveSplashActive() const { return m_leaveSplashPhase != LeaveSplashPhase::None; }
     void drawLaunch(nxui::Renderer& ren);
+    void initPerfLog(bool isSwitch, bool isColdBoot);
+    void flushPerfLog();
+    void perfLine(const std::string& line);
+    float sinceStartMs() const;
+    void samplePerfFrame();
 
     home::HomeCore& m_core;
     AudioManager& m_audio;
@@ -190,6 +196,18 @@ private:
     bool m_leaveCapturePending = false;
     std::function<void()> m_leaveCaptureAfter;
     std::uint64_t m_leavePreviewSuspendedTitleId = 0;
+
+    // Performance log (HomeNX D5, C-PF-6).
+    uint64_t m_perfCreateTick = 0;
+    uint64_t m_perfLastFrameTick = 0;
+    std::string m_perfOut;
+    std::mutex m_perfMutex;
+    float m_perfWindow = 0.f;
+    int m_perfFrames = 0;
+    int m_perfSlow = 0;
+    int m_perfVerySlow = 0;
+    float m_perfWorst = 0.f;
+    bool m_perfFirstFrameLogged = false;
 };
 
 } // namespace cards

@@ -26,6 +26,8 @@
 #include <sys/statvfs.h>
 #include <cstdio>
 #include <ctime>
+#include <filesystem>
+#include <fstream>
 
 namespace cards {
 
@@ -224,6 +226,131 @@ void CardsHomeActivity::updateLeaveSplashHandoff(float dt) {
     }
 }
 
+float CardsHomeActivity::sinceStartMs() const {
+#ifdef SWITCHU_MENU
+    return static_cast<float>(armTicksToNs(armGetSystemTick() - m_perfCreateTick) / 1000000ULL);
+#else
+    return m_time * 1000.f;
+#endif
+}
+
+void CardsHomeActivity::perfLine(const std::string& line) {
+    char head[32];
+    std::snprintf(head, sizeof(head), "[%8.1f s] ", sinceStartMs() / 1000.f);
+    std::lock_guard<std::mutex> lk(m_perfMutex);
+    m_perfOut += head;
+    m_perfOut += line;
+    m_perfOut += "\n";
+}
+
+void CardsHomeActivity::flushPerfLog() {
+    std::string out;
+    {
+        std::lock_guard<std::mutex> lk(m_perfMutex);
+        if (m_perfOut.empty())
+            return;
+        out.swap(m_perfOut);
+    }
+#ifdef SWITCHU_MENU
+    std::error_code ec;
+    std::filesystem::create_directories("sdmc:/config/OmniLaunch", ec);
+    std::ofstream f("sdmc:/config/OmniLaunch/perf.log", std::ios::app);
+    if (f)
+        f << out;
+#else
+    (void)out;
+#endif
+}
+
+void CardsHomeActivity::initPerfLog(bool isSwitch, bool isColdBoot) {
+#ifdef SWITCHU_MENU
+    m_perfCreateTick = armGetSystemTick();
+    m_perfLastFrameTick = 0;
+    m_perfFirstFrameLogged = false;
+
+    std::error_code ec;
+    if (std::filesystem::file_size("sdmc:/config/OmniLaunch/perf.log", ec) > (512u << 10) && !ec) {
+        std::filesystem::remove("sdmc:/config/OmniLaunch/perf.old.log", ec);
+        std::filesystem::rename("sdmc:/config/OmniLaunch/perf.log", "sdmc:/config/OmniLaunch/perf.old.log", ec);
+    }
+
+    const char* kind = isSwitch ? "(HOME, frontend switch)"
+                                : (isColdBoot ? "(HOME, console start)"
+                                              : "(HOME, back from game or applet)");
+    char head[128];
+    std::snprintf(head, sizeof(head), "=== OmniLaunch Cards 1.2.2 %s ===", kind);
+    perfLine(head);
+
+    u64 total = 0, used = 0;
+    svcGetInfo(&total, InfoType_TotalMemorySize, CUR_PROCESS_HANDLE, 0);
+    svcGetInfo(&used, InfoType_UsedMemorySize, CUR_PROCESS_HANDLE, 0);
+    std::snprintf(head, sizeof(head), "memory: %llu MB total, %llu MB used, %llu MB image budget",
+                  static_cast<unsigned long long>(total >> 20),
+                  static_cast<unsigned long long>(used >> 20),
+                  static_cast<unsigned long long>(app().gpu().imageMemoryBudget() >> 20));
+    perfLine(head);
+
+    if (m_core.launcher().suspendedTitleId() != 0) {
+        std::snprintf(head, sizeof(head), "suspended title: 0x%016llX",
+                      static_cast<unsigned long long>(m_core.launcher().suspendedTitleId()));
+        perfLine(head);
+    }
+#else
+    (void)isSwitch;
+    (void)isColdBoot;
+#endif
+}
+
+void CardsHomeActivity::samplePerfFrame() {
+#ifdef SWITCHU_MENU
+    const uint64_t frameTick = armGetSystemTick();
+    if (!m_perfFirstFrameLogged) {
+        m_perfFirstFrameLogged = true;
+        const auto firstFrameMs = static_cast<unsigned long>(
+            armTicksToNs(frameTick - m_perfCreateTick) / 1000000ULL);
+        char line[64];
+        std::snprintf(line, sizeof(line), "first frame: %lu ms", firstFrameMs);
+        perfLine(line);
+        m_perfLastFrameTick = frameTick;
+        return;
+    }
+
+    if (m_perfLastFrameTick != 0) {
+        const float interval = static_cast<float>(
+            armTicksToNs(frameTick - m_perfLastFrameTick) / 1000000ULL);
+        m_perfFrames++;
+        m_perfWindow += interval;
+        if (interval > m_perfWorst)
+            m_perfWorst = interval;
+        if (interval > 20.f)
+            m_perfSlow++;
+        if (interval > 33.3f) {
+            m_perfVerySlow++;
+            char line[128];
+            std::snprintf(line, sizeof(line), "slow frame: %.1f ms (budget 16.6 ms)", interval);
+            perfLine(line);
+        }
+
+        // 10 second rolling summary window
+        if (m_perfWindow >= 10000.f) {
+            const float fps = m_perfWindow > 0.f ? (m_perfFrames * 1000.f / m_perfWindow) : 60.f;
+            char line[160];
+            std::snprintf(line, sizeof(line),
+                          "10 s: %.1f fps, worst frame %.1f ms, %d over 20 ms, %d over 33 ms",
+                          fps, m_perfWorst, m_perfSlow, m_perfVerySlow);
+            perfLine(line);
+            m_perfFrames = 0;
+            m_perfSlow = 0;
+            m_perfVerySlow = 0;
+            m_perfWorst = 0.f;
+            m_perfWindow = 0.f;
+            flushPerfLog();
+        }
+    }
+    m_perfLastFrameTick = frameTick;
+#endif
+}
+
 bool CardsHomeActivity::onCreate() {
     DebugLog::log("[cards] activity create");
     const bool isSwitch = m_core.frontendSwitchActivation();
@@ -251,6 +378,7 @@ bool CardsHomeActivity::onCreate() {
                              m_core.startMode() == switchu::smi::MenuStartMode::StartupBoot);
     m_fastReturn = !isSwitch && (!isColdBoot || m_core.launcher().suspendedTitleId() != 0);
     m_fastReturnStartupTick = m_fastReturn ? createStartTick : 0;
+    initPerfLog(isSwitch, isColdBoot);
     DebugLog::log("[cards] return mode: fastReturn=%d (startMode=%u reason=%u switch=%d suspended=0x%016llX)",
                   m_fastReturn ? 1 : 0,
                   static_cast<unsigned>(m_core.startMode()),
@@ -425,6 +553,7 @@ void CardsHomeActivity::onDestroy() {
     // Frontend-owned GPU resources (audit §6.1 rule 3).
     m_chrome.release();
     m_avatar.reset();
+    flushPerfLog();
 }
 
 nxui::Widget* CardsHomeActivity::focusRoot() {
@@ -1636,6 +1765,7 @@ void CardsHomeActivity::drawLaunch(nxui::Renderer& ren) {
 }
 
 void CardsHomeActivity::onRender(nxui::Renderer& ren) {
+    samplePerfFrame();
     // Background: the focused title's art, cross-faded from the previous one.
     const nxui::Texture* bg = m_bgId ? m_art.background(m_bgId) : nullptr;
     const float bgIn = bg ? std::min(1.f, m_art.backgroundAge(m_bgId, m_time) / 0.6f) : 0.f;
