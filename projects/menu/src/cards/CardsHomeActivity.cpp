@@ -315,6 +315,14 @@ void CardsHomeActivity::samplePerfFrame() {
         return;
     }
 
+    // Lock screen, low-power (render disabled) and sleep are not frames: the
+    // first frame after them would otherwise report the whole idle gap as one
+    // slow frame (D5 console run: "slow frame: 12810.0 ms" across a lock).
+    if (m_lock.isLocked() || !app().renderEnabled()) {
+        m_perfLastFrameTick = 0;
+        return;
+    }
+
     if (m_perfLastFrameTick != 0) {
         const float interval = static_cast<float>(
             armTicksToNs(frameTick - m_perfLastFrameTick) / 1000000ULL);
@@ -649,6 +657,12 @@ void CardsHomeActivity::refreshCatalogue() {
 
 void CardsHomeActivity::onUpdate(float dt) {
     m_time += dt;
+#ifdef SWITCHU_MENU
+    // onRender stops while the lock screen has the display off; restart the
+    // frame-interval measurement instead of bridging the idle gap (D5 fix).
+    if (m_lock.isLocked() || !app().renderEnabled())
+        m_perfLastFrameTick = 0;
+#endif
 
     const std::uint64_t previousId =
         (m_selected >= 0 && m_selected < m_catalog.count()) ? m_catalog.at(m_selected).app.titleId : 0;
