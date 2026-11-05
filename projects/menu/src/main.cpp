@@ -396,6 +396,7 @@ int main(int argc, char* argv[]) {
         homeCore.runShutdownPhase(home::ShutdownPhase::Audio);
         homeCore.runShutdownPhase(home::ShutdownPhase::ProcessExit);
 #else
+        homeCore.setStartMode(startMode);
         homeCore.setStartupStatus(sysStatus);
         homeCore.setMenuMainTrace(menuMainTick, menuMainCore);
         // C7: every frontend comes from home::makeFrontend, reading the style

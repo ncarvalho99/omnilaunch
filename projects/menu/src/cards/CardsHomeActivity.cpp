@@ -1,6 +1,7 @@
 #include "cards/CardsHomeActivity.hpp"
 #include "cards/CardsLayout.hpp"
 #include "core/DebugLog.hpp"
+#include "core/LeaveFrameCache.hpp"
 #include "core/PlayTime.hpp"
 #include "home/HomeCore.hpp"
 #include "home/HomeFrontend.hpp"
@@ -68,18 +69,162 @@ bool parseAccountUid(const std::string& s, AccountUid& out) {
 } // namespace
 
 CardsHomeActivity::CardsHomeActivity(home::HomeCore& core)
-    : m_core(core), m_audio(core.audioServices().audio) {}
+    : m_core(core), m_audio(core.audioServices().audio) {
+#ifdef SWITCHU_MENU
+    const bool isSwitch = core.frontendSwitchActivation();
+    const bool isColdBoot = (core.transitionReason() == switchu::smi::MenuTransitionReason::StartupBoot ||
+                             core.transitionReason() == switchu::smi::MenuTransitionReason::Unknown ||
+                             core.startMode() == switchu::smi::MenuStartMode::StartupBoot);
+    m_fastReturn = !isSwitch && (!isColdBoot || core.launcher().suspendedTitleId() != 0);
+#endif
+}
 
 CardsHomeActivity::~CardsHomeActivity() = default;
 
+bool CardsHomeActivity::presentInitialFrame(nxui::Renderer& ren) {
+#ifdef SWITCHU_MENU
+    if (!m_fastReturn)
+        return false;
+
+    LeaveFrameImage image;
+    if (LeaveFrameCache::load(m_leaveSession, image) && image.valid()
+        && m_leaveSplashTex.loadFromPixels(app().gpu(), ren,
+                                           image.rgba.data(), image.width, image.height)) {
+        ren.drawTexture(&m_leaveSplashTex, {0.f, 0.f, 1280.f, 720.f});
+        m_leaveSplashDrawn = true;
+        m_leaveSplashPhase = LeaveSplashPhase::Hold;
+        m_leaveSplashHoldRemaining = kLeaveSplashHoldDur;
+        m_leaveSplashFade = 1.f;
+        DebugLog::log("[cards] splash %dx%d page=%d focus=%016llX",
+                      image.width, image.height, m_leaveSession.page,
+                      static_cast<unsigned long long>(m_leaveSession.focusTitleId));
+        return true;
+    }
+
+    // No cached frame — still avoid pure black while onCreate runs.
+    ren.drawRect({0.f, 0.f, 1280.f, 720.f}, nxui::Color(0.07f, 0.12f, 0.18f, 1.f));
+    m_leaveSplashDrawn = true;
+    m_leaveSplashPhase = LeaveSplashPhase::None;
+    m_leaveSplashFade = 0.f;
+    DebugLog::log("[cards] splash fallback solid");
+    return true;
+#else
+    (void)ren;
+    return false;
+#endif
+}
+
+void CardsHomeActivity::onAfterPresent(nxui::Renderer& ren) {
+#ifdef SWITCHU_MENU
+    if (!m_leaveCapturePending)
+        return;
+
+    m_leaveCapturePending = false;
+    saveLeaveFrame(ren);
+    m_leavePreviewSuspendedTitleId = 0;
+    if (m_leaveCaptureAfter) {
+        auto after = std::move(m_leaveCaptureAfter);
+        m_leaveCaptureAfter = {};
+        after();
+    }
+#else
+    (void)ren;
+#endif
+}
+
+void CardsHomeActivity::scheduleLeaveCapture(std::function<void()> afterCapture,
+                                             std::uint64_t previewSuspendedTitleId) {
+#ifdef SWITCHU_MENU
+    if (previewSuspendedTitleId != 0)
+        m_leavePreviewSuspendedTitleId = previewSuspendedTitleId;
+
+    if (m_leaveCapturePending) {
+        if (!afterCapture)
+            return;
+        if (m_leaveCaptureAfter) {
+            auto prev = std::move(m_leaveCaptureAfter);
+            m_leaveCaptureAfter = [prev = std::move(prev),
+                                   next = std::move(afterCapture)]() mutable {
+                if (prev) prev();
+                if (next) next();
+            };
+        } else {
+            m_leaveCaptureAfter = std::move(afterCapture);
+        }
+        return;
+    }
+    m_leaveCapturePending = true;
+    m_leaveCaptureAfter = std::move(afterCapture);
+#else
+    (void)previewSuspendedTitleId;
+    if (afterCapture)
+        afterCapture();
+#endif
+}
+
+bool CardsHomeActivity::saveLeaveFrame(nxui::Renderer& ren) {
+#ifdef SWITCHU_MENU
+    std::vector<std::uint8_t> rgba;
+    int width = 0;
+    int height = 0;
+    if (!ren.downloadFramebufferRgba(rgba, width, height, false)) {
+        DebugLog::log("[cards] framebuffer download failed");
+        return false;
+    }
+
+    LeaveFrameSession session;
+    session.valid = true;
+    session.page = 0;
+    session.openFolderId = 0;
+    session.focusTitleId = (m_selected >= 0 && m_selected < m_catalog.count())
+        ? m_catalog.at(m_selected).app.titleId : 0;
+
+    if (!LeaveFrameCache::save(session, rgba.data(), width, height)) {
+        DebugLog::log("[cards] leave cache write failed");
+        return false;
+    }
+
+    DebugLog::log("[cards] leave saved %dx%d focus=%016llX",
+                  width, height, static_cast<unsigned long long>(session.focusTitleId));
+    return true;
+#else
+    (void)ren;
+    return false;
+#endif
+}
+
+void CardsHomeActivity::updateLeaveSplashHandoff(float dt) {
+    if (m_leaveSplashPhase == LeaveSplashPhase::Hold) {
+        m_leaveSplashHoldRemaining -= dt;
+        if (m_leaveSplashHoldRemaining <= 0.f) {
+            m_leaveSplashHoldRemaining = 0.f;
+            m_leaveSplashPhase = LeaveSplashPhase::Fade;
+            DebugLog::log("[cards] splash crossfade begin");
+        }
+        return;
+    }
+
+    if (m_leaveSplashPhase == LeaveSplashPhase::Fade) {
+        m_leaveSplashFade = std::max(0.f, m_leaveSplashFade - dt / kLeaveSplashFadeDur);
+        if (m_leaveSplashFade <= 0.f) {
+            m_leaveSplashFade = 0.f;
+            m_leaveSplashPhase = LeaveSplashPhase::None;
+            m_leaveSplashTex = nxui::Texture();
+            DebugLog::log("[cards] splash handoff complete");
+        }
+    }
+}
+
 bool CardsHomeActivity::onCreate() {
     DebugLog::log("[cards] activity create");
-    if (m_core.frontendSwitchActivation()) {
+    const bool isSwitch = m_core.frontendSwitchActivation();
+    if (isSwitch) {
         // Reached by a live switch (D2): fade in, and wait for the buttons
         // that confirmed the switch to be released before reacting.
         m_core.frontendSwitchConsumed();
         m_waitRelease = true;
         m_fadeIn = 1.f;
+        m_fastReturn = false;
         DebugLog::log("[cards] activated by frontend switch");
     } else {
         m_fadeIn = 0.f;
@@ -90,6 +235,20 @@ bool CardsHomeActivity::onCreate() {
     });
     m_core.frontendStarted();
     const uint64_t createStartTick = armGetSystemTick();
+
+#ifdef SWITCHU_MENU
+    const bool isColdBoot = (m_core.transitionReason() == switchu::smi::MenuTransitionReason::StartupBoot ||
+                             m_core.transitionReason() == switchu::smi::MenuTransitionReason::Unknown ||
+                             m_core.startMode() == switchu::smi::MenuStartMode::StartupBoot);
+    m_fastReturn = !isSwitch && (!isColdBoot || m_core.launcher().suspendedTitleId() != 0);
+    m_fastReturnStartupTick = m_fastReturn ? createStartTick : 0;
+    DebugLog::log("[cards] return mode: fastReturn=%d (startMode=%u reason=%u switch=%d suspended=0x%016llX)",
+                  m_fastReturn ? 1 : 0,
+                  static_cast<unsigned>(m_core.startMode()),
+                  static_cast<unsigned>(m_core.transitionReason()),
+                  isSwitch ? 1 : 0,
+                  static_cast<unsigned long long>(m_core.launcher().suspendedTitleId()));
+#endif
 
     auto& config = m_core.config();
 #ifdef SWITCHU_MENU
@@ -165,8 +324,17 @@ bool CardsHomeActivity::onCreate() {
 
     m_catalog.startLoad(m_core.catalog(), m_core.threadPool());
 
+#ifdef SWITCHU_MENU
+    if (m_fastReturn && m_core.launcher().suspendedTitleId() != 0) {
+        m_deferredBluetoothInitFrames = 120;
+        DebugLog::log("[cards] Bluetooth manager initialization deferred for fast return");
+    } else {
+        m_core.startBluetooth();
+    }
+#else
     // Bluetooth is a Core service; starting it is idempotent.
     m_core.startBluetooth();
+#endif
 
 #ifdef SWITCHU_MENU
     m_sysMsg.setCallback([this](SysAction a) { handleSystemAction(a); });
@@ -206,6 +374,9 @@ bool CardsHomeActivity::onCreate() {
 
 void CardsHomeActivity::onDestroy() {
     DebugLog::log("[cards] activity destroy");
+    m_leaveCapturePending = false;
+    m_leaveCaptureAfter = {};
+    m_leavePreviewSuspendedTitleId = 0;
     m_core.setFrontendQuiesce(nullptr);
 #ifdef SWITCHU_MENU
     auto& closingTrace = m_core.closingTrace();
@@ -342,10 +513,15 @@ void CardsHomeActivity::onUpdate(float dt) {
         (m_selected >= 0 && m_selected < m_catalog.count()) ? m_catalog.at(m_selected).app.titleId : 0;
     if (m_catalog.poll(m_core.catalog(), m_core.config())) {
         // Keep the card in focus; on first load, prefer the suspended title,
-        // then the last-opened one (C-SW-5).
+        // then the leave-session title (PoloNX #104), then the last-opened one (C-SW-5).
         std::uint64_t want = previousId;
         if (want == 0)
             want = m_core.launcher().suspendedTitleId();
+        if (want == 0 && m_leaveSession.valid && m_leaveSession.focusTitleId != 0) {
+            want = m_leaveSession.focusTitleId;
+            DebugLog::log("[cards] focus restored from leave session: %016llX",
+                          static_cast<unsigned long long>(want));
+        }
         if (want == 0) {
             // Whatever the sort, land on the last-opened title.
             std::uint64_t best = 0;
@@ -362,12 +538,18 @@ void CardsHomeActivity::onUpdate(float dt) {
             index = 0;
         m_selected = std::clamp(index, 0, std::max(0, m_catalog.count() - 1));
         m_scroll = static_cast<float>(m_selected);
+        m_leaveSession.valid = false;
     }
 
     if (m_refreshQueued && --m_refreshDelayFrames <= 0 && !m_catalog.loading()) {
         m_refreshQueued = false;
         refreshCatalogue();
     }
+
+    if (m_deferredBluetoothInitFrames > 0 && --m_deferredBluetoothInitFrames == 0) {
+        m_core.startBluetooth();
+    }
+    updateLeaveSplashHandoff(dt);
 
     nxui::AnimationManager::instance().update(dt);
     finishAudioLoad();
@@ -952,8 +1134,10 @@ void CardsHomeActivity::startLaunch(std::uint64_t titleId, AccountUid uid) {
     switchu::commitSdCard("last opened");
     trace.animation_complete_tick = armGetSystemTick();
     trace.recency_commit_complete_tick = trace.animation_complete_tick;
-    m_audio.playSfx(Sfx::LaunchGame);
-    m_core.launcher().launchApplication(titleId, uid, trace);
+    scheduleLeaveCapture([this, titleId, uid, trace]() mutable {
+        m_audio.playSfx(Sfx::LaunchGame);
+        m_core.launcher().launchApplication(titleId, uid, trace);
+    }, titleId);
 #else
     (void)titleId;
     (void)uid;
@@ -1024,8 +1208,11 @@ void CardsHomeActivity::resumeSuspended() {
     trace.user_selected_tick = trace.activation_tick;
     trace.animation_complete_tick = trace.activation_tick;
     trace.recency_commit_complete_tick = trace.activation_tick;
-    m_audio.playSfx(Sfx::LaunchGame);
-    m_core.launcher().resumeApplication(trace);
+    const std::uint64_t suspendedId = m_core.launcher().suspendedTitleId();
+    scheduleLeaveCapture([this, trace]() mutable {
+        m_audio.playSfx(Sfx::LaunchGame);
+        m_core.launcher().resumeApplication(trace);
+    }, suspendedId);
 #endif
 }
 
@@ -1156,7 +1343,8 @@ void CardsHomeActivity::drawCard(nxui::Renderer& ren, int index, const nxui::Rec
     if (chosen < 1.f)
         ren.drawRoundedRect(card, {0.f, 0.f, 0.f, 0.22f * (1.f - chosen)}, layout::kCardRadius);
 #ifdef SWITCHU_MENU
-    if (m_core.launcher().isAppSuspended(id)) {
+    if (m_core.launcher().isAppSuspended(id) ||
+        (m_leavePreviewSuspendedTitleId != 0 && m_leavePreviewSuspendedTitleId == id)) {
         // Running badge: a green pill at the top left.
         const nxui::Rect badge{card.x + 12.f, card.y + 12.f, 26.f, 26.f};
         ren.drawCircle({badge.x + 13.f, badge.y + 13.f}, 13.f, {0.f, 0.f, 0.f, 0.45f}, 24);
@@ -1197,13 +1385,28 @@ void CardsHomeActivity::drawPanel(nxui::Renderer& ren) {
     m_chrome.textMid(ren, m_chrome.titleFont(), m_chrome.fit(m_chrome.titleFont(), entry.app.title, maxW), tx,
                      p.y + 40.f, white);
 
+    // Primary pill (Play / Resume), white with dark text, and the "..." circle.
+#ifdef SWITCHU_MENU
+    const bool suspended = m_core.launcher().isAppSuspended(id) ||
+        (m_leavePreviewSuspendedTitleId != 0 && m_leavePreviewSuspendedTitleId == id);
+#else
+    const bool suspended = false;
+#endif
+
     // Play time and recency, as "1h 35m   Jogado há 54 minutos".
     std::string line;
     const std::uint64_t played = m_core.config().playtimeOf(id);
-    if (played > 0)
+    if (suspended) {
+        const std::string openNow = i18n.tr("cards.open_now_desc", "Open now: Resume carries on");
+        if (played > 0)
+            line = switchu::menu::playtime::format(played) + "    " + openNow;
+        else
+            line = openNow;
+    } else if (played > 0) {
         line = switchu::menu::playtime::format(played);
-    else
+    } else {
         line = i18n.tr("cards.not_played", "Not played yet");
+    }
     if (m_details.titleId == id && m_details.lastPlayed && *m_details.lastPlayed > 0) {
         const std::string ago = lastPlayedText(*m_details.lastPlayed);
         if (!ago.empty())
@@ -1216,13 +1419,6 @@ void CardsHomeActivity::drawPanel(nxui::Renderer& ren) {
         m_chrome.icon(ren, "tag", tx + 8.f, p.y + 97.f, 16.f, dim);
         m_chrome.textMid(ren, m_chrome.smallFont(), m_details.version, tx + 22.f, p.y + 97.f, dim);
     }
-
-    // Primary pill (Play / Resume), white with dark text, and the "..." circle.
-#ifdef SWITCHU_MENU
-    const bool suspended = m_core.launcher().isAppSuspended(id);
-#else
-    const bool suspended = false;
-#endif
     const nxui::Rect button{p.x + 18.f, p.bottom() - 97.f, 262.f, 77.f};
     const bool playFocus = m_panelZone && m_panelIndex == 0;
     const bool dotsFocus = m_panelZone && m_panelIndex == 1;
@@ -1297,6 +1493,23 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
         black = std::max(black, std::min(1.f, m_switchFade / kSwitchFadeOut));
     if (black > 0.f)
         ren.drawRect({0.f, 0.f, 1280.f, 720.f}, {0.f, 0.f, 0.f, black});
+#ifdef SWITCHU_MENU
+    if (m_fastReturnStartupTick != 0) {
+        const auto elapsedMs = static_cast<unsigned long>(
+            armTicksToNs(armGetSystemTick() - m_fastReturnStartupTick) /
+            1'000'000ULL);
+        DebugLog::log("[first-frame] fast HOME return rendered in %lums (cards)", elapsedMs);
+        m_fastReturnStartupTick = 0;
+        m_fastReturn = false;
+    }
+#endif
+    if (leaveSplashActive() && m_leaveSplashTex.valid()) {
+        const float alpha = (m_leaveSplashPhase == LeaveSplashPhase::Hold)
+            ? 1.f
+            : m_leaveSplashFade;
+        ren.drawTexture(&m_leaveSplashTex, {0.f, 0.f, 1280.f, 720.f},
+                        nxui::Color::white().withAlpha(alpha));
+    }
     m_lock.render(ren);
 }
 

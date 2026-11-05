@@ -93,6 +93,8 @@ public:
 
 #ifdef SWITCHU_MENU
     void setStartupStatus(const switchu::smi::SystemStatus& status);
+    void setStartMode(switchu::smi::MenuStartMode mode) { m_startMode = mode; }
+    switchu::smi::MenuStartMode startMode() const { return m_startMode; }
     void setMenuMainTrace(uint64_t tick, uint32_t core) { m_menuMainTick = tick; m_menuMainCore = core; }
     const switchu::smi::SystemStatus& systemStatus() const { return m_systemStatus; }
     switchu::smi::MenuTransitionReason transitionReason() const { return m_transitionReason; }
@@ -144,6 +146,7 @@ private:
 
 #ifdef SWITCHU_MENU
     switchu::smi::SystemStatus m_systemStatus{};
+    switchu::smi::MenuStartMode m_startMode = switchu::smi::MenuStartMode::MainMenu;
     switchu::smi::MenuTransitionReason m_transitionReason = switchu::smi::MenuTransitionReason::Unknown;
     uint64_t m_menuMainTick = 0;
     uint32_t m_menuMainCore = 0;

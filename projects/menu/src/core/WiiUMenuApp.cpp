@@ -378,7 +378,15 @@ WiiUMenuApp::WiiUMenuApp(home::HomeCore& core)
       m_launcher(core.launcher()),
       m_appLoader(core.catalog()),
       m_config(core.config()),
-      m_steamGridDb(core.steamGridDb()) {}
+      m_steamGridDb(core.steamGridDb()) {
+#ifdef SWITCHU_MENU
+    const bool isSwitch = core.frontendSwitchActivation();
+    const bool isColdBoot = (core.transitionReason() == switchu::smi::MenuTransitionReason::StartupBoot ||
+                             core.transitionReason() == switchu::smi::MenuTransitionReason::Unknown ||
+                             core.startMode() == switchu::smi::MenuStartMode::StartupBoot);
+    m_fastReturnRequested = !isSwitch && (!isColdBoot || core.launcher().suspendedTitleId() != 0);
+#endif
+}
 WiiUMenuApp::~WiiUMenuApp() {
     m_animalesePlayer.clear();
     rootBox().clearChildren();
@@ -614,6 +622,7 @@ void WiiUMenuApp::updateLeaveSplashHandoff(float dt) {
         if (m_leaveSplashFade <= 0.f) {
             m_leaveSplashFade = 0.f;
             m_leaveSplashPhase = LeaveSplashPhase::None;
+            m_leaveSplashTex = nxui::Texture();
             setLeaveMotionFrozen(false);
             DebugLog::log("[leave] splash handoff complete");
         }
@@ -663,16 +672,18 @@ bool WiiUMenuApp::onCreate() {
 #endif
 #ifdef SWITCHU_MENU
     const bool isColdBoot = (m_transitionReason == switchu::smi::MenuTransitionReason::StartupBoot ||
-                             m_transitionReason == switchu::smi::MenuTransitionReason::Unknown);
-    const bool fastReturn = !isColdBoot || (m_launcher.suspendedTitleId() != 0);
+                             m_transitionReason == switchu::smi::MenuTransitionReason::Unknown ||
+                             m_homeCore.startMode() == switchu::smi::MenuStartMode::StartupBoot);
+    const bool fastReturn = !m_switchWaitRelease && (!isColdBoot || (m_launcher.suspendedTitleId() != 0));
 #else
     const bool fastReturn = false;
 #endif
     m_fastReturnRequested = fastReturn;
     m_fastReturnStartupTick = fastReturn ? activityCreateStartTick : 0;
-    DebugLog::log("[init] return mode: fastReturn=%d (reason=%u suspended=0x%016lX)",
+    DebugLog::log("[init] return mode: fastReturn=%d (reason=%u startMode=%u suspended=0x%016lX)",
                   fastReturn ? 1 : 0,
                   static_cast<unsigned>(m_transitionReason),
+                  static_cast<unsigned>(m_homeCore.startMode()),
                   m_launcher.suspendedTitleId());
     m_appLayoutMode = m_config.appLayoutMode;
     // Legacy IconGrid cards mode inside Classic is retired (HomeNX I3): migrate
@@ -720,7 +731,7 @@ bool WiiUMenuApp::onCreate() {
         m_config.soundPreset != kBuiltInSoundPreset)
         m_config.soundPreset = kBuiltInSoundPreset;
 
-    if (m_launcher.suspendedTitleId() != 0) {
+    if (m_fastReturnRequested && m_launcher.suspendedTitleId() != 0) {
         m_deferredBluetoothInitFrames = 120;
         DebugLog::log("[init] Bluetooth manager initialization deferred for fast return");
     } else {

@@ -10,6 +10,11 @@ enum class MenuTransitionReason : uint32_t {
     ApplicationFinished = 3,
 };
 
+enum class MenuStartMode : uint32_t {
+    MainMenu = 0,
+    StartupBoot = 1,
+};
+
 constexpr uint32_t kStatusFlagSafeMode = (1u << 0);
 constexpr uint32_t kStatusFlagSafeModeNotice = (1u << 1);
 

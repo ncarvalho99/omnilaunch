@@ -11,6 +11,7 @@
 #include "cards/CardsCatalog.hpp"
 #include "cards/CardsChrome.hpp"
 #include "core/AudioManager.hpp"
+#include "core/LeaveFrameCache.hpp"
 #include "core/SystemMessages.hpp"
 #include "home/HomeStyle.hpp"
 #include "widgets/LockScreen.hpp"
@@ -39,6 +40,8 @@ public:
     void onDestroy() override;
     void onUpdate(float dt) override;
     void onRender(nxui::Renderer& ren) override;
+    bool presentInitialFrame(nxui::Renderer& ren) override;
+    void onAfterPresent(nxui::Renderer& ren) override;
     nxui::Widget* focusRoot() override;
 
 private:
@@ -74,6 +77,11 @@ private:
     void persistLastFocus();
     void finishAudioLoad();
     void pollPlaytime();
+    void scheduleLeaveCapture(std::function<void()> afterCapture,
+                              std::uint64_t previewSuspendedTitleId = 0);
+    bool saveLeaveFrame(nxui::Renderer& ren);
+    void updateLeaveSplashHandoff(float dt);
+    bool leaveSplashActive() const { return m_leaveSplashPhase != LeaveSplashPhase::None; }
 
     home::HomeCore& m_core;
     AudioManager& m_audio;
@@ -148,6 +156,29 @@ private:
     Details m_details;
     std::uint64_t m_detailsWanted = 0;
     float m_detailsDelay = 0.f;
+
+    // Leave-frame splash on fast return (C-SW-6).
+    enum class LeaveSplashPhase {
+        None,
+        Hold,
+        Fade,
+    };
+    static constexpr float kLeaveSplashHoldDur = 0.18f;
+    static constexpr float kLeaveSplashFadeDur = 0.16f;
+
+    nxui::Texture m_leaveSplashTex;
+    LeaveFrameSession m_leaveSession{};
+    LeaveSplashPhase m_leaveSplashPhase = LeaveSplashPhase::None;
+    float m_leaveSplashHoldRemaining = 0.f;
+    float m_leaveSplashFade = 0.f;
+    bool m_leaveSplashDrawn = false;
+    bool m_fastReturn = false;
+    uint64_t m_fastReturnStartupTick = 0;
+    int m_deferredBluetoothInitFrames = 0;
+
+    bool m_leaveCapturePending = false;
+    std::function<void()> m_leaveCaptureAfter;
+    std::uint64_t m_leavePreviewSuspendedTitleId = 0;
 };
 
 } // namespace cards
