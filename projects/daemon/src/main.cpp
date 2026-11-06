@@ -349,6 +349,7 @@ static int g_appCatalogRefreshDelay = 0;
 // a forced power-off. A menu that has not reported ready by the deadline is
 // closed and the suspended game is given back the screen.
 static uint64_t g_menuReadyWatchTick = 0;
+static uint32_t g_menuReadyWatchSerial = 0;
 static constexpr uint64_t kMenuReadyTimeoutMs = 10'000;
 static constexpr const char* kAppCatalogPath = smi::kAppCatalogPath;
 static constexpr const char* kAppCatalogTmpPath = smi::kAppCatalogTmpPath;
@@ -1127,6 +1128,7 @@ static void startSleepSequence(const char* source) {
         pushNotification(smi::MenuMessage::SleepSequence);
     // Time asleep is not time the menu failed to start.
     g_menuReadyWatchTick = 0;
+    g_menuReadyWatchSerial = 0;
 
     // Preserve the final reason and state even if sleep ends in a forced power
     // loss. fflush must precede the device commit or the newest log data remains
@@ -1242,6 +1244,7 @@ static void openMenuFromHome(const char* source) {
         switchu::FileLog::log("[%s] HOME MainMenu launch rc=0x%X", source, menuRc);
         if (R_SUCCEEDED(menuRc)) {
             g_appCatalogRefreshDelay = 200;
+            g_menuReadyWatchSerial = daemon::menu_la::startSerial();
             g_menuReadyWatchTick = armGetSystemTick();
         }
         logHomeState(source, "after");
@@ -2077,6 +2080,7 @@ static void handleMenuCommand() {
         const auto args = reader.pop<smi::MenuReadyArgs>();
         switchu::FileLog::log("[smi] menu ready");
         g_menuReadyWatchTick = 0;
+        g_menuReadyWatchSerial = 0;
         logMenuReadyTrace(args, commandReceiveTick);
         restoreNormalPerformance("menu-ready");
         logPerformanceConfiguration("menu-ready");
@@ -2531,21 +2535,22 @@ static void guardTestTick() {}
 static void menuReadyWatchTick() {
     if (g_menuReadyWatchTick == 0)
         return;
-    if (!daemon::menu_la::hasHolder()) {
+    if (!daemon::menu_la::hasHolder() || daemon::menu_la::startSerial() != g_menuReadyWatchSerial) {
         g_menuReadyWatchTick = 0;
+        g_menuReadyWatchSerial = 0;
         return;
     }
     const uint64_t waitedMs = armTicksToNs(armGetSystemTick() - g_menuReadyWatchTick) / 1'000'000ULL;
     if (waitedMs < kMenuReadyTimeoutMs)
         return;
     g_menuReadyWatchTick = 0;
+    g_menuReadyWatchSerial = 0;
     switchu::FileLog::log("[watchdog] menu not ready %llu ms after HOME; closing it (app running=%d suspended=0x%016lX)",
                           (unsigned long long)waitedMs, daemon::app::isRunning() ? 1 : 0,
                           daemon::app::suspendedTitleId());
     switchu::FileLog::flush();
-    daemon::menu_la::terminate(2'000'000'000ULL);
     g_guardRun.onClosing();
-    guardOnMenuExit();
+    daemon::menu_la::terminate(2'000'000'000ULL);
     if (daemon::app::isRunning() && daemon::app::suspendedTitleId() != 0) {
         Action action{};
         action.type = ActionType::ResumeApplication;
@@ -2662,6 +2667,8 @@ static void mainLoop() {
     menuReadyWatchTick();
 
     if (daemon::menu_la::checkFinished()) {
+        g_menuReadyWatchTick = 0;
+        g_menuReadyWatchSerial = 0;
         switchu::FileLog::log("[main] menu exited (reason=%d)",
             (int)daemon::menu_la::exitReason());
         if (guardOnMenuExit())

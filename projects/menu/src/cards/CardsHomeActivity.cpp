@@ -714,7 +714,8 @@ void CardsHomeActivity::onUpdate(float dt) {
 
     const std::uint64_t previousId =
         (m_selected >= 0 && m_selected < m_catalog.count()) ? m_catalog.at(m_selected).app.titleId : 0;
-    if (!m_moving && !m_sheet.isOpen() && !overlayActive() && m_catalog.poll(m_core.catalog(), m_core.config())) {
+    if (!m_moving && !m_sheet.isOpen() && !m_musicSheet.isOpen() && !overlayActive() &&
+        m_catalog.poll(m_core.catalog(), m_core.config())) {
         // Keep the card in focus; on first load, prefer the suspended title,
         // then the leave-session title (PoloNX #104), then the last-opened one (C-SW-5).
         std::uint64_t want = previousId;
@@ -753,7 +754,8 @@ void CardsHomeActivity::onUpdate(float dt) {
         maybeShowTutorial();
     }
 
-    if (m_refreshQueued && !m_moving && !m_sheet.isOpen() && --m_refreshDelayFrames <= 0 && !m_catalog.loading()) {
+    if (m_refreshQueued && !m_moving && !m_sheet.isOpen() && !m_musicSheet.isOpen() &&
+        --m_refreshDelayFrames <= 0 && !m_catalog.loading()) {
         m_refreshQueued = false;
         refreshCatalogue();
     }

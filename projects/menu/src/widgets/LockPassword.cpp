@@ -1,5 +1,6 @@
 #include "widgets/LockPassword.hpp"
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #ifdef SWITCHU_MENU
 #include "core/DebugLog.hpp"
@@ -58,8 +59,13 @@ bool save(const HashFn& hash, const std::string& presses, const std::string& pat
         if (!out.flush())
             return false;
     }
-    std::remove(path.c_str());
-    if (std::rename(tmp.c_str(), path.c_str()) != 0)
+    std::error_code ec;
+    std::filesystem::rename(tmp, path, ec);
+    if (ec) {
+        std::filesystem::remove(path, ec);
+        std::filesystem::rename(tmp, path, ec);
+    }
+    if (ec)
         return false;
     return check(hash, presses, path);
 }

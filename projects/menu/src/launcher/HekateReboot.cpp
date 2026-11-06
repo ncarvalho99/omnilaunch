@@ -53,7 +53,14 @@ bool prepareMenuReboot(std::string& error) {
     std::memset(g_payload, 0, sizeof(g_payload));
     size_t got = 0;
     if (FILE* f = std::fopen(path, "rb")) {
-        got = std::fread(g_payload, 1, sizeof(g_payload), f);
+        std::fseek(f, 0, SEEK_END);
+        const long sz = std::ftell(f);
+        std::fseek(f, 0, SEEK_SET);
+        if (sz > 0x98 && static_cast<size_t>(sz) <= kPayloadMax) {
+            got = std::fread(g_payload, 1, static_cast<size_t>(sz), f);
+            if (std::ferror(f) || got != static_cast<size_t>(sz))
+                got = 0;
+        }
         std::fclose(f);
     }
     if (got <= 0x98) {

@@ -56,8 +56,7 @@ std::string onOff(bool v) {
 
 bool CardsHomeActivity::overlayActive() const {
     return (m_userSelect && m_userSelect->isActive()) || (m_text && m_text->isActive()) ||
-           (m_quick && m_quick->isActive()) || (m_deleteProgress && m_deleteProgress->isActive()) ||
-           m_musicSheet.isOpen();
+           (m_quick && m_quick->isActive()) || (m_deleteProgress && m_deleteProgress->isActive());
 }
 
 void CardsHomeActivity::saveConfig(const char* why) {
