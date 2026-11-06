@@ -11,8 +11,12 @@
 #include "core/PlayTime.hpp"
 #include "home/HomeCore.hpp"
 #include "widgets/OverlayDialog.hpp"
+#include "widgets/ProgressDialog.hpp"
 #ifdef SWITCHU_MENU
+#include "core/NsService.hpp"
+#include <switchu/control_cache.hpp>
 #include <switchu/sd_commit.hpp>
+#include <switchu/title_footprint.hpp>
 #endif
 #include <nxui/Application.hpp>
 #include <nxui/core/I18n.hpp>
@@ -50,7 +54,7 @@ std::string onOff(bool v) {
 
 bool CardsHomeActivity::overlayActive() const {
     return (m_userSelect && m_userSelect->isActive()) || (m_text && m_text->isActive()) ||
-           (m_quick && m_quick->isActive());
+           (m_quick && m_quick->isActive()) || (m_deleteProgress && m_deleteProgress->isActive());
 }
 
 void CardsHomeActivity::saveConfig(const char* why) {
@@ -394,7 +398,7 @@ void CardsHomeActivity::drawMoveHint(nxui::Renderer& ren) {
 }
 
 // ── Card options (E4 safe part, C-UI-3) ─────────────────────────────────────
-// Delete (with confirmation) is batch 2; downloads are G4.
+// Delete with confirmation is E4 (batch 2); downloads are G4.
 void CardsHomeActivity::openCardOptions() {
     if (m_selected < 0 || m_selected >= m_catalog.count())
         return;
@@ -465,9 +469,182 @@ void CardsHomeActivity::openCardOptions() {
             m_closeConfirmQueued = true;
         });
     }
+    // E4. A game card title cannot be deleted from the console, and the
+    // running title has to be closed first (ns refuses it while it runs).
+    if (card.app.isGameCard()) {
+        add(i18n.tr("game.delete_software", "Delete Software"), {},
+            i18n.tr("game.delete_gamecard_unavailable",
+                    "Game card software cannot be deleted from the console."));
+        rows.back().enabled = false;
+    } else if (suspended) {
+        add(i18n.tr("game.delete_software", "Delete Software"), {},
+            i18n.tr("cards.delete_close_first", "Close the software before deleting it."));
+        rows.back().enabled = false;
+    } else {
+        add(i18n.tr("game.delete_software", "Delete Software"), [this, titleId]() {
+                m_sheet.close();
+                m_deleteConfirmId = titleId;
+            },
+            i18n.tr("game.delete_software_desc", "Deletes the software from the console. Save data is not deleted."));
+    }
 #endif
     m_sheet.open(title, {{std::string(), std::move(rows)}});
 }
+
+#ifdef SWITCHU_MENU
+// ── Delete software (E4, C-UI-3) ────────────────────────────────────────────
+// Same contract as Classic's confirmDeleteSoftware/startSoftwareDeletion: ns
+// removes what it installed, then the SD footprint (ports, LayeredFS) is swept;
+// both run on the Core pool behind a progress dialog so the frame never blocks.
+bool CardsHomeActivity::deleteRunning() const {
+    return m_deleteFuture.valid() &&
+           m_deleteFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready;
+}
+
+void CardsHomeActivity::confirmDeleteSoftware() {
+    const std::uint64_t titleId = m_deleteConfirmId;
+    m_deleteConfirmId = 0;
+    const int index = m_catalog.indexOf(titleId);
+    if (!m_userSelect || index < 0 || deleteRunning())
+        return;
+    const AppEntry& app = m_catalog.at(index).app;
+    if (app.isGameCard() || m_core.launcher().isAppSuspended(titleId) ||
+        switchu::titles::isProtectedTitleId(titleId))
+        return;
+    auto& i18n = nxui::I18n::instance();
+    const std::string title = app.title;
+    std::string body = title + "\n\n" +
+        i18n.tr("dialog.delete_software_body",
+                "This removes the software from the console. It cannot be undone "
+                "here -- the software has to be downloaded or installed again.");
+    const auto footprint = switchu::titles::sdFootprint(titleId);
+    if (!footprint.empty()) {
+        body += "\n\n";
+        body += i18n.tr("dialog.delete_software_files", "These folders on the SD card will be removed too:");
+        for (const std::string& path : footprint)
+            body += "\n" + path;
+    }
+    m_audio.playSfx(Sfx::ModalShow);
+    // Cancel is the default button: an accidental A does not delete.
+    m_userSelect->show(
+        i18n.tr("dialog.delete_software", "Delete software?"), body,
+        {
+            {i18n.tr("button.cancel", "Cancel"), []() {}, true},
+            {i18n.tr("button.delete", "Delete"), [this, titleId, title]() {
+                 startDeleteSoftware(titleId, title);
+             }, true},
+        },
+        0, {});
+    focusManager().setFocus(m_userSelect.get());
+}
+
+void CardsHomeActivity::startDeleteSoftware(std::uint64_t titleId, const std::string& title) {
+    if (deleteRunning())
+        return;
+    auto& i18n = nxui::I18n::instance();
+    if (!m_deleteProgress) {
+        m_deleteProgress = std::make_shared<ProgressDialog>();
+        m_deleteProgress->setFont(&m_font);
+        m_deleteProgress->setSmallFont(&m_fontSmall);
+        m_deleteProgress->setTheme(&m_overlayTheme);
+        m_deleteProgress->setRect({0, 0, 1280, 720});
+    }
+    m_deleteTitleId = titleId;
+    m_deleteTitle = title;
+    m_deleteResult = MAKERESULT(Module_Libnx, LibnxError_BadInput);
+    m_deleteSdRemoved = 0;
+    m_deleteSdFailure.clear();
+    m_deleteDone.store(0);
+    m_deleteTotal.store(0);
+    m_deleteProgress->show(i18n.tr("game.uninstall_progress_title", "Deleting software"),
+                           i18n.tr("game.uninstall_progress", "Please wait. Do not turn off the console.") +
+                               std::string("\n") + title,
+                           -1.f);
+    DebugLog::log("[cards] delete queued title=%016llX", static_cast<unsigned long long>(titleId));
+    m_deleteFuture = m_core.threadPool().submit([this, titleId]() {
+        m_deleteTotal.store(switchu::titles::countSdFootprint(titleId));
+        const Result nsRc = switchu::menu::ensureNsService("cards-delete");
+        m_deleteResult = R_SUCCEEDED(nsRc) ? nsDeleteApplicationCompletely(titleId) : nsRc;
+        const auto report = switchu::titles::removeSdFootprint(titleId, &m_deleteDone);
+        m_deleteSdRemoved = report.removed;
+        m_deleteSdFailure = report.firstFailure;
+    });
+}
+
+void CardsHomeActivity::pollDeleteSoftware() {
+    if (!m_deleteFuture.valid())
+        return;
+    auto& i18n = nxui::I18n::instance();
+    if (deleteRunning()) {
+        const std::uint64_t total = m_deleteTotal.load();
+        const std::uint64_t done = m_deleteDone.load();
+        std::string message = i18n.tr("game.uninstall_progress", "Please wait. Do not turn off the console.") +
+                              std::string("\n") + m_deleteTitle;
+        if (total > 0) {
+            char count[48];
+            std::snprintf(count, sizeof(count), "\n%llu/%llu", static_cast<unsigned long long>(done),
+                          static_cast<unsigned long long>(total));
+            message += count;
+            m_deleteProgress->updateState(message, std::min(1.f, static_cast<float>(done) / static_cast<float>(total)));
+        } else {
+            m_deleteProgress->updateState(message, -1.f);
+        }
+        return;
+    }
+    Result rc = MAKERESULT(Module_Libnx, LibnxError_BadInput);
+    try {
+        m_deleteFuture.get();
+        rc = m_deleteResult;
+    } catch (...) {
+        DebugLog::log("[cards] delete worker exception");
+    }
+    m_deleteProgress->hide();
+    m_overlayLatch = true;
+    const bool sweepFailed = !m_deleteSdFailure.empty();
+    DebugLog::log("[cards] delete ns rc=0x%08X sd-removed=%d sd-failure=%s", rc, m_deleteSdRemoved,
+                  sweepFailed ? m_deleteSdFailure.c_str() : "none");
+    // A port copied to the card has nothing registered with ns: the ns call
+    // fails while the sweep succeeds (same rule as Classic).
+    if (!sweepFailed && (R_SUCCEEDED(rc) || m_deleteSdRemoved > 0)) {
+        const std::uint64_t id = m_deleteTitleId;
+        auto& config = m_core.config();
+        switchu::control_cache::forget(id);
+        bool dirty = pages::forgetTitle(config.cards, id);
+        if (config.hasCustomTitle(id)) {
+            config.setCustomTitle(id, "");
+            dirty = true;
+        }
+        if (dirty)
+            saveConfig("cards delete");
+        // Keep the focus where the card was; the refresh lands on a neighbour.
+        const int at = m_catalog.indexOf(id);
+        if (at >= 0 && m_catalog.count() > 1) {
+            const int next = at + 1 < m_catalog.count() ? at + 1 : at - 1;
+            m_selected = next;
+            m_scroll = static_cast<float>(m_selected);
+        }
+        m_audio.playSfx(Sfx::ConfirmPositive);
+        showToast(i18n.tr("dialog.delete_software_done", "The software was deleted."));
+        m_refreshQueued = true;
+        m_refreshDelayFrames = 3;
+        return;
+    }
+    char code[96];
+    std::snprintf(code, sizeof(code), "\nResult: 0x%08X (module %u, description %u)", rc, R_MODULE(rc),
+                  R_DESCRIPTION(rc));
+    const std::string details = sweepFailed
+        ? i18n.tr("settings.storage.uninstall_failed_files", "Some files could not be removed from the SD card.") +
+              std::string("\n") + m_deleteSdFailure
+        : i18n.tr("settings.storage.uninstall_failed", "Failed to uninstall the selected title.") + std::string(code);
+    m_audio.playSfx(Sfx::ModalShow);
+    m_userSelect->show(i18n.tr("game.uninstall_failed", "Uninstall failed"), m_deleteTitle + "\n\n" + details,
+                       {{i18n.tr("button.ok", "OK"), []() {}, true}}, 0, {});
+    focusManager().setFocus(m_userSelect.get());
+    // ns may have removed part of it: reload so the card reflects the console.
+    m_refreshQueued = true;
+    m_refreshDelayFrames = 3;
+}
+#endif
 
 void CardsHomeActivity::requestText(const std::string& title, const std::string& guide, const std::string& initial,
                                     std::function<void(const std::string&)> onAccept) {

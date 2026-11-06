@@ -22,6 +22,7 @@
 #include <nxui/Theme.hpp>
 #include <nxui/core/Font.hpp>
 #include <nxui/core/Texture.hpp>
+#include <atomic>
 #include <cstdint>
 #include <future>
 #include <map>
@@ -33,6 +34,7 @@
 
 namespace home { class HomeCore; }
 class OverlayDialog;
+class ProgressDialog;
 
 namespace cards {
 
@@ -62,6 +64,11 @@ private:
     void resumeSuspended();
 #ifdef SWITCHU_MENU
     void confirmCloseSuspended();
+    // E4: delete with confirmation, on the Core pool behind a progress dialog.
+    void confirmDeleteSoftware();
+    void startDeleteSoftware(std::uint64_t titleId, const std::string& title);
+    void pollDeleteSoftware();
+    bool deleteRunning() const;
 #endif
     void refreshCatalogue();
     void ensureVisibleIcons();
@@ -141,6 +148,18 @@ private:
     bool m_panelZone = false;
     int m_panelIndex = 0;
     bool m_closeConfirmQueued = false;  // card options -> Close software
+    // E4 delete. The worker writes only the atomics and the result fields,
+    // which are read after the future is ready.
+    std::uint64_t m_deleteConfirmId = 0;  // card options -> Delete software
+    std::shared_ptr<ProgressDialog> m_deleteProgress;
+    std::future<void> m_deleteFuture;
+    std::atomic<std::uint64_t> m_deleteDone{0};
+    std::atomic<std::uint64_t> m_deleteTotal{0};
+    std::uint32_t m_deleteResult = 0;
+    int m_deleteSdRemoved = 0;
+    std::string m_deleteSdFailure;
+    std::uint64_t m_deleteTitleId = 0;
+    std::string m_deleteTitle;
     // Live frontend switch (D2): queued by the style sheet, then a short fade
     // to black before home::switchFrontend.
     bool m_switchQueued = false;

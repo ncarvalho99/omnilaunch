@@ -1185,6 +1185,7 @@
     "wake_hint": "Drücke A, um fortzufahren",
     "coming_soon": "Kommt in einem späteren Update",
     "close_software": "Software schließen",
+    "delete_close_first": "Schließe die Software, bevor du sie löschst.",
     "home_style": "HOME-Stil",
     "home_style_desc": "Wähle das Aussehen des HOME-Menüs.",
     "home_style_classic": "Klassisch",

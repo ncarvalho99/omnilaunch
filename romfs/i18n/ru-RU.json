@@ -1185,6 +1185,7 @@
     "wake_hint": "Нажмите A, чтобы продолжить",
     "coming_soon": "Появится в следующем обновлении",
     "close_software": "Закрыть программу",
+    "delete_close_first": "Закройте программу перед удалением.",
     "home_style": "Стиль HOME",
     "home_style_desc": "Выберите вид меню HOME.",
     "home_style_classic": "Классический",

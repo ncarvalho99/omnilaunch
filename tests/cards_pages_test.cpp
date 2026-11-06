@@ -78,6 +78,28 @@ static void orderTest() {
     CHECK(pg::setMedia(p, 0x0100AAAA00000000ULL, false));
     CHECK(p.mediaOrder.empty() && !p.isMedia(0x0100AAAA00000000ULL));
 
+    // E4: a deleted title leaves no preference behind; others are untouched.
+    {
+        const std::uint64_t gone = 0x0100BBBB00000000ULL, kept = 0x0100CCCC00000000ULL;
+        Prefs d;
+        d.gamesOrder = {kept, gone};
+        d.mediaOrder = {gone};
+        d.mediaTitles = {gone, kept};
+        d.iconTitles = {gone};
+        d.coverBackgroundTitles = {gone};
+        d.plainBackgroundTitles = {kept, gone};
+        d.logoTitles = {gone};
+        d.panelTitleId = gone;
+        CHECK(pg::forgetTitle(d, gone));
+        CHECK((d.gamesOrder == std::vector<std::uint64_t>{kept}));
+        CHECK(d.mediaOrder.empty() && d.iconTitles.empty() && d.coverBackgroundTitles.empty());
+        CHECK(d.logoTitles.empty() && d.panelTitleId == 0);
+        CHECK((d.mediaTitles == std::vector<std::uint64_t>{kept}));
+        CHECK((d.plainBackgroundTitles == std::vector<std::uint64_t>{kept}));
+        CHECK(!pg::forgetTitle(d, gone));
+        CHECK(!pg::forgetTitle(d, 0));
+    }
+
     CHECK(pg::isSystemId(pg::systemId(pg::SystemTile::Album)));
     CHECK(!pg::isSystemId(0x0100ABCD12340000ULL));
     CHECK(pg::systemTileOf(pg::systemId(pg::SystemTile::Internet)) == pg::SystemTile::Internet);

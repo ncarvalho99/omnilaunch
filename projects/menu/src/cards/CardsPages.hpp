@@ -35,6 +35,11 @@ std::size_t rank(const std::vector<std::uint64_t>& order, std::uint64_t id);
 /// Moves `id` into or out of the Media page by hand. Returns true on change.
 bool setMedia(Prefs& prefs, std::uint64_t id, bool media);
 
+/// Drops every Cards preference that names `id` (orders, Media membership,
+/// image choices, the panel shortcut), after the title was deleted (E4).
+/// Returns true when anything changed.
+bool forgetTitle(Prefs& prefs, std::uint64_t id);
+
 /// Synthetic ids for the Nintendo page tiles. Real application ids never use
 /// the top byte 0xFF.
 inline constexpr std::uint64_t kSystemIdBase = 0xFF00000000000000ULL;

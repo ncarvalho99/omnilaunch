@@ -1185,6 +1185,7 @@
     "wake_hint": "Premi A per continuare",
     "coming_soon": "Disponibile in un prossimo aggiornamento",
     "close_software": "Chiudi software",
+    "delete_close_first": "Chiudi il software prima di eliminarlo.",
     "home_style": "Stile HOME",
     "home_style_desc": "Scegli l'aspetto del menu HOME.",
     "home_style_classic": "Classico",

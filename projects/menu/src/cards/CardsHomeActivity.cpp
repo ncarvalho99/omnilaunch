@@ -9,6 +9,7 @@
 #include "home/HomeFrontend.hpp"
 #include "themeshop/ThemeHttp.hpp"
 #include "widgets/OverlayDialog.hpp"
+#include "widgets/ProgressDialog.hpp"
 #ifdef SWITCHU_MENU
 #include "smi_commands.hpp"
 #include <switchu/control_cache.hpp>
@@ -586,6 +587,8 @@ void CardsHomeActivity::onDestroy() {
 #endif
     if (m_userSelect)
         m_userSelect->hide();
+    // The pool is idle (above), so a delete worker has finished with `this`.
+    m_deleteProgress.reset();
     m_sheet.close();
     m_moving = false;
     m_quick.reset();
@@ -784,6 +787,11 @@ void CardsHomeActivity::onUpdate(float dt) {
                 m_core.launcher().isAppSuspended(m_catalog.at(m_selected).app.titleId))
                 confirmCloseSuspended();
         }
+        if (m_deleteConfirmId != 0 && !(m_userSelect && m_userSelect->isActive()))
+            confirmDeleteSoftware();
+        if (m_deleteProgress)
+            m_deleteProgress->update(dt);
+        pollDeleteSoftware();
 #endif
         // D2/D4: input is held off during the switch fade, leaving launch animation,
         // and, after arriving by a switch, until the confirming press is released.
@@ -1455,6 +1463,10 @@ void CardsHomeActivity::pollDaemonNotifications() {
 void CardsHomeActivity::handleSystemAction(SysAction action) {
     switch (action) {
     case SysAction::HomeDismiss:
+        // E4: nothing leaves HOME while a delete runs (as Classic's progress
+        // dialog); the result has to land in this frontend's preferences.
+        if (deleteRunning())
+            break;
         // D2: HOME during a frontend switch cancels it.
         if (m_switchQueued || m_switchFade >= 0.f) {
             m_switchQueued = false;
@@ -1793,6 +1805,8 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
         m_text->render(ren);
     if (m_userSelect && m_userSelect->isActive())
         m_userSelect->render(ren);
+    if (m_deleteProgress && m_deleteProgress->isActive())
+        m_deleteProgress->render(ren);
     // D2 switch: fade to black on the way out, from black on the way in.
     float black = m_fadeIn;
     if (m_switchFade >= 0.f)

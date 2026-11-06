@@ -1234,6 +1234,7 @@
     "wake_hint": "Pulsa A para continuar",
     "coming_soon": "Disponible en una próxima actualización",
     "close_software": "Cerrar programa",
+    "delete_close_first": "Cierra el programa antes de eliminarlo.",
     "home_style": "Estilo del HOME",
     "home_style_desc": "Elige el aspecto del menú HOME.",
     "home_style_classic": "Clásico",

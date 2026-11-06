@@ -1185,6 +1185,7 @@
     "wake_hint": "Druk op A om door te gaan",
     "coming_soon": "Komt in een latere update",
     "close_software": "Software sluiten",
+    "delete_close_first": "Sluit de software voordat je deze verwijdert.",
     "home_style": "HOME-stijl",
     "home_style_desc": "Kies hoe het HOME-menu eruitziet.",
     "home_style_classic": "Klassiek",

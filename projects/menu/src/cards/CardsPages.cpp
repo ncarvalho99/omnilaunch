@@ -91,4 +91,23 @@ bool setMedia(Prefs& prefs, std::uint64_t id, bool media) {
     return true;
 }
 
+bool forgetTitle(Prefs& prefs, std::uint64_t id) {
+    if (!id)
+        return false;
+    bool changed = false;
+    for (auto* list : {&prefs.gamesOrder, &prefs.mediaOrder, &prefs.mediaTitles, &prefs.iconTitles,
+                       &prefs.coverBackgroundTitles, &prefs.plainBackgroundTitles, &prefs.logoTitles}) {
+        const auto end = std::remove(list->begin(), list->end(), id);
+        if (end != list->end()) {
+            list->erase(end, list->end());
+            changed = true;
+        }
+    }
+    if (prefs.panelTitleId == id) {
+        prefs.panelTitleId = 0;
+        changed = true;
+    }
+    return changed;
+}
+
 } // namespace cards::pages
