@@ -11,6 +11,7 @@
 #include "widgets/OverlayDialog.hpp"
 #include "widgets/ProgressDialog.hpp"
 #include "launcher/HekateReboot.hpp"
+#include "widgets/LockPassword.hpp"
 #ifdef SWITCHU_MENU
 #include "smi_commands.hpp"
 #include <switchu/control_cache.hpp>
@@ -448,6 +449,7 @@ bool CardsHomeActivity::onCreate() {
     m_lock.setFonts(&m_fontClock, &m_fontSmall);
     m_lock.setTheme(&m_lockTheme);
     m_lock.setUse12HourClock(m_core.config().clockUse12Hour);
+    lockpw::attach(m_lock); // E9 password (shared with Classic)
     m_lock.onSleepRequested([this]() {
         if (m_userSelect)
             m_userSelect->hide();
@@ -1491,7 +1493,8 @@ void CardsHomeActivity::handleSystemAction(SysAction action) {
         }
         // HOME is a system-authenticated unlock, as in Classic.
         if (m_lock.isLocked()) {
-            m_lock.unlockNow();
+            // A password lock only opens its recovery window on HOME (E9).
+            m_lock.homePressed();
             m_lockLowPowerPrimed = false;
             app().setRenderEnabled(true);
             break;

@@ -1,5 +1,9 @@
 {
   "lock_screen": {
+    "password_hint": "Gib dein Passwort mit dem Steuerkreuz ein",
+    "recovery_hint": "Vergessen? Halte L + R + ZL + ZR + Minus 3 Sekunden, um das Passwort zu entfernen",
+    "setup_hint": "Neues Passwort: 4 bis 8 Steuerkreuz-Eingaben, dann +. B löscht oder bricht ab",
+    "confirm_hint": "Gib dasselbe Passwort noch einmal ein, dann +",
     "hint": "Dieselbe Taste dreimal drücken zum Entsperren",
     "locked": "Bildschirm gesperrt. Dieselbe Taste dreimal drücken zum Entsperren.",
     "unlocked": "Entsperrt."
@@ -1179,6 +1183,14 @@
     "hint_today": "Heute"
   },
   "cards": {
+    "lock_password": "Passwort",
+    "lock_password_on": "An",
+    "lock_password_off": "Aus",
+    "lock_password_desc": "4 bis 8 Steuerkreuz-Eingaben. Vergessen: HOME, dann L + R + ZL + ZR + Minus 3 s halten.",
+    "lock_password_saved": "Passwort gespeichert",
+    "lock_password_failed": "Das Passwort konnte nicht gespeichert werden",
+    "lock_password_remove": "Passwort entfernen",
+    "lock_password_removed": "Passwort entfernt",
     "loading": "Wird geladen...",
     "empty": "Keine Software installiert",
     "played": "Gespielt",

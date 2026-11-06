@@ -1740,7 +1740,8 @@ void WiiUMenuApp::handleSystemAction(SysAction a) {
             // button. While locked it is an immediate system-level unlock, not
             // a regular HOME navigation event.
             if (m_lockScreen.isLocked()) {
-                m_lockScreen.unlockNow();
+                // A password lock only opens its recovery window on HOME (E9).
+                m_lockScreen.homePressed();
                 m_lockScreenLowPowerPrimed = false;
                 app().setRenderEnabled(true);
                 return;

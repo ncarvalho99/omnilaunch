@@ -1913,7 +1913,8 @@ void WiiUMenuApp::handleSystemAction(SysAction a) {
             // HOME is delivered by the daemon. While locked it is a system
             // unlock request, not ordinary HOME navigation.
             if (m_lockScreen.isLocked()) {
-                m_lockScreen.unlockNow();
+                // A password lock only opens its recovery window on HOME (E9).
+                m_lockScreen.homePressed();
                 m_lockScreenLowPowerPrimed = false;
                 app().setRenderEnabled(true);
                 return;

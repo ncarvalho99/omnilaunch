@@ -1,5 +1,9 @@
 {
   "lock_screen": {
+    "password_hint": "Voer je wachtwoord in met de richtingsknoppen",
+    "recovery_hint": "Vergeten? Houd L + R + ZL + ZR + Min 3 seconden ingedrukt om het wachtwoord te verwijderen",
+    "setup_hint": "Nieuw wachtwoord: 4 tot 8 richtingsknoppen, dan +. B wist of annuleert",
+    "confirm_hint": "Voer hetzelfde wachtwoord opnieuw in, dan +",
     "hint": "Druk drie keer op dezelfde knop om te ontgrendelen",
     "locked": "Scherm vergrendeld. Druk drie keer op dezelfde knop om te ontgrendelen.",
     "unlocked": "Ontgrendeld."
@@ -1179,6 +1183,14 @@
     "hint_today": "Vandaag"
   },
   "cards": {
+    "lock_password": "Wachtwoord",
+    "lock_password_on": "Aan",
+    "lock_password_off": "Uit",
+    "lock_password_desc": "4 tot 8 richtingsknoppen. Vergeten: HOME, houd dan L + R + ZL + ZR + Min 3 s ingedrukt.",
+    "lock_password_saved": "Wachtwoord opgeslagen",
+    "lock_password_failed": "Het wachtwoord kon niet worden opgeslagen",
+    "lock_password_remove": "Wachtwoord verwijderen",
+    "lock_password_removed": "Wachtwoord verwijderd",
     "loading": "Laden...",
     "empty": "Geen software geïnstalleerd",
     "played": "Gespeeld",

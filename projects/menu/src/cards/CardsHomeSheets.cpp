@@ -13,6 +13,7 @@
 #include "widgets/OverlayDialog.hpp"
 #include "widgets/ProgressDialog.hpp"
 #include "launcher/HekateReboot.hpp"
+#include "widgets/LockPassword.hpp"
 #ifdef SWITCHU_MENU
 #include "core/NsService.hpp"
 #include <switchu/control_cache.hpp>
@@ -1070,10 +1071,44 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         r.label = i18n.tr("cards.lock_now", "Lock now");
         r.onA = [this]() { m_sheet.close(); ensureClockFont(); m_lock.lockNow(); };
         s.rows.push_back(std::move(r));
+        // E9 password (C-UI-16), shared with Classic's lock screen.
         Row password;
-        password.label = i18n.tr("cards.lock_password_pending", "Password: batch 2 (E9)");
-        password.enabled = false;
+        password.label = i18n.tr("cards.lock_password", "Password");
+        password.value = [this]() {
+            auto& t = nxui::I18n::instance();
+            return m_lock.passwordActive() ? t.tr("cards.lock_password_on", "On") : t.tr("cards.lock_password_off", "Off");
+        };
+        password.detail = i18n.tr("cards.lock_password_desc",
+                                  "4 to 8 D-pad presses. Forgot it: HOME, then hold L + R + ZL + ZR + Minus for 3 s.");
+        password.onA = [this]() {
+            m_sheet.close();
+            ensureClockFont();
+            m_lock.beginPasswordSetup([this](const std::string& presses) {
+#ifdef SWITCHU_MENU
+                const bool ok = lockpw::save(lockpw::sha256Hex, presses);
+                switchu::commitSdCard("lock password");
+                lockpw::attach(m_lock);
+                showToast(ok ? nxui::I18n::instance().tr("cards.lock_password_saved", "Password saved")
+                             : nxui::I18n::instance().tr("cards.lock_password_failed", "The password could not be saved"));
+#else
+                (void)presses;
+#endif
+            });
+        };
         s.rows.push_back(std::move(password));
+        Row removePw;
+        removePw.label = i18n.tr("cards.lock_password_remove", "Remove password");
+        removePw.enabled = m_lock.passwordActive();
+        removePw.onA = [this]() {
+#ifdef SWITCHU_MENU
+            lockpw::save(lockpw::sha256Hex, "");
+            switchu::commitSdCard("lock password removed");
+            lockpw::attach(m_lock);
+#endif
+            m_sheet.close();
+            showToast(nxui::I18n::instance().tr("cards.lock_password_removed", "Password removed"));
+        };
+        s.rows.push_back(std::move(removePw));
         all["lock"] = std::move(s);
     }
     {

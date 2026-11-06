@@ -38,6 +38,7 @@ extern "C" size_t g_switchuHeapSize;
 #include <filesystem>
 #include <nxui/third_party/stb/stb_image.h>
 #include <nlohmann/json.hpp>
+#include "widgets/LockPassword.hpp"
 #include <system_error>
 
 namespace {
@@ -7850,6 +7851,7 @@ void WiiUMenuApp::setupLockScreen() {
     m_lockScreen.setFonts(&m_fontClock, &m_fontSmall);
     m_lockScreen.setTheme(&m_theme);
     m_lockScreen.setUse12HourClock(m_config.clockUse12Hour);
+    lockpw::attach(m_lockScreen); // password shared with Cards (E9)
     m_lockScreen.onSleepRequested([this]() {
         // The daemon owns the real sleep sequence. Asking for it here is what
         // makes the panel actually go dark: stopping our own presentation only

@@ -1,4 +1,5 @@
 #include "LockScreen.hpp"
+#include "LockPassword.hpp"
 #include "core/DebugLog.hpp"
 #include <nxui/core/Renderer.hpp>
 #include <nxui/core/Font.hpp>
@@ -79,6 +80,153 @@ void LockScreen::lockNow() {
 
 void LockScreen::unlockNow() {
     beginRelease();
+}
+
+void LockScreen::setPassword(std::size_t length, std::function<bool(const std::string&)> check,
+                             std::function<void()> clear) {
+    m_pwLength = length;
+    m_pwCheck = std::move(check);
+    m_pwClear = std::move(clear);
+    m_pwEntry.clear();
+}
+
+void LockScreen::beginPasswordSetup(std::function<void(const std::string&)> done) {
+    m_setupDone = std::move(done);
+    m_setupStage = 1;
+    m_setupFirst.clear();
+    m_pwEntry.clear();
+    lockNow();
+    DebugLog::log("[lock] password setup started");
+}
+
+void LockScreen::endSetup() {
+    m_setupStage = 0;
+    m_setupFirst.clear();
+    m_pwEntry.clear();
+    m_setupDone = nullptr;
+    beginRelease();
+}
+
+void LockScreen::updateSetup(nxui::Input& input) {
+    using B = nxui::Button;
+    if (m_inputGrace > 0.f)
+        return;
+    char c = 0;
+    if (input.isDown(B::DUp)) c = 'U';
+    else if (input.isDown(B::DDown)) c = 'D';
+    else if (input.isDown(B::DLeft)) c = 'L';
+    else if (input.isDown(B::DRight)) c = 'R';
+    if (c) {
+        if (m_pwEntry.size() < lockpw::kMax) {
+            m_pwEntry.push_back(c);
+            m_beadPop = kBeadPopDur;
+            if (m_progressCb) m_progressCb();
+        }
+        return;
+    }
+    if (input.isDown(B::B)) {
+        if (!m_pwEntry.empty()) {
+            m_pwEntry.pop_back();
+        } else {
+            DebugLog::log("[lock] password setup cancelled");
+            endSetup();
+        }
+        return;
+    }
+    if (!input.isDown(B::Plus) || m_pwEntry.size() < lockpw::kMin)
+        return;
+    if (m_setupStage == 1) {
+        m_setupFirst = m_pwEntry;
+        m_pwEntry.clear();
+        m_setupStage = 2;
+        if (m_progressCb) m_progressCb();
+        return;
+    }
+    if (m_pwEntry != m_setupFirst) {
+        DebugLog::log("[lock] password setup mismatch; starting over");
+        m_setupFirst.clear();
+        m_pwEntry.clear();
+        m_setupStage = 1;
+        m_pwShake = 0.4f;
+        return;
+    }
+    auto done = m_setupDone;
+    const std::string presses = m_pwEntry;
+    DebugLog::log("[lock] password setup confirmed (%zu presses)", presses.size());
+    endSetup();
+    if (done) done(presses);
+}
+
+bool LockScreen::homePressed() {
+    if (m_state != State::Locked)
+        return false;
+    if (m_setupStage != 0) {
+        DebugLog::log("[lock] password setup cancelled by HOME");
+        endSetup();
+        return true;
+    }
+    if (m_pwLength == 0) {
+        beginRelease();
+        return true;
+    }
+    // A password lock is not opened by HOME; HOME starts the recovery window.
+    m_wakeDisplaySeconds = kWakeDisplayDuration;
+    m_recoveryWindow = lockpw::kRecoveryWindow;
+    m_recoveryHeld = 0.f;
+    DebugLog::log("[lock] HOME on password lock: recovery window open");
+    return false;
+}
+
+void LockScreen::updatePassword(float dt, nxui::Input& input) {
+    using B = nxui::Button;
+    if (m_pwShake > 0.f)
+        m_pwShake = std::max(0.f, m_pwShake - dt);
+    if (m_recoveryWindow > 0.f) {
+        m_recoveryWindow = std::max(0.f, m_recoveryWindow - dt);
+        const bool combo = input.isHeld(B::L) && input.isHeld(B::R) && input.isHeld(B::ZL) &&
+                           input.isHeld(B::ZR) && input.isHeld(B::Minus);
+        m_recoveryHeld = combo ? m_recoveryHeld + dt : 0.f;
+        m_wakeDisplaySeconds = std::max(m_wakeDisplaySeconds, 1.f);
+        if (m_recoveryHeld >= lockpw::kRecoveryHold) {
+            DebugLog::log("[lock] recovery combo held: password cleared");
+            if (m_pwClear) m_pwClear();
+            m_pwLength = 0;
+            m_recoveryWindow = 0.f;
+            m_recoveryHeld = 0.f;
+            m_pwEntry.clear();
+            beginRelease();
+            return;
+        }
+        if (combo)
+            return; // the combo buttons are not password presses
+    }
+    if (m_inputGrace > 0.f)
+        return;
+    char c = 0;
+    if (input.isDown(B::DUp)) c = 'U';
+    else if (input.isDown(B::DDown)) c = 'D';
+    else if (input.isDown(B::DLeft)) c = 'L';
+    else if (input.isDown(B::DRight)) c = 'R';
+    else if (input.isDown(B::B) && !m_pwEntry.empty()) { m_pwEntry.pop_back(); return; }
+    if (!c)
+        return;
+    m_wakeDisplaySeconds = kWakeDisplayDuration; // typing keeps the lock lit
+    m_pwEntry.push_back(c);
+    m_beadPop = kBeadPopDur;
+    if (m_pwEntry.size() < m_pwLength) {
+        if (m_progressCb) m_progressCb();
+        return;
+    }
+    const bool ok = m_pwCheck && m_pwCheck(m_pwEntry);
+    m_pwEntry.clear();
+    if (ok) {
+        DebugLog::log("[lock] password accepted");
+        beginRelease();
+    } else {
+        DebugLog::log("[lock] password rejected");
+        m_pwShake = 0.4f;
+        if (m_progressCb) m_progressCb();
+    }
 }
 
 void LockScreen::showAfterSystemWake() {
@@ -195,6 +343,19 @@ void LockScreen::update(float dt, nxui::Input& input, bool sleepSuppressed) {
             if (m_wakeDisplaySeconds > 0.f)
                 m_wakeDisplaySeconds = std::max(0.f, m_wakeDisplaySeconds - dt);
 
+            if (m_setupStage != 0) {
+                // Setup never goes to the black low-power frame.
+                m_wakeDisplaySeconds = kWakeDisplayDuration;
+                if (m_pwShake > 0.f)
+                    m_pwShake = std::max(0.f, m_pwShake - dt);
+                updateSetup(input);
+                break;
+            }
+            if (m_pwLength > 0) {
+                updatePassword(dt, input);
+                break;
+            }
+
             if (m_sequenceButton != 0) {
                 m_sequenceAge += dt;
                 if (m_sequenceAge > kSequenceLife) {
@@ -290,15 +451,22 @@ void LockScreen::render(nxui::Renderer& ren) {
 
     // The beads: one per press the sequence still owes. They are the only moving
     // part, and the only thing on screen that answers "what do I do now".
-    const float beadW = 58.f, beadH = 12.f, beadGap = 16.f;
-    const float totalW = kUnlockPresses * beadW + (kUnlockPresses - 1) * beadGap;
+    // Password mode: one bead per password press, shaken after a wrong entry.
+    const bool setup = m_setupStage != 0;
+    const bool pw = m_pwLength > 0 || setup;
+    const int beads = setup ? static_cast<int>(std::max<std::size_t>(lockpw::kMin, m_pwEntry.size()))
+                     : pw  ? static_cast<int>(m_pwLength) : kUnlockPresses;
+    const int filledCount = pw ? static_cast<int>(m_pwEntry.size()) : m_presses;
+    const float beadW = pw ? 40.f : 58.f, beadH = 12.f, beadGap = 16.f;
+    const float totalW = beads * beadW + (beads - 1) * beadGap;
     const float beadY = h - 104.f + rise + drift * 0.4f;
-    const float beadX0 = (w - totalW) * 0.5f + drift;
+    const float shake = m_pwShake > 0.f ? std::sin(m_pwShake * 60.f) * 10.f * (m_pwShake / 0.4f) : 0.f;
+    const float beadX0 = (w - totalW) * 0.5f + drift + shake;
     const float pop = m_beadPop > 0.f ? (m_beadPop / kBeadPopDur) : 0.f;
 
-    for (int i = 0; i < kUnlockPresses; ++i) {
-        const bool filled = i < m_presses;
-        const bool newest = filled && i == m_presses - 1;
+    for (int i = 0; i < beads; ++i) {
+        const bool filled = i < filledCount;
+        const bool newest = filled && i == filledCount - 1;
         const float grow = newest ? nxui::Easing::outCubic(pop) * 3.f : 0.f;
         const nxui::Rect r{beadX0 + i * (beadW + beadGap) - grow, beadY - grow * 0.5f,
                            beadW + grow * 2.f, beadH + grow};
@@ -312,8 +480,18 @@ void LockScreen::render(nxui::Renderer& ren) {
     }
 
     if (m_captionFont) {
-        const std::string hint = i18n.tr("lock_screen.hint",
-                                         "Press the same button three times to unlock");
+        std::string hint;
+        if (setup)
+            hint = m_setupStage == 1
+                ? i18n.tr("lock_screen.setup_hint", "New password: 4 to 8 D-pad presses, then +. B erases or cancels")
+                : i18n.tr("lock_screen.confirm_hint", "Enter the same password again, then +");
+        else if (!pw)
+            hint = i18n.tr("lock_screen.hint", "Press the same button three times to unlock");
+        else if (m_recoveryWindow > 0.f)
+            hint = i18n.tr("lock_screen.recovery_hint",
+                           "Forgot it? Hold L + R + ZL + ZR + Minus for 3 seconds to remove the password");
+        else
+            hint = i18n.tr("lock_screen.password_hint", "Enter your password with the D-pad");
         const nxui::Vec2 sz = m_captionFont->measure(hint);
         ren.drawText(hint, {(w - sz.x) * 0.5f + drift, beadY - sz.y - 22.f},
                      m_captionFont, m_theme->textSecondary.withAlpha(0.8f * ease), 1.f);

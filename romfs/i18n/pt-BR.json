@@ -1,5 +1,9 @@
 {
   "lock_screen": {
+    "password_hint": "Digite sua senha com o direcional",
+    "recovery_hint": "Esqueceu? Segure L + R + ZL + ZR + Menos por 3 segundos para remover a senha",
+    "setup_hint": "Nova senha: 4 a 8 toques no direcional, depois +. B apaga ou cancela",
+    "confirm_hint": "Digite a mesma senha de novo, depois +",
     "hint": "Pressione o mesmo botão três vezes para desbloquear",
     "locked": "Tela bloqueada. Pressione o mesmo botão três vezes para desbloquear.",
     "unlocked": "Desbloqueado."
@@ -1299,6 +1303,14 @@
     "title": "Tema automático"
   },
   "cards": {
+    "lock_password": "Senha",
+    "lock_password_on": "Ativada",
+    "lock_password_off": "Desativada",
+    "lock_password_desc": "4 a 8 toques no direcional. Esqueceu: HOME e segure L + R + ZL + ZR + Menos por 3 s.",
+    "lock_password_saved": "Senha salva",
+    "lock_password_failed": "Não foi possível salvar a senha",
+    "lock_password_remove": "Remover senha",
+    "lock_password_removed": "Senha removida",
     "loading": "Carregando...",
     "empty": "Nenhum software instalado",
     "played": "Jogado",

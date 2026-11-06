@@ -1,5 +1,9 @@
 {
   "lock_screen": {
+    "password_hint": "Saisis ton mot de passe avec la croix",
+    "recovery_hint": "Oublié ? Maintiens L + R + ZL + ZR + Moins 3 secondes pour supprimer le mot de passe",
+    "setup_hint": "Nouveau mot de passe : 4 à 8 pressions sur la croix, puis +. B efface ou annule",
+    "confirm_hint": "Saisis à nouveau le même mot de passe, puis +",
     "hint": "Appuyez trois fois sur le même bouton pour déverrouiller",
     "locked": "Écran verrouillé. Appuyez trois fois sur le même bouton pour déverrouiller.",
     "unlocked": "Déverrouillé."
@@ -1179,6 +1183,14 @@
     "hint_today": "Aujourd'hui"
   },
   "cards": {
+    "lock_password": "Mot de passe",
+    "lock_password_on": "Activé",
+    "lock_password_off": "Désactivé",
+    "lock_password_desc": "4 à 8 pressions sur la croix. Oublié : HOME, puis maintiens L + R + ZL + ZR + Moins 3 s.",
+    "lock_password_saved": "Mot de passe enregistré",
+    "lock_password_failed": "Impossible d\u0027enregistrer le mot de passe",
+    "lock_password_remove": "Supprimer le mot de passe",
+    "lock_password_removed": "Mot de passe supprimé",
     "loading": "Chargement...",
     "empty": "Aucun logiciel installé",
     "played": "Joué",

@@ -68,6 +68,22 @@ public:
     /// ordinary button sequence, the gesture has already been authenticated by
     /// the console's system layer.
     void unlockNow();
+
+    /// Password mode (E9, widgets/LockPassword.hpp). `length` 0 = no password:
+    /// the three-press unlock as before. Otherwise the D-pad entry of that
+    /// length is checked through `check`, and HOME (homePressed) no longer
+    /// unlocks: it opens the recovery window instead (combo held clears the
+    /// password through `clear` and unlocks).
+    void setPassword(std::size_t length, std::function<bool(const std::string&)> check,
+                     std::function<void()> clear);
+    /// HOME arrived while locked. Returns true when it unlocked (no password).
+    bool homePressed();
+    bool passwordActive() const { return m_pwLength > 0; }
+    /// Shows the lock in setup mode: the owner enters a new password (4-8
+    /// D-pad presses, + to confirm, B to erase / cancel) twice. `done` gets the
+    /// presses on a match; cancel (B on empty entry, or HOME) unlocks with
+    /// nothing changed.
+    void beginPasswordSetup(std::function<void(const std::string&)> done);
     /// Makes the locked UI visible after Horizon wakes the console. It does not
     /// unlock or count as one of the three required button presses.
     void showAfterSystemWake();
@@ -131,4 +147,19 @@ private:
     std::function<void()> m_unlockedCb;
     std::function<void()> m_progressCb;
     std::function<void()> m_sleepCb;
+
+    // Password mode.
+    std::size_t m_pwLength = 0;
+    std::string m_pwEntry;
+    float m_pwShake = 0.f;      // wrong entry feedback
+    float m_recoveryWindow = 0.f; // > 0 after HOME on a password lock
+    float m_recoveryHeld = 0.f;
+    std::function<bool(const std::string&)> m_pwCheck;
+    std::function<void()> m_pwClear;
+    int m_setupStage = 0; // 0 none, 1 first entry, 2 confirmation
+    std::string m_setupFirst;
+    std::function<void(const std::string&)> m_setupDone;
+    void updatePassword(float dt, nxui::Input& input);
+    void updateSetup(nxui::Input& input);
+    void endSetup();
 };
