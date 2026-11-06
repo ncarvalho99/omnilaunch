@@ -62,6 +62,7 @@ private:
     int m_scroll = 0;
     bool m_open = false;
     float m_in = 0.f;          // 0 -> 1 open animation
+    mutable bool m_backdropCacheValid = false; // C-PF-3 cached backdrop
     float m_repeatTimer = 0.f;
     int m_repeatDir = 0;
     std::function<void()> m_onClosed, m_nav, m_act;

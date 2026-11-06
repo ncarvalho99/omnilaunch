@@ -959,8 +959,73 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         s.rows.push_back(std::move(style));
         all["home"] = std::move(s);
     }
-    { // Appearance (glass, accent, background: E8, batch 2).
+    { // Appearance (HomeNX E8, C-SK-6/8: accent, glass, haze, motion).
         CardsSheet::Section s{i18n.tr("cards.set_look", "Appearance"), {}};
+        Row acc;
+        acc.label = i18n.tr("cards.set_accent", "Highlight colour");
+        acc.value = [this]() {
+            auto& t = nxui::I18n::instance();
+            const int idx = std::clamp(m_core.config().cards.accent, 0, CardsChrome::kAccentCount - 1);
+            return t.tr(std::string("cards.accent_") + std::to_string(idx), CardsChrome::kAccents[idx].name);
+        };
+        acc.detail = i18n.tr("cards.set_accent_desc", "The ring around what is chosen");
+        acc.onChange = [this](int d) {
+            auto& c = m_core.config();
+            c.cards.accent = (c.cards.accent + d + CardsChrome::kAccentCount) % CardsChrome::kAccentCount;
+            CardsChrome::setStyle(c.cards.accent, c.cards.glass);
+            saveConfig("cards accent");
+        };
+        s.rows.push_back(std::move(acc));
+
+        Row gl;
+        gl.label = i18n.tr("cards.set_glass", "Glass style");
+        gl.value = [this]() {
+            auto& t = nxui::I18n::instance();
+            const int idx = std::clamp(m_core.config().cards.glass, 0, 2);
+            return t.tr(std::string("cards.glass_") + std::to_string(idx), CardsChrome::kGlassNames[idx]);
+        };
+        gl.detail = i18n.tr("cards.set_glass_desc", "Buttons, the bar and the panel");
+        gl.onChange = [this](int d) {
+            auto& c = m_core.config();
+            c.cards.glass = (c.cards.glass + d + 3) % 3;
+            CardsChrome::setStyle(c.cards.accent, c.cards.glass);
+            saveConfig("cards glass");
+        };
+        s.rows.push_back(std::move(gl));
+
+        Row hz;
+        hz.label = i18n.tr("cards.set_haze", "Background softness");
+        hz.value = [this]() { return std::to_string(m_core.config().cards.haze) + "%"; };
+        hz.detail = i18n.tr("cards.set_haze_desc", "Haze over the game's art");
+        hz.onChange = [this](int d) {
+            auto& c = m_core.config();
+            c.cards.haze = std::clamp(c.cards.haze + d * 5, 0, 80);
+            saveConfig("cards haze");
+        };
+        s.rows.push_back(std::move(hz));
+
+        Row bgm;
+        bgm.label = i18n.tr("cards.set_bg_motion", "Background drift");
+        bgm.value = [this]() { return onOff(m_core.config().cards.bgMotion); };
+        bgm.detail = i18n.tr("cards.set_bg_motion_desc", "The background art slowly zooms and pans");
+        bgm.onChange = [this](int) {
+            auto& c = m_core.config();
+            c.cards.bgMotion = !c.cards.bgMotion;
+            saveConfig("cards bg motion");
+        };
+        s.rows.push_back(std::move(bgm));
+
+        Row mot;
+        mot.label = i18n.tr("cards.set_motion", "Motion");
+        mot.value = [this]() { return onOff(m_core.config().cards.motion); };
+        mot.detail = i18n.tr("cards.set_motion_desc", "Smooth sliding animations");
+        mot.onChange = [this](int) {
+            auto& c = m_core.config();
+            c.cards.motion = !c.cards.motion;
+            saveConfig("cards motion");
+        };
+        s.rows.push_back(std::move(mot));
+
         Row r;
         r.label = i18n.tr("cards.launch_anim", "Launch animation");
         r.value = [this]() {

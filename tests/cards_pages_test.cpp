@@ -139,6 +139,11 @@ static void configTest() {
         c.cards.coverBackgroundTitles = c.cards.gamesOrder;
         c.cards.plainBackgroundTitles = c.cards.mediaTitles;
         c.cards.logoTitles = c.cards.mediaTitles;
+        c.cards.accent = 3;
+        c.cards.glass = 2;
+        c.cards.haze = 60;
+        c.cards.bgMotion = false;
+        c.cards.motion = false;
         CHECK(c.save());
         AppConfig d;
         CHECK(d.load());
@@ -155,6 +160,11 @@ static void configTest() {
         CHECK(d.cards.coverBackgroundTitles == c.cards.coverBackgroundTitles);
         CHECK(d.cards.plainBackgroundTitles == c.cards.plainBackgroundTitles);
         CHECK(d.cards.logoTitles == c.cards.logoTitles);
+        CHECK(d.cards.accent == 3);
+        CHECK(d.cards.glass == 2);
+        CHECK(d.cards.haze == 60);
+        CHECK(!d.cards.bgMotion);
+        CHECK(!d.cards.motion);
         std::ifstream saved(path);
         nlohmann::json j; saved >> j;
         CHECK(j["cards"]["sort"] == 3);

@@ -132,6 +132,11 @@ bool AppConfig::load() {
         readJsonOpt(c, "hiddenPages", cards.hiddenPages);
         readJsonOpt(c, "settingsOrder", cards.settingsOrder);
         readJsonOpt(c, "tutorialDone", cards.tutorialDone);
+        readJsonOpt(c, "accent", cards.accent);
+        readJsonOpt(c, "glass", cards.glass);
+        readJsonOpt(c, "haze", cards.haze);
+        readJsonOpt(c, "bgMotion", cards.bgMotion);
+        readJsonOpt(c, "motion", cards.motion);
         auto readIds = [&c](const char* key, std::vector<std::uint64_t>& out) {
             out.clear();
             auto f = c.find(key);
@@ -382,6 +387,11 @@ bool AppConfig::save() const {
                                                : std::vector<std::uint64_t>{});
         c["settingsOrder"] = cards.settingsOrder;
         c["tutorialDone"] = cards.tutorialDone;
+        c["accent"] = cards.accent;
+        c["glass"] = cards.glass;
+        c["haze"] = cards.haze;
+        c["bgMotion"] = cards.bgMotion;
+        c["motion"] = cards.motion;
         j["cards"] = std::move(c);
     }
     j["lastUpdateCheckDay"] = lastUpdateCheckDay;
@@ -536,4 +546,8 @@ void AppConfig::CardsPrefs::normalize() {
     if (hidden.size() >= pageOrder.size()) // one page always shows
         hidden.erase(std::remove(hidden.begin(), hidden.end(), pageOrder.front()), hidden.end());
     hiddenPages = std::move(hidden);
+
+    if (accent < 0 || accent >= 7) accent = 1;
+    if (glass < 0 || glass >= 3) glass = 1;
+    haze = std::clamp(haze, 0, 80);
 }

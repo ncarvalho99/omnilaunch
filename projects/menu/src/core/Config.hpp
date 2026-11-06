@@ -66,6 +66,12 @@ struct AppConfig {
         std::vector<std::uint64_t> coverBackgroundTitles; // cover instead of hero
         std::vector<std::uint64_t> plainBackgroundTitles; // no game background
         std::vector<std::uint64_t> logoTitles; // local title logo when available
+        // Appearance (HomeNX E8, C-SK-6/8).
+        int accent = 1;       // 0 White, 1 Blue, 2 Green, 3 Pink, 4 Orange, 5 Purple, 6 Gold
+        int glass = 1;        // 0 Clear, 1 Frosted, 2 Dark
+        int haze = 45;        // 0..80 %, background art softness
+        bool bgMotion = true; // background zoom/pan drift
+        bool motion = true;   // UI animations enabled
 
         bool pageHidden(int page) const {
             for (int h : hiddenPages)

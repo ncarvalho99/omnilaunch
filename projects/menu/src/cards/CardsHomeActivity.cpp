@@ -432,6 +432,7 @@ bool CardsHomeActivity::onCreate() {
     }
 
     m_chrome.load(gpu, ren, kAssets);
+    CardsChrome::setStyle(m_core.config().cards.accent, m_core.config().cards.glass);
     loadAvatar();
     updateStatus(1.f);
 
@@ -907,11 +908,15 @@ void CardsHomeActivity::onUpdate(float dt) {
     updateFrontendSwitch(dt);
     updateDetails(dt);
 
-    // Ease the row toward the selection.
+    // Ease the row toward the selection (snaps when motion is disabled: E8).
     const float target = static_cast<float>(m_selected);
-    m_scroll += (target - m_scroll) * std::min(1.f, dt * 12.f);
-    if (std::abs(target - m_scroll) < 0.001f)
+    if (!m_core.config().cards.motion) {
         m_scroll = target;
+    } else {
+        m_scroll += (target - m_scroll) * std::min(1.f, dt * 12.f);
+        if (std::abs(target - m_scroll) < 0.001f)
+            m_scroll = target;
+    }
 
     updateStatus(dt);
     const std::uint64_t focusedId =
@@ -1762,7 +1767,8 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
     const nxui::Texture* bg = !plain && m_bgId ? m_art.background(m_bgId) : nullptr;
     const float bgIn = bg ? std::min(1.f, m_art.backgroundAge(m_bgId, m_time) / 0.6f) : 0.f;
     const nxui::Texture* prev = !plain && m_bgPrevId ? m_art.background(m_bgPrevId) : nullptr;
-    m_chrome.drawBackground(ren, bg, bgIn, prev, m_time);
+    m_chrome.drawBackground(ren, bg, bgIn, prev, m_time, m_core.config().cards.haze,
+                            m_core.config().cards.bgMotion);
 
     m_chrome.drawTopBar(ren, m_status, static_cast<TopButton>(m_topIndex), m_topZone, m_time);
     auto& tr = nxui::I18n::instance();

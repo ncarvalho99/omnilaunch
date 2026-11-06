@@ -3,6 +3,9 @@
 #include <nxui/core/Font.hpp>
 #include <nxui/core/Input.hpp>
 #include <nxui/core/Renderer.hpp>
+#ifdef SWITCHU_MENU
+#include <nxui/core/GpuDevice.hpp>
+#endif
 #include <algorithm>
 #include <cmath>
 
@@ -31,12 +34,14 @@ void CardsSheet::open(std::string title, std::vector<Section> sections, int sect
     if (!m_open)
         m_in = 0.f;
     m_open = true;
+    m_backdropCacheValid = false;
     m_repeatDir = 0;
     clampFocus();
 }
 
 void CardsSheet::close() {
     m_open = false;
+    m_backdropCacheValid = false;
 }
 
 void CardsSheet::clampFocus() {
@@ -175,7 +180,26 @@ void CardsSheet::render(nxui::Renderer& ren, CardsChrome& chrome) const {
     const float a = 1.f - (1.f - m_in) * (1.f - m_in);
     ren.drawRect({0.f, 0.f, 1280.f, 720.f}, {0.f, 0.f, 0.f, 0.45f * a});
     const nxui::Rect p{kX, kY + 18.f * (1.f - a), kW, kH};
-    ren.drawRoundedRect(p, {0.08f, 0.09f, 0.13f, 0.92f * a}, 30.f);
+
+    // Cached backdrop for sheets (HomeNX E8, C-PF-3).
+    // Once the sheet has settled (m_in >= 0.99f), capture and blur the backdrop
+    // once into OFF_DIALOG instead of recalculating every frame.
+    bool drawnGlass = false;
+#ifdef SWITCHU_MENU
+    if (m_in >= 0.99f && ren.gpu().offscreenReady()) {
+        if (!m_backdropCacheValid) {
+            ren.captureToOffscreenSharp();
+            ren.applyBlur(2.5f, 2);
+            ren.copyOffscreen(nxui::GpuDevice::OFF_SHARP_A, nxui::GpuDevice::OFF_DIALOG);
+            m_backdropCacheValid = true;
+        }
+        ren.drawLiquidGlass(nxui::GpuDevice::OFF_DIALOG, p, 30.f, CardsChrome::glassTint(1.f), a, 0.35f);
+        drawnGlass = true;
+    }
+#endif
+    if (!drawnGlass) {
+        ren.drawRoundedRect(p, {0.08f, 0.09f, 0.13f, 0.92f * a}, 30.f);
+    }
     ren.drawRoundedRectOutline(p, {1.f, 1.f, 1.f, 0.16f * a}, 30.f, 1.5f);
     const nxui::Color white = CardsChrome::kWhite.withAlpha(a);
     const nxui::Color dim{0.78f, 0.80f, 0.88f, a};

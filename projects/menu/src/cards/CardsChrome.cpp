@@ -15,14 +15,44 @@ const nxui::Color CardsChrome::kWhite{1.f, 1.f, 1.f, 1.f};
 const nxui::Color CardsChrome::kGlassEdge{1.f, 1.f, 1.f, 0.20f};
 const nxui::Color CardsChrome::kGreen{0.204f, 0.78f, 0.349f, 1.f};
 
+const CardsChrome::AccentDef CardsChrome::kAccents[kAccentCount] = {
+    {"White",  nxui::Color(1.f, 1.f, 1.f, 1.f)},
+    {"Blue",   nxui::Color(0.36f, 0.68f, 1.f, 1.f)},
+    {"Green",  nxui::Color(0.30f, 0.86f, 0.47f, 1.f)},
+    {"Pink",   nxui::Color(1.f, 0.46f, 0.72f, 1.f)},
+    {"Orange", nxui::Color(1.f, 0.63f, 0.26f, 1.f)},
+    {"Purple", nxui::Color(0.72f, 0.55f, 1.f, 1.f)},
+    {"Gold",   nxui::Color(1.f, 0.84f, 0.36f, 1.f)},
+};
+const char* const CardsChrome::kGlassNames[3] = {"Clear", "Frosted", "Dark"};
+
 namespace {
 // Top bar positions (CardsNX build 185).
 constexpr float kMenuX = 134.f, kDiscordX = 219.f, kSortX = 304.f, kPillRight = 872.f;
 constexpr float kBellX = 908.f, kMusicX = 976.f, kPowerX = 1061.f, kGearX = 1146.f;
+int s_accentIndex = 1;
+int s_glassStyle = 1;
 } // namespace
 
-nxui::Color CardsChrome::glassTint(float a) { return {0.17f, 0.20f, 0.27f, 0.30f * a}; }
-nxui::Color CardsChrome::accent(float a) { return {0.36f, 0.62f, 1.f, a}; }
+void CardsChrome::setStyle(int accentIndex, int glassStyle) {
+    s_accentIndex = std::clamp(accentIndex, 0, kAccentCount - 1);
+    s_glassStyle = std::clamp(glassStyle, 0, 2);
+}
+
+int CardsChrome::currentAccent() { return s_accentIndex; }
+int CardsChrome::currentGlass() { return s_glassStyle; }
+
+nxui::Color CardsChrome::glassTint(float a) {
+    switch (s_glassStyle) {
+    case 0: return {0.20f, 0.23f, 0.30f, 0.16f * a}; // Clear
+    case 2: return {0.05f, 0.06f, 0.09f, 0.55f * a}; // Dark
+    default: return {0.17f, 0.20f, 0.27f, 0.30f * a}; // Frosted
+    }
+}
+
+nxui::Color CardsChrome::accent(float a) {
+    return kAccents[s_accentIndex].color.withAlpha(a);
+}
 
 bool CardsChrome::load(nxui::GpuDevice& gpu, nxui::Renderer& ren, const std::string& assetsRoot) {
     m_gpu = &gpu;
@@ -101,18 +131,20 @@ void CardsChrome::glassCircle(nxui::Renderer& r, float cx, float cy, float d, bo
 }
 
 void CardsChrome::drawBackground(nxui::Renderer& r, const nxui::Texture* current, float currentAlpha,
-                                 const nxui::Texture* previous, float time) {
+                                 const nxui::Texture* previous, float time, int hazePercent, bool bgMotion) {
     const nxui::Rect screen{0.f, 0.f, 1280.f, 720.f};
     r.drawGradientRect(screen, {0.36f, 0.41f, 0.55f, 1.f}, {0.22f, 0.25f, 0.34f, 1.f});
-    const float zoom = 1.06f + 0.03f * std::sin(time * 0.11f);
-    const float panX = 0.25f * std::sin(time * 0.07f);
-    const float panY = 0.2f * std::cos(time * 0.05f);
+    const float zoom = bgMotion ? (1.06f + 0.03f * std::sin(time * 0.11f)) : 1.04f;
+    const float panX = bgMotion ? 0.25f * std::sin(time * 0.07f) : 0.f;
+    const float panY = bgMotion ? 0.2f * std::cos(time * 0.05f) : 0.f;
     if (previous && currentAlpha < 1.f)
         drawCover(r, previous, screen, 0.f, kWhite, zoom, panX * 0.1f, panY * 0.1f);
     if (current)
         drawCover(r, current, screen, 0.f, kWhite.withAlpha(currentAlpha), zoom, panX * 0.1f, panY * 0.1f);
-    // Haze (CardsNX default 45 %) and depth at the edges.
-    r.drawRect(screen, {0.38f, 0.43f, 0.56f, 0.45f});
+    // Haze (0..80 %) and depth at the edges.
+    const float haze = std::clamp(hazePercent, 0, 80) * 0.01f;
+    if (haze > 0.001f)
+        r.drawRect(screen, {0.38f, 0.43f, 0.56f, haze});
     r.drawGradientRect({0.f, 0.f, 1280.f, 140.f}, {0.05f, 0.06f, 0.10f, 0.35f}, {0.05f, 0.06f, 0.10f, 0.f});
     r.drawGradientRect({0.f, 560.f, 1280.f, 160.f}, {0.05f, 0.06f, 0.10f, 0.f}, {0.05f, 0.06f, 0.10f, 0.40f});
 }

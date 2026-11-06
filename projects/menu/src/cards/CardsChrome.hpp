@@ -44,7 +44,7 @@ public:
                           const nxui::Color& tint, float zoom = 1.f, float panX = 0.f, float panY = 0.f);
 
     void drawBackground(nxui::Renderer& r, const nxui::Texture* current, float currentAlpha,
-                        const nxui::Texture* previous, float time);
+                        const nxui::Texture* previous, float time, int hazePercent = 45, bool bgMotion = true);
     void drawTopBar(nxui::Renderer& r, const StatusSnapshot& status, TopButton focused, bool topZone, float time);
     void glassCircle(nxui::Renderer& r, float cx, float cy, float d, bool focused, const char* icon,
                      float iconSize, float time);
@@ -52,11 +52,22 @@ public:
     void textMid(nxui::Renderer& r, nxui::Font& f, const std::string& s, float x, float cy, const nxui::Color& c);
     std::string fit(nxui::Font& f, const std::string& s, float maxWidth);
 
+    struct AccentDef {
+        const char* name;
+        nxui::Color color;
+    };
+    static constexpr int kAccentCount = 7;
+    static const AccentDef kAccents[kAccentCount];
+    static const char* const kGlassNames[3];
+
+    static void setStyle(int accentIndex, int glassStyle);
+    static int currentAccent();
+    static int currentGlass();
     static const nxui::Color kWhite;
     static const nxui::Color kGlassEdge;
     static const nxui::Color kGreen;
-    static nxui::Color glassTint(float a);
-    static nxui::Color accent(float a);
+    static nxui::Color glassTint(float a = 1.f);
+    static nxui::Color accent(float a = 1.f);
 
 private:
     nxui::Font m_pill;
