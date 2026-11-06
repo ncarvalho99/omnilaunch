@@ -12,6 +12,7 @@
 #include "home/HomeCore.hpp"
 #include "widgets/OverlayDialog.hpp"
 #include "widgets/ProgressDialog.hpp"
+#include "launcher/HekateReboot.hpp"
 #ifdef SWITCHU_MENU
 #include "core/NsService.hpp"
 #include <switchu/control_cache.hpp>
@@ -79,7 +80,8 @@ void CardsHomeActivity::activateTop() {
     case TopButton::Power:
         if (!m_userSelect)
             return;
-        // Same actions as Classic's power dialog. Reboot to Hekate is batch 2.
+        // Classic's power actions plus Restart to Hekate (E5; see
+        // launcher/HekateReboot.hpp for the authorized exception).
         m_audio.playSfx(Sfx::ModalShow);
         m_userSelect->show(
             i18n.tr("power.title", "Power"),
@@ -101,6 +103,7 @@ void CardsHomeActivity::activateTop() {
                     m_core.launcher().shutdown();
 #endif
                 }, true},
+                {i18n.tr("power.hekate", "Hekate"), [this]() { m_hekateQueued = true; }, true},
             },
             0, {});
         focusManager().setFocus(m_userSelect.get());

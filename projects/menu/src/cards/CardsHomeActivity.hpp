@@ -148,6 +148,7 @@ private:
     bool m_panelZone = false;
     int m_panelIndex = 0;
     bool m_closeConfirmQueued = false;  // card options -> Close software
+    bool m_hekateQueued = false;        // power dialog -> Restart to Hekate (E5)
     // E4 delete. The worker writes only the atomics and the result fields,
     // which are read after the future is ready.
     std::uint64_t m_deleteConfirmId = 0;  // card options -> Delete software

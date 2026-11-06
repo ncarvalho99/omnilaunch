@@ -613,6 +613,12 @@
     }
   },
   "power": {
+    "hekate": "Hekate",
+    "hekate_missing": "Hekate is niet gevonden op de SD-kaart.",
+    "hekate_read_failed": "De Hekate-payload kon niet worden gelezen.",
+    "hekate_payload_failed": "Atmosphere heeft de Hekate-payload niet geaccepteerd.",
+    "hekate_rtc_failed": "De console heeft het verzoek voor het Hekate-menu niet geaccepteerd.",
+    "hekate_failed_title": "Herstarten naar Hekate niet mogelijk",
     "title": "Energie",
     "choose_action": "Kies een energieactie.",
     "sleep": "Slaapstand",

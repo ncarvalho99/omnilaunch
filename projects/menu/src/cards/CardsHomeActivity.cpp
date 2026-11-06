@@ -10,6 +10,7 @@
 #include "themeshop/ThemeHttp.hpp"
 #include "widgets/OverlayDialog.hpp"
 #include "widgets/ProgressDialog.hpp"
+#include "launcher/HekateReboot.hpp"
 #ifdef SWITCHU_MENU
 #include "smi_commands.hpp"
 #include <switchu/control_cache.hpp>
@@ -789,6 +790,20 @@ void CardsHomeActivity::onUpdate(float dt) {
         }
         if (m_deleteConfirmId != 0 && !(m_userSelect && m_userSelect->isActive()))
             confirmDeleteSoftware();
+        if (m_hekateQueued && !(m_userSelect && m_userSelect->isActive())) {
+            // Stage the payload (or RTC reason), then the standard reboot.
+            m_hekateQueued = false;
+            std::string error;
+            if (hekate::prepareMenuReboot(error)) {
+                m_core.launcher().reboot();
+            } else {
+                auto& t = nxui::I18n::instance();
+                m_audio.playSfx(Sfx::ModalShow);
+                m_userSelect->show(t.tr("power.hekate_failed_title", "Cannot restart to Hekate"), error,
+                                   {{t.tr("button.ok", "OK"), []() {}, true}}, 0, {});
+                focusManager().setFocus(m_userSelect.get());
+            }
+        }
         if (m_deleteProgress)
             m_deleteProgress->update(dt);
         pollDeleteSoftware();

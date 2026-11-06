@@ -613,6 +613,12 @@
     }
   },
   "power": {
+    "hekate": "Hekate",
+    "hekate_missing": "Hekate не найден на SD-карте.",
+    "hekate_read_failed": "Не удалось прочитать payload Hekate.",
+    "hekate_payload_failed": "Atmosphere не принял payload Hekate.",
+    "hekate_rtc_failed": "Консоль не приняла запрос меню Hekate.",
+    "hekate_failed_title": "Не удалось перезагрузиться в Hekate",
     "title": "Питание",
     "choose_action": "Выберите действие питания.",
     "sleep": "Сон",

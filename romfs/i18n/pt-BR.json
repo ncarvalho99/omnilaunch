@@ -635,6 +635,12 @@
     }
   },
   "power": {
+    "hekate": "Hekate",
+    "hekate_missing": "O Hekate não foi encontrado no cartão SD.",
+    "hekate_read_failed": "Não foi possível ler o payload do Hekate.",
+    "hekate_payload_failed": "O Atmosphere não aceitou o payload do Hekate.",
+    "hekate_rtc_failed": "O console não aceitou o pedido para o menu do Hekate.",
+    "hekate_failed_title": "Não foi possível reiniciar no Hekate",
     "title": "Energia",
     "choose_action": "Escolha uma ação de energia.",
     "sleep": "Suspender",
