@@ -88,7 +88,7 @@ inline void cleanupHolder() {
     }
 }
 
-inline void terminate();
+inline void terminate(u64 timeoutNs = 15'000'000'000ULL);
 
 inline Result prepare() {
     if (g_holderCreated) {
@@ -166,12 +166,12 @@ inline Result launch(smi::MenuStartMode mode, const smi::SystemStatus& status) {
     return startPrepared(mode, status);
 }
 
-inline void terminate() {
+inline void terminate(u64 timeoutNs) {
     if (!g_holderCreated) return;
     switchu::FileLog::log("[menu_la] terminate begin holderActive=%d",
                           (g_active && appletHolderActive(&g_holder)) ? 1 : 0);
     if (g_active) {
-        Result rc = appletHolderRequestExitOrTerminate(&g_holder, 15'000'000'000ULL);
+        Result rc = appletHolderRequestExitOrTerminate(&g_holder, timeoutNs);
         switchu::FileLog::log("[menu_la] terminate request rc=0x%X", rc);
         g_lastExitReason = R_SUCCEEDED(rc) ? appletHolderGetExitReason(&g_holder)
                                            : LibAppletExitReason_Unexpected;

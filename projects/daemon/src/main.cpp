@@ -342,6 +342,14 @@ static std::atomic<bool> g_catalogChangedWhileAway{false};
 // compare against. Invalidating cached names and icons starts from the second.
 static bool g_catalogBaselineTaken = false;
 static int g_appCatalogRefreshDelay = 0;
+// Menu-ready watchdog. Armed when HOME starts the menu over a suspended
+// application; cleared by MenuReady. 2026-11-06: HOME 2.6 s into a game's boot
+// started the menu applet (holder start ok, ChangeIntoForeground) but the menu
+// process never ran, and every later HOME was forwarded to that dead menu until
+// a forced power-off. A menu that has not reported ready by the deadline is
+// closed and the suspended game is given back the screen.
+static uint64_t g_menuReadyWatchTick = 0;
+static constexpr uint64_t kMenuReadyTimeoutMs = 10'000;
 static constexpr const char* kAppCatalogPath = smi::kAppCatalogPath;
 static constexpr const char* kAppCatalogTmpPath = smi::kAppCatalogTmpPath;
 static std::mutex g_controlCacheQueueMutex;
@@ -1117,6 +1125,8 @@ static void startSleepSequence(const char* source) {
         daemon::menu_la::isActive() ? 1 : 0);
     if (daemon::menu_la::isActive())
         pushNotification(smi::MenuMessage::SleepSequence);
+    // Time asleep is not time the menu failed to start.
+    g_menuReadyWatchTick = 0;
 
     // Preserve the final reason and state even if sleep ends in a forced power
     // loss. fflush must precede the device commit or the newest log data remains
@@ -1230,8 +1240,10 @@ static void openMenuFromHome(const char* source) {
                               source, status.app_running ? 1 : 0, status.suspended_app_id);
         Result menuRc = daemon::menu_la::launch(smi::MenuStartMode::MainMenu, status);
         switchu::FileLog::log("[%s] HOME MainMenu launch rc=0x%X", source, menuRc);
-        if (R_SUCCEEDED(menuRc))
+        if (R_SUCCEEDED(menuRc)) {
             g_appCatalogRefreshDelay = 200;
+            g_menuReadyWatchTick = armGetSystemTick();
+        }
         logHomeState(source, "after");
         return;
     }
@@ -2064,6 +2076,7 @@ static void handleMenuCommand() {
     case smi::SystemMessage::MenuReady: {
         const auto args = reader.pop<smi::MenuReadyArgs>();
         switchu::FileLog::log("[smi] menu ready");
+        g_menuReadyWatchTick = 0;
         logMenuReadyTrace(args, commandReceiveTick);
         restoreNormalPerformance("menu-ready");
         logPerformanceConfiguration("menu-ready");
@@ -2512,6 +2525,37 @@ static void guardTestTick() {
 static void guardTestTick() {}
 #endif
 
+// See g_menuReadyWatchTick. Not a start-up failure for the boot guard: the menu
+// did not crash, the system never ran it, and counting it would push a console
+// under memory pressure into safe mode.
+static void menuReadyWatchTick() {
+    if (g_menuReadyWatchTick == 0)
+        return;
+    if (!daemon::menu_la::hasHolder()) {
+        g_menuReadyWatchTick = 0;
+        return;
+    }
+    const uint64_t waitedMs = armTicksToNs(armGetSystemTick() - g_menuReadyWatchTick) / 1'000'000ULL;
+    if (waitedMs < kMenuReadyTimeoutMs)
+        return;
+    g_menuReadyWatchTick = 0;
+    switchu::FileLog::log("[watchdog] menu not ready %llu ms after HOME; closing it (app running=%d suspended=0x%016lX)",
+                          (unsigned long long)waitedMs, daemon::app::isRunning() ? 1 : 0,
+                          daemon::app::suspendedTitleId());
+    switchu::FileLog::flush();
+    daemon::menu_la::terminate(2'000'000'000ULL);
+    g_guardRun.onClosing();
+    guardOnMenuExit();
+    if (daemon::app::isRunning() && daemon::app::suspendedTitleId() != 0) {
+        Action action{};
+        action.type = ActionType::ResumeApplication;
+        action.title_id = daemon::app::suspendedTitleId();
+        action.commandReceivedTick = armGetSystemTick();
+        g_actionQueue.push_back(action);
+        switchu::FileLog::log("[watchdog] queued resume of the suspended application");
+    }
+}
+
 static void mainLoop() {
     handleGeneralChannel();
     handleAppletMessages();
@@ -2615,6 +2659,7 @@ static void mainLoop() {
 
     guardPoll();
     guardTestTick();
+    menuReadyWatchTick();
 
     if (daemon::menu_la::checkFinished()) {
         switchu::FileLog::log("[main] menu exited (reason=%d)",
