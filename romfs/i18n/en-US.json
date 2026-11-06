@@ -1303,6 +1303,8 @@
     "title": "Auto Theme"
   },
   "cards": {
+    "safe_blocked_title": "Online service unavailable",
+    "safe_blocked_desc": "This online service is blocked by default to protect your console from bans.",
     "music_title": "Music",
     "music_hint": "A  Select    B  Close",
     "music_stopped": "No music playing",

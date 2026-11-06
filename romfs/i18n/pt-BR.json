@@ -1303,6 +1303,8 @@
     "title": "Tema automático"
   },
   "cards": {
+    "safe_blocked_title": "Serviço online indisponível",
+    "safe_blocked_desc": "Este serviço online é bloqueado por padrão para proteger seu console contra banimento.",
     "music_title": "Música",
     "music_hint": "A  Escolher    B  Fechar",
     "music_stopped": "Nenhuma música tocando",

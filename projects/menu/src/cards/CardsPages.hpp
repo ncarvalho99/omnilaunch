@@ -45,9 +45,20 @@ bool forgetTitle(Prefs& prefs, std::uint64_t id);
 inline constexpr std::uint64_t kSystemIdBase = 0xFF00000000000000ULL;
 inline bool isSystemId(std::uint64_t id) { return (id & 0xFF00000000000000ULL) == kSystemIdBase; }
 
-/// Nintendo page tiles this build can open (C-PG-3). eShop, Friends, Switch
-/// Online, News, Browser and System settings arrive with todo F1/G3.
-enum class SystemTile : int { Album = 1, Controllers, MiiEditor, Internet, Users, HomeSettings };
+/// Nintendo page tiles (C-PG-3). Safe F1: Album, Controllers, Mii, Internet,
+/// Users and Settings open local services; Eshop, Friends and Switch Online
+/// are safe-blocked by design to protect the console from bans.
+enum class SystemTile : int {
+    Album = 1,
+    Controllers,
+    MiiEditor,
+    Internet,
+    Users,
+    HomeSettings,
+    Eshop,
+    SwitchOnline,
+    Friends
+};
 inline std::uint64_t systemId(SystemTile t) { return kSystemIdBase | static_cast<std::uint64_t>(t); }
 inline SystemTile systemTileOf(std::uint64_t id) { return static_cast<SystemTile>(id & 0xFFu); }
 

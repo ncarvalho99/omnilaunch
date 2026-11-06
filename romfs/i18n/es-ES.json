@@ -1232,6 +1232,8 @@
     "title": "Tema automático"
   },
   "cards": {
+    "safe_blocked_title": "Servicio en línea no disponible",
+    "safe_blocked_desc": "Este servicio en línea está bloqueado por defecto para proteger tu consola de baneos.",
     "music_title": "Música",
     "music_hint": "A  Seleccionar    B  Cerrar",
     "music_stopped": "No hay música reproduciéndose",

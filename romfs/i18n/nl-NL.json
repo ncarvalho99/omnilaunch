@@ -1183,6 +1183,8 @@
     "hint_today": "Vandaag"
   },
   "cards": {
+    "safe_blocked_title": "Onlinedienst niet beschikbaar",
+    "safe_blocked_desc": "Deze onlinedienst is standaard geblokkeerd om je console tegen bans te beschermen.",
     "music_title": "Muziek",
     "music_hint": "A  Kiezen    B  Sluiten",
     "music_stopped": "Geen muziek wordt afgespeeld",

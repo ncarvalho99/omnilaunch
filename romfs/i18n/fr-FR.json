@@ -1183,6 +1183,8 @@
     "hint_today": "Aujourd'hui"
   },
   "cards": {
+    "safe_blocked_title": "Service en ligne indisponible",
+    "safe_blocked_desc": "Ce service en ligne est bloqué par défaut pour protéger votre console des bannissements.",
     "music_title": "Musique",
     "music_hint": "A  Sélectionner    B  Fermer",
     "music_stopped": "Aucune musique en lecture",

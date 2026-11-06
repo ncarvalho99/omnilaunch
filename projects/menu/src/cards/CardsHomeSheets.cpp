@@ -238,6 +238,17 @@ void CardsHomeActivity::openSystemTile(std::uint64_t id) {
         openSettingsSheet();
         return;
     }
+    if (tile == T::Eshop || tile == T::SwitchOnline || tile == T::Friends) {
+        auto& i18n = nxui::I18n::instance();
+        m_audio.playSfx(Sfx::ModalShow);
+        m_userSelect->show(
+            i18n.tr("cards.safe_blocked_title", "Online service unavailable"),
+            i18n.tr("cards.safe_blocked_desc",
+                    "This online service is blocked by default to protect your console from bans."),
+            {{i18n.tr("button.ok", "OK"), []() {}, true}}, 0, {});
+        focusManager().setFocus(m_userSelect.get());
+        return;
+    }
 #ifdef SWITCHU_MENU
     if (m_core.launcher().suspendedTitleId() != 0) {
         // An applet over suspended software needs the daemon's applet queue
