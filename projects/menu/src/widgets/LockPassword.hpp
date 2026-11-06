@@ -8,10 +8,10 @@
 // Recovery for a forgotten password (owner decision 2026-11-06: HOME + button
 // combo). HOME is a system button the menu only sees as a daemon notification,
 // so the gesture is: press HOME on the password lock, then within
-// kRecoveryWindow seconds hold L + R + ZL + ZR + Minus for kRecoveryHold
-// seconds. It clears the password and unlocks. Deleting the file from the SD
-// card on a PC also clears it. With a password set, HOME alone no longer
-// unlocks.
+// kRecoveryWindow seconds hold Minus + Plus (or L + R) for kRecoveryHold
+// seconds. A progress bar confirms the hold, then the password is wiped and the
+// console unlocks. Deleting the file on a PC also clears it. With a password set,
+// HOME alone no longer unlocks.
 
 #include <cstddef>
 #include <functional>
@@ -21,7 +21,7 @@ namespace lockpw {
 
 inline constexpr const char* kPath = "sdmc:/config/OmniLaunch/lock_password";
 inline constexpr std::size_t kMin = 4, kMax = 8;
-inline constexpr float kRecoveryWindow = 10.f;
+inline constexpr float kRecoveryWindow = 30.f;
 inline constexpr float kRecoveryHold = 3.f;
 
 /// 64 lowercase hex characters of SHA-256 over `data`.

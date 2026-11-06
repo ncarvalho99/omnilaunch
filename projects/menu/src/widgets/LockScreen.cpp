@@ -183,8 +183,11 @@ void LockScreen::updatePassword(float dt, nxui::Input& input) {
         m_pwShake = std::max(0.f, m_pwShake - dt);
     if (m_recoveryWindow > 0.f) {
         m_recoveryWindow = std::max(0.f, m_recoveryWindow - dt);
-        const bool combo = input.isHeld(B::L) && input.isHeld(B::R) && input.isHeld(B::ZL) &&
-                           input.isHeld(B::ZR) && input.isHeld(B::Minus);
+        // Combo: Minus + Plus (very easy to hold with both thumbs).
+        // Also accepts L + R + ZL + ZR + Minus for compatibility.
+        const bool combo = (input.isHeld(B::Minus) && input.isHeld(B::Plus)) ||
+                           (input.isHeld(B::L) && input.isHeld(B::R) && input.isHeld(B::ZL) &&
+                            input.isHeld(B::ZR) && input.isHeld(B::Minus));
         m_recoveryHeld = combo ? m_recoveryHeld + dt : 0.f;
         m_wakeDisplaySeconds = std::max(m_wakeDisplaySeconds, 1.f);
         if (m_recoveryHeld >= lockpw::kRecoveryHold) {
@@ -489,11 +492,20 @@ void LockScreen::render(nxui::Renderer& ren) {
             hint = i18n.tr("lock_screen.hint", "Press the same button three times to unlock");
         else if (m_recoveryWindow > 0.f)
             hint = i18n.tr("lock_screen.recovery_hint",
-                           "Forgot it? Hold L + R + ZL + ZR + Minus for 3 seconds to remove the password");
+                           "Forgot it? Hold Minus + Plus for 3 seconds to remove the password");
         else
             hint = i18n.tr("lock_screen.password_hint", "Enter your password with the D-pad");
         const nxui::Vec2 sz = m_captionFont->measure(hint);
         ren.drawText(hint, {(w - sz.x) * 0.5f + drift, beadY - sz.y - 22.f},
                      m_captionFont, m_theme->textSecondary.withAlpha(0.8f * ease), 1.f);
+
+        // Visual progress bar while holding the recovery combo
+        if (m_recoveryHeld > 0.f) {
+            const float barW = 200.f, barH = 6.f;
+            const float progress = std::clamp(m_recoveryHeld / lockpw::kRecoveryHold, 0.f, 1.f);
+            const nxui::Rect bgR{(w - barW) * 0.5f, beadY - sz.y - 34.f, barW, barH};
+            ren.drawRoundedRect(bgR, {0.2f, 0.2f, 0.25f, 0.6f * ease}, 3.f);
+            ren.drawRoundedRect({bgR.x, bgR.y, barW * progress, barH}, {0.36f, 0.68f, 1.f, 0.95f * ease}, 3.f);
+        }
     }
 }

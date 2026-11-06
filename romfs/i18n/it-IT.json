@@ -1,7 +1,7 @@
 {
   "lock_screen": {
     "password_hint": "Inserisci la password con la croce direzionale",
-    "recovery_hint": "Dimenticata? Tieni premuti L + R + ZL + ZR + Meno per 3 secondi per rimuovere la password",
+    "recovery_hint": "Dimenticata? Tieni premuti Meno (-) + PiÃ¹ (+) per 3 secondi per rimuovere la password",
     "setup_hint": "Nuova password: da 4 a 8 pressioni della croce, poi +. B cancella o annulla",
     "confirm_hint": "Inserisci di nuovo la stessa password, poi +",
     "hint": "Premi lo stesso pulsante tre volte per sbloccare",
@@ -1209,7 +1209,7 @@
     "lock_password": "Password",
     "lock_password_on": "Attiva",
     "lock_password_off": "Disattiva",
-    "lock_password_desc": "Da 4 a 8 pressioni della croce. Dimenticata: HOME, poi tieni L + R + ZL + ZR + Meno per 3 s.",
+    "lock_password_desc": "Da 4 a 8 pressioni della croce. Dimenticata: HOME, poi tieni Meno (-) + PiÃ¹ (+) per 3 s.",
     "lock_password_saved": "Password salvata",
     "lock_password_failed": "Impossibile salvare la password",
     "lock_password_remove": "Rimuovi password",

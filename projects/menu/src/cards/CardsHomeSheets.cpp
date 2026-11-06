@@ -1152,7 +1152,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
             return m_lock.passwordActive() ? t.tr("cards.lock_password_on", "On") : t.tr("cards.lock_password_off", "Off");
         };
         password.detail = i18n.tr("cards.lock_password_desc",
-                                  "4 to 8 D-pad presses. Forgot it: HOME, then hold L + R + ZL + ZR + Minus for 3 s.");
+                                  "4 to 8 D-pad presses. Forgot it: HOME, then hold Minus + Plus for 3 s.");
         password.onA = [this]() {
             m_sheet.close();
             ensureClockFont();

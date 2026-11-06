@@ -1,7 +1,7 @@
 {
   "lock_screen": {
     "password_hint": "Introduce tu contraseña con la cruceta",
-    "recovery_hint": "¿La olvidaste? Mantén L + R + ZL + ZR + Menos 3 segundos para quitar la contraseña",
+    "recovery_hint": "Â¿La olvidaste? MantÃ©n Menos (-) + MÃ¡s (+) 3 segundos para quitar la contraseÃ±a",
     "setup_hint": "Nueva contraseña: 4 a 8 pulsaciones de la cruceta y luego +. B borra o cancela",
     "confirm_hint": "Introduce la misma contraseña otra vez y luego +",
     "hint": "Pulsa el mismo botón tres veces para desbloquear",
@@ -1258,7 +1258,7 @@
     "lock_password": "Contraseña",
     "lock_password_on": "Activada",
     "lock_password_off": "Desactivada",
-    "lock_password_desc": "4 a 8 pulsaciones de la cruceta. Si la olvidas: HOME y mantén L + R + ZL + ZR + Menos 3 s.",
+    "lock_password_desc": "4 a 8 pulsaciones de la cruceta. Si la olvidas: HOME y mantÃ©n Menos (-) + MÃ¡s (+) 3 s.",
     "lock_password_saved": "Contraseña guardada",
     "lock_password_failed": "No se pudo guardar la contraseña",
     "lock_password_remove": "Quitar contraseña",

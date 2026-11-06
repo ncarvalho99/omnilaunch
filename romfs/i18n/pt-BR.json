@@ -1,7 +1,7 @@
 {
   "lock_screen": {
     "password_hint": "Digite sua senha com o direcional",
-    "recovery_hint": "Esqueceu? Segure L + R + ZL + ZR + Menos por 3 segundos para remover a senha",
+    "recovery_hint": "Esqueceu? Segure Menos (-) + Mais (+) por 3 segundos para remover a senha",
     "setup_hint": "Nova senha: 4 a 8 toques no direcional, depois +. B apaga ou cancela",
     "confirm_hint": "Digite a mesma senha de novo, depois +",
     "hint": "Pressione o mesmo botão três vezes para desbloquear",
@@ -1329,7 +1329,7 @@
     "lock_password": "Senha",
     "lock_password_on": "Ativada",
     "lock_password_off": "Desativada",
-    "lock_password_desc": "4 a 8 toques no direcional. Esqueceu: HOME e segure L + R + ZL + ZR + Menos por 3 s.",
+    "lock_password_desc": "4 a 8 toques no direcional. Esqueceu: HOME e segure Menos (-) + Mais (+) por 3 s.",
     "lock_password_saved": "Senha salva",
     "lock_password_failed": "Não foi possível salvar a senha",
     "lock_password_remove": "Remover senha",
