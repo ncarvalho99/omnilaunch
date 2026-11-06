@@ -1,10 +1,12 @@
 #pragma once
 #include <SDL2/SDL_mixer.h>
-#include <string>
-#include <vector>
-#include <unordered_map>
-#include <mutex>
+#include <array>
 #include <atomic>
+#include <chrono>
+#include <mutex>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 enum class Sfx {
     Navigate,
@@ -73,13 +75,23 @@ public:
     void setSfxVolume(float vol);
     float sfxVolume() const { return m_sfxVolume; }
 
+    static constexpr int kBands = 16;
+    void spectrum(float* out) const;
+    float bassLevel() const;
+
 private:
     static std::atomic<AudioManager*> s_instance;
     static void onTrackFinished();
+    static void postMixCallback(void* udata, Uint8* stream, int len);
 
     void applyMusicVolume();
     void rebuildShuffleOrderLocked();
     void playCurrentTrackLocked();
+
+    mutable std::mutex m_vizMutex;
+    std::array<std::array<float, kBands>, 4> m_viz{};
+    int m_vizCount = 0;
+    std::chrono::steady_clock::time_point m_vizTime{};
 
     mutable std::mutex m_trackMutex;
     std::vector<TrackInfo> m_tracks;

@@ -10,6 +10,7 @@
 #include "cards/CardsArt.hpp"
 #include "cards/CardsCatalog.hpp"
 #include "cards/CardsChrome.hpp"
+#include "cards/CardsMusicSheet.hpp"
 #include "cards/CardsSheet.hpp"
 #include "core/AudioManager.hpp"
 #include "core/LeaveFrameCache.hpp"
@@ -117,6 +118,7 @@ private:
     void openAchievementsSheet(std::uint64_t titleId);
     void openQuickSettings();
     void closeQuickSettings();
+    void openMusicSheet();
     void requestText(const std::string& title, const std::string& guide, const std::string& initial,
                      std::function<void(const std::string&)> onAccept);
     void renameSelected();
@@ -192,6 +194,7 @@ private:
     std::vector<std::uint64_t> m_moveBackup;
     // Sheets (E3-E7, E11), quick settings (E6), text entry (E9 part).
     CardsSheet m_sheet;
+    CardsMusicSheet m_musicSheet;
     std::shared_ptr<QuickSettingsOverlay> m_quick;
     std::shared_ptr<TextEntryScreen> m_text;
     nxui::Theme m_overlayTheme = nxui::Theme::dark();

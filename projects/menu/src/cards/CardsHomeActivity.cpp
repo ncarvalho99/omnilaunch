@@ -594,6 +594,7 @@ void CardsHomeActivity::onDestroy() {
     // The pool is idle (above), so a delete worker has finished with `this`.
     m_deleteProgress.reset();
     m_sheet.close();
+    m_musicSheet.close();
     m_moving = false;
     m_quick.reset();
     m_text.reset();
@@ -768,6 +769,7 @@ void CardsHomeActivity::onUpdate(float dt) {
     pollPlaytime();
     updateLock(dt);
     m_sheet.update(dt);
+    m_musicSheet.update(dt, m_audio);
     if (m_quick)
         m_quick->update(dt);
     if (m_text)
@@ -839,6 +841,8 @@ void CardsHomeActivity::onUpdate(float dt) {
                 }
             } else if (m_sheet.isOpen()) {
                 m_sheet.handleInput(app().input(), dt);
+            } else if (m_musicSheet.isOpen()) {
+                m_musicSheet.handleInput(app().input(), m_audio, m_core.config());
             } else if (m_moving) {
                 handleMoveInput();
             } else {
@@ -1531,6 +1535,11 @@ void CardsHomeActivity::handleSystemAction(SysAction action) {
             m_waitRelease = true;
             break;
         }
+        if (m_musicSheet.isOpen()) {
+            m_musicSheet.close();
+            m_waitRelease = true;
+            break;
+        }
         if (m_moving) {
             finishMove(false);
             m_waitRelease = true;
@@ -1822,6 +1831,7 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
     }
     drawMoveHint(ren);
     m_sheet.render(ren, m_chrome);
+    m_musicSheet.render(ren, m_chrome, m_audio);
     drawTutorial(ren);
     if (m_quick && m_quick->isActive())
         m_quick->render(ren);

@@ -30,6 +30,9 @@ class AudioManager {
   playlist.push_back({path,title.empty()?stem:title});
  }
  void loadNamedSfx(const std::string&,const std::string&,float) {}
+ static constexpr int kBands = 16;
+ void spectrum(float* out) const { if (out) for (int i = 0; i < kBands; ++i) out[i] = 0.f; }
+ float bassLevel() const { return 0.f; }
  void playSfx(Sfx) {}
  void loadSfx(Sfx id,const std::string&) {
   if(id!=Sfx::Navigate) return;

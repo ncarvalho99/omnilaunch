@@ -1232,6 +1232,9 @@
     "title": "Tema automático"
   },
   "cards": {
+    "music_title": "Música",
+    "music_hint": "A  Seleccionar    B  Cerrar",
+    "music_stopped": "No hay música reproduciéndose",
     "set_accent": "Color de resalte",
     "set_accent_desc": "El anillo alrededor de lo seleccionado",
     "accent_0": "Blanco",

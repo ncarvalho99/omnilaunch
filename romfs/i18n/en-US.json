@@ -1303,6 +1303,9 @@
     "title": "Auto Theme"
   },
   "cards": {
+    "music_title": "Music",
+    "music_hint": "A  Select    B  Close",
+    "music_stopped": "No music playing",
     "set_accent": "Highlight colour",
     "set_accent_desc": "The ring around what is chosen",
     "accent_0": "White",

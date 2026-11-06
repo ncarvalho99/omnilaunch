@@ -1183,6 +1183,9 @@
     "hint_today": "Heute"
   },
   "cards": {
+    "music_title": "Musik",
+    "music_hint": "A  Auswählen    B  Schließen",
+    "music_stopped": "Keine Musik wird abgespielt",
     "set_accent": "Akzentfarbe",
     "set_accent_desc": "Der Ring um das gewählte Element",
     "accent_0": "Weiß",

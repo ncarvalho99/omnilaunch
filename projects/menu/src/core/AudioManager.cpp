@@ -2,9 +2,38 @@
 #include "core/DebugLog.hpp"
 #include <SDL2/SDL.h>
 #include <algorithm>
+#include <cmath>
+#include <complex>
 #include <cstdio>
 #include <filesystem>
 #include <random>
+
+namespace {
+constexpr int kFft = 1024, kRate = 44100, kSlices = 4;
+
+void fft(std::vector<std::complex<float>>& a) {
+    const size_t n = a.size();
+    for (size_t i = 1, j = 0; i < n; ++i) {
+        size_t bit = n >> 1;
+        for (; j & bit; bit >>= 1) j ^= bit;
+        j ^= bit;
+        if (i < j) std::swap(a[i], a[j]);
+    }
+    for (size_t len = 2; len <= n; len <<= 1) {
+        const float ang = -2.f * 3.14159265f / static_cast<float>(len);
+        const std::complex<float> step(std::cos(ang), std::sin(ang));
+        for (size_t i = 0; i < n; i += len) {
+            std::complex<float> w(1.f, 0.f);
+            for (size_t k = 0; k < len / 2; ++k) {
+                const std::complex<float> u = a[i + k], v = a[i + k + len / 2] * w;
+                a[i + k] = u + v;
+                a[i + k + len / 2] = u - v;
+                w *= step;
+            }
+        }
+    }
+}
+} // namespace
 
 AudioManager::~AudioManager() { shutdown(); }
 
@@ -23,6 +52,7 @@ bool AudioManager::initialize() {
         return false;
     }
     Mix_AllocateChannels(8);
+    Mix_SetPostMix(postMixCallback, this);
     m_initialized = true;
     setVolume(m_volume);
     return true;
@@ -31,6 +61,7 @@ bool AudioManager::initialize() {
 void AudioManager::shutdown() {
     if (!m_initialized) return;
 
+    Mix_SetPostMix(nullptr, nullptr);
     Mix_HookMusicFinished(nullptr);
     s_instance.store(nullptr);
     Mix_HaltMusic();
@@ -55,6 +86,67 @@ void AudioManager::shutdown() {
     for (auto& [id, chunk] : m_namedSfx) Mix_FreeChunk(chunk);
     m_namedSfx.clear();
     m_namedSfxVolumeScales.clear();
+}
+
+void AudioManager::postMixCallback(void* udata, Uint8* stream, int len) {
+    auto* self = static_cast<AudioManager*>(udata);
+    if (!self || len <= 0)
+        return;
+
+    static std::vector<std::complex<float>> buf(kFft);
+    static std::vector<float> window;
+    static std::array<int, kBands + 1> edges{};
+    if (window.empty()) {
+        window.resize(kFft);
+        for (int i = 0; i < kFft; ++i)
+            window[i] = 0.5f - 0.5f * std::cos(2.f * 3.14159265f * i / (kFft - 1));
+        for (int b = 0; b <= kBands; ++b) {
+            const float hz = 50.f * std::pow(16000.f / 50.f, static_cast<float>(b) / kBands);
+            edges[b] = std::max(b == 0 ? 1 : edges[b - 1] + 1, static_cast<int>(hz * kFft / kRate));
+        }
+    }
+    const auto* s = reinterpret_cast<const Sint16*>(stream);
+    const int frames = len / 4; // 16-bit stereo: 4 bytes per frame
+    std::array<std::array<float, kBands>, kSlices> out{};
+    int n = 0;
+    for (int start = 0; start + kFft <= frames && n < kSlices; start += kFft, ++n) {
+        for (int i = 0; i < kFft; ++i)
+            buf[i] = {(s[(start + i) * 2] + s[(start + i) * 2 + 1]) * (0.5f / 32768.f) * window[i], 0.f};
+        fft(buf);
+        for (int b = 0; b < kBands; ++b) {
+            float peak = 0.f;
+            for (int i = edges[b]; i < std::min(edges[b + 1], kFft / 2); ++i)
+                peak = std::max(peak, std::abs(buf[i]));
+            const float db = 20.f * std::log10(peak / (kFft / 4.f) + 1e-6f);
+            out[n][b] = std::clamp((db + 50.f) / 50.f, 0.f, 1.f);
+        }
+    }
+    if (n > 0) {
+        std::lock_guard<std::mutex> lk(self->m_vizMutex);
+        self->m_viz = out;
+        self->m_vizCount = n;
+        self->m_vizTime = std::chrono::steady_clock::now();
+    }
+}
+
+void AudioManager::spectrum(float* out) const {
+    if (!out)
+        return;
+    std::lock_guard<std::mutex> lk(m_vizMutex);
+    if (!m_initialized || m_vizCount == 0) {
+        std::fill(out, out + kBands, 0.f);
+        return;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    const float ms = std::chrono::duration<float, std::milli>(now - m_vizTime).count();
+    const int i = std::clamp(static_cast<int>(ms / (1000.f * kFft / kRate)), 0, m_vizCount - 1);
+    std::copy(m_viz[static_cast<std::size_t>(i)].begin(), m_viz[static_cast<std::size_t>(i)].end(), out);
+}
+
+float AudioManager::bassLevel() const {
+    float spec[kBands]{};
+    spectrum(spec);
+    return (spec[0] + spec[1] + spec[2]) / 3.f;
 }
 
 void AudioManager::rebuildShuffleOrderLocked() {

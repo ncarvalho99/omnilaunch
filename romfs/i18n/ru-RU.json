@@ -1183,6 +1183,9 @@
     "hint_today": "Сегодня"
   },
   "cards": {
+    "music_title": "Музыка",
+    "music_hint": "A  Выбрать    B  Закрыть",
+    "music_stopped": "Музыка не играет",
     "set_accent": "Цвет акцента",
     "set_accent_desc": "Кольцо вокруг выбранного элемента",
     "accent_0": "Белый",

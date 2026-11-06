@@ -56,7 +56,8 @@ std::string onOff(bool v) {
 
 bool CardsHomeActivity::overlayActive() const {
     return (m_userSelect && m_userSelect->isActive()) || (m_text && m_text->isActive()) ||
-           (m_quick && m_quick->isActive()) || (m_deleteProgress && m_deleteProgress->isActive());
+           (m_quick && m_quick->isActive()) || (m_deleteProgress && m_deleteProgress->isActive()) ||
+           m_musicSheet.isOpen();
 }
 
 void CardsHomeActivity::saveConfig(const char* why) {
@@ -109,12 +110,20 @@ void CardsHomeActivity::activateTop() {
             0, {});
         focusManager().setFocus(m_userSelect.get());
         return;
+    case TopButton::Music:
+        openMusicSheet();
+        return;
     default:
         break;
     }
-    // Discord (Part H) and the music player (E10, batch 2) come later.
+    // Discord (Part H) comes later.
     m_audio.playSfx(Sfx::Activate);
     showToast(i18n.tr("cards.coming_soon", "Coming in a later update"));
+}
+
+void CardsHomeActivity::openMusicSheet() {
+    m_audio.playSfx(Sfx::ModalShow);
+    m_musicSheet.open(m_audio, m_core.config());
 }
 
 // ── "..." menu (E3, C-UI-2) ─────────────────────────────────────────────────

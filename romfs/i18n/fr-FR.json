@@ -1183,6 +1183,9 @@
     "hint_today": "Aujourd'hui"
   },
   "cards": {
+    "music_title": "Musique",
+    "music_hint": "A  Sélectionner    B  Fermer",
+    "music_stopped": "Aucune musique en lecture",
     "set_accent": "Couleur d\u0027accent",
     "set_accent_desc": "Le contour de l\u0027élément sélectionné",
     "accent_0": "Blanc",
