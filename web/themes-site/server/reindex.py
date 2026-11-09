@@ -34,6 +34,7 @@ VECTEEZY_MAP = {
 
 # Themes pinned to appear first in the catalog for OmniLaunch
 FEATURED_THEMES = [
+    'the-first-crusade', 'odysseus-and-argos', 'lord-jesus-christ-have-mercy-on-me',
     'the-large-jelling-runestone', 'st-ignatius-of-antioch', 'the-lord-is-my-shepherd',
     'archangel-michael', 'ascension-of-christ', 'saving-peter', 'belisarius',
     'gethsemane', 'golgotha', 'the-innocent', 'the-leper-king'
@@ -279,9 +280,10 @@ def main():
         others = []
         by_id = {x.get('id'): x for x in item_list}
         by_id_lower = {x.get('id', '').lower(): x for x in item_list}
+        by_id_norm = {x.get('id', '').lower().replace('_', '-'): x for x in item_list}
         featured_ids_lower = set()
         for fid in FEATURED_THEMES:
-            matched = by_id.get(fid) or by_id_lower.get(fid.lower())
+            matched = by_id.get(fid) or by_id_lower.get(fid.lower()) or by_id_norm.get(fid.lower().replace('_', '-'))
             if matched and matched.get('id', '').lower() not in featured_ids_lower:
                 featured.append(matched)
                 featured_ids_lower.add(matched.get('id', '').lower())
