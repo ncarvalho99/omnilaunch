@@ -81,6 +81,10 @@ public:
     void setAppRunning(bool v);
     void setAppHasForeground(bool v);
     void setSuspendedTitleId(uint64_t v);
+    // Path of the .nro running inside the borrowed host game, empty when the
+    // suspended application is the game itself. Survives menu restarts through
+    // a marker file and is cleared when no application is suspended.
+    std::string runningHomebrew() const;
 
 #ifdef SWITCHU_MENU
     void setStartupStatus(uint64_t suspendedTitleId, bool appRunning);
@@ -91,6 +95,8 @@ private:
     std::atomic<bool>     m_appRunning{false};
     std::atomic<bool>     m_appHasForeground{false};
     std::atomic<uint64_t> m_suspendedTitleId{0};
+    std::string           m_runningHomebrew;
+    void forgetRunningHomebrew();
 #endif
 
     Callbacks m_cb;

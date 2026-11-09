@@ -20,22 +20,56 @@ void AppletLauncher::init(Callbacks cbs) {
 }
 
 #ifdef SWITCHU_MENU
+namespace {
+// Which .nro runs inside the borrowed host game. The menu process is replaced
+// on every HOME, so the answer lives on the card until no application is
+// suspended any more.
+constexpr const char* kRunningNro = "sdmc:/config/OmniLaunch/hbl_running.txt";
+} // namespace
+
 bool AppletLauncher::isAppRunning() const  { return m_appRunning; }
 bool AppletLauncher::isAppSuspended(uint64_t titleId) const {
     return m_suspendedTitleId != 0 && m_suspendedTitleId == titleId;
 }
 uint64_t AppletLauncher::suspendedTitleId() const { return m_suspendedTitleId; }
+std::string AppletLauncher::runningHomebrew() const {
+    return m_suspendedTitleId != 0 ? m_runningHomebrew : std::string();
+}
+
+void AppletLauncher::forgetRunningHomebrew() {
+    m_runningHomebrew.clear();
+    std::error_code ec;
+    std::filesystem::remove(kRunningNro, ec);
+}
 
 void AppletLauncher::setAppRunning(bool v)          { m_appRunning = v; }
 void AppletLauncher::setAppHasForeground(bool v)    { m_appHasForeground = v; }
-void AppletLauncher::setSuspendedTitleId(uint64_t v){ m_suspendedTitleId = v; }
+void AppletLauncher::setSuspendedTitleId(uint64_t v) {
+    m_suspendedTitleId = v;
+    if (v == 0 && !m_runningHomebrew.empty())
+        forgetRunningHomebrew();
+}
 
 void AppletLauncher::setStartupStatus(uint64_t suspendedTitleId, bool appRunning) {
     m_suspendedTitleId = suspendedTitleId;
     m_appRunning       = appRunning;
     m_appHasForeground = false;
-    DebugLog::log("[launcher] startup status: suspended=0x%016lX running=%d",
-                  suspendedTitleId, appRunning);
+    m_runningHomebrew.clear();
+    if (suspendedTitleId == 0) {
+        forgetRunningHomebrew();
+    } else if (FILE* f = std::fopen(kRunningNro, "r")) {
+        char buf[512] = {};
+        if (std::fgets(buf, sizeof(buf), f)) {
+            std::string line(buf);
+            while (!line.empty() && (line.back() == '\n' || line.back() == '\r'))
+                line.pop_back();
+            m_runningHomebrew = std::move(line);
+        }
+        std::fclose(f);
+    }
+    DebugLog::log("[launcher] startup status: suspended=0x%016lX running=%d homebrew=%s",
+                  suspendedTitleId, appRunning,
+                  m_runningHomebrew.empty() ? "-" : m_runningHomebrew.c_str());
 }
 
 void AppletLauncher::launchAlbum() {
@@ -191,6 +225,7 @@ Result AppletLauncher::prepareApplication(uint64_t titleId, AccountUid uid,
 void AppletLauncher::launchApplication(uint64_t titleId, AccountUid uid,
                                        switchu::smi::LaunchTransitionTrace trace) {
     DebugLog::log("[launcher] tid=%016lX", titleId);
+    forgetRunningHomebrew(); // a game, not a homebrew, takes the application slot
     switchu::usb::mtpStop();
     Result rc = switchu::menu::smi_cmd::launchApplication(titleId, uid, trace);
     if (R_FAILED(rc)) {
@@ -455,6 +490,11 @@ bool AppletLauncher::launchNro(const std::string& path, uint64_t hostTitleId, Ac
     } else {
         std::filesystem::remove(kApplicationOnly, ec);
     }
+    // Written before the hand-off so the next menu (after HOME) knows the
+    // suspended host game is this homebrew. Cleared at the next startup with
+    // nothing suspended, so a failed launch leaves nothing behind.
+    writeSingleLine(kRunningNro, path);
+    m_runningHomebrew = path;
     quiesceForPower("launch-nro");
     const Result rc = switchu::menu::smi_cmd::launchHomebrewApp(uid, hostTitleId);
     DebugLog::log("[launcher] launchHomebrewApp host=0x%016llX rc=0x%X",
@@ -474,6 +514,7 @@ uint64_t AppletLauncher::suspendedTitleId() const    { return 0; }
 void AppletLauncher::setAppRunning(bool)             {}
 void AppletLauncher::setAppHasForeground(bool)       {}
 void AppletLauncher::setSuspendedTitleId(uint64_t)   {}
+std::string AppletLauncher::runningHomebrew() const  { return {}; }
 
 void AppletLauncher::launchAlbum()             {}
 void AppletLauncher::launchMiiEditor()         {}

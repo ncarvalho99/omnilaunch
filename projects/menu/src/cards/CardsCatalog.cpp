@@ -96,7 +96,7 @@ void CardsCatalog::setPage(int page, const AppConfig& config) {
             c.version = std::move(hb.version);
             c.app.title = hb.name.empty() ? std::filesystem::path(c.homebrewPath).stem().string() : std::move(hb.name);
             c.app.englishTitle = c.author;
-            c.app.titleId = pg::kHomebrewIdBase | (std::hash<std::string>{}(c.homebrewPath) & 0x00FFFFFFFFFFFFFFULL);
+            c.app.titleId = pg::homebrewId(c.homebrewPath);
             c.app.kind = GridEntryKind::Application;
             c.app.userRequired = false;
             adopt(c);

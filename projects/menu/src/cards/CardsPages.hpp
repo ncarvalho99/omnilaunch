@@ -8,6 +8,8 @@
 
 #include "core/Config.hpp"
 #include <cstdint>
+#include <functional>
+#include <string>
 #include <vector>
 
 namespace cards::pages {
@@ -46,6 +48,10 @@ inline constexpr std::uint64_t kSystemIdBase = 0xFF00000000000000ULL;
 inline constexpr std::uint64_t kHomebrewIdBase = 0xFE00000000000000ULL;
 inline bool isSystemId(std::uint64_t id) { return (id & 0xFF00000000000000ULL) == kSystemIdBase; }
 inline bool isHomebrewId(std::uint64_t id) { return (id & 0xFF00000000000000ULL) == kHomebrewIdBase; }
+/// Card id of the homebrew at `path` (Homebrew page, running badge).
+inline std::uint64_t homebrewId(const std::string& path) {
+    return kHomebrewIdBase | (std::hash<std::string>{}(path) & 0x00FFFFFFFFFFFFFFULL);
+}
 
 /// Nintendo page tiles (C-PG-3). Safe F1: Album, Controllers, Mii, Internet,
 /// Users and Settings open local services; Eshop, Friends and Switch Online

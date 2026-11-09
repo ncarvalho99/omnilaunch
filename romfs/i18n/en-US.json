@@ -1,7 +1,7 @@
 {
   "lock_screen": {
-    "password_hint": "Enter your password with the D-pad",
-    "recovery_hint": "Forgot it? Hold Minus + Plus for 3 seconds to remove the password",
+    "password_hint": "Enter your password with the D-pad. Forgot it? Press HOME",
+    "recovery_hint": "Now hold Minus (-) + Plus (+) for 3 seconds to remove the password",
     "setup_hint": "New password: 4 to 8 D-pad presses, then +. B erases or cancels",
     "confirm_hint": "Enter the same password again, then +",
     "hint": "Press the same button three times to unlock",

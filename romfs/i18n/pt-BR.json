@@ -1,7 +1,7 @@
 {
   "lock_screen": {
-    "password_hint": "Digite sua senha com o direcional",
-    "recovery_hint": "Esqueceu? Segure Menos (-) + Mais (+) por 3 segundos para remover a senha",
+    "password_hint": "Digite sua senha com o direcional. Esqueceu? Aperte HOME",
+    "recovery_hint": "Agora segure Menos (-) + Mais (+) por 3 segundos para remover a senha",
     "setup_hint": "Nova senha: 4 a 8 toques no direcional, depois +. B apaga ou cancela",
     "confirm_hint": "Digite a mesma senha de novo, depois +",
     "hint": "Pressione o mesmo botão três vezes para desbloquear",

@@ -492,9 +492,12 @@ void LockScreen::render(nxui::Renderer& ren) {
             hint = i18n.tr("lock_screen.hint", "Press the same button three times to unlock");
         else if (m_recoveryWindow > 0.f)
             hint = i18n.tr("lock_screen.recovery_hint",
-                           "Forgot it? Hold Minus + Plus for 3 seconds to remove the password");
+                           "Now hold Minus (-) + Plus (+) for 3 seconds to remove the password");
         else
-            hint = i18n.tr("lock_screen.password_hint", "Enter your password with the D-pad");
+            // Recovery is two steps (HOME, then hold - and +); say the first one
+            // here so the owner does not need the manual (console run 2026-11-09).
+            hint = i18n.tr("lock_screen.password_hint",
+                           "Enter your password with the D-pad. Forgot it? Press HOME");
         const nxui::Vec2 sz = m_captionFont->measure(hint);
         ren.drawText(hint, {(w - sz.x) * 0.5f + drift, beadY - sz.y - 22.f},
                      m_captionFont, m_theme->textSecondary.withAlpha(0.8f * ease), 1.f);

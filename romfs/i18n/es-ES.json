@@ -1,7 +1,7 @@
 {
   "lock_screen": {
-    "password_hint": "Introduce tu contraseña con la cruceta",
-    "recovery_hint": "Â¿La olvidaste? MantÃ©n Menos (-) + MÃ¡s (+) 3 segundos para quitar la contraseÃ±a",
+    "password_hint": "Introduce tu contraseña con la cruceta. ¿La olvidaste? Pulsa HOME",
+    "recovery_hint": "Ahora mantén Menos (-) + Más (+) 3 segundos para quitar la contraseña",
     "setup_hint": "Nueva contraseña: 4 a 8 pulsaciones de la cruceta y luego +. B borra o cancela",
     "confirm_hint": "Introduce la misma contraseña otra vez y luego +",
     "hint": "Pulsa el mismo botón tres veces para desbloquear",

@@ -65,6 +65,10 @@ private:
     void startLaunchHomebrew(const std::string& path);
     void resumeSuspended();
 #ifdef SWITCHU_MENU
+    // Card of the suspended software: the homebrew card when a .nro runs in a
+    // borrowed host game, else the game itself; 0 when nothing is suspended.
+    std::uint64_t runningCardId() const;
+    bool isRunningCard(std::uint64_t id) const { return id != 0 && id == runningCardId(); }
     void confirmCloseSuspended();
     // E4: delete with confirmation, on the Core pool behind a progress dialog.
     void confirmDeleteSoftware();

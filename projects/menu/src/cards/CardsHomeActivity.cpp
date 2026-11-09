@@ -190,7 +190,8 @@ bool CardsHomeActivity::saveLeaveFrame(nxui::Renderer& ren) {
 
     LeaveFrameSession session;
     session.valid = true;
-    session.page = 0;
+    // Cards page index; the next fast return opens on it (Nintendo page applets).
+    session.page = m_page;
     session.openFolderId = 0;
     session.focusTitleId = (m_selected >= 0 && m_selected < m_catalog.count())
         ? m_catalog.at(m_selected).app.titleId : 0;
@@ -497,6 +498,13 @@ bool CardsHomeActivity::onCreate() {
 
     // Pages (E1): open on the first shown page of the user's order.
     m_page = pages::first(m_core.config().cards);
+    // Back from a game or applet: reopen the page it was started from
+    // (console run 2026-11-09: Nintendo tiles returned to Games).
+    if (m_fastReturn && m_leaveSession.valid) {
+        const auto shownPages = pages::shown(m_core.config().cards);
+        if (std::find(shownPages.begin(), shownPages.end(), m_leaveSession.page) != shownPages.end())
+            m_page = m_leaveSession.page;
+    }
     m_art.setConfig(&m_core.config());
     m_catalog.setAssetsRoot(kAssets);
     m_catalog.setPage(m_page, m_core.config());
@@ -719,8 +727,10 @@ void CardsHomeActivity::onUpdate(float dt) {
         // Keep the card in focus; on first load, prefer the suspended title,
         // then the leave-session title (PoloNX #104), then the last-opened one (C-SW-5).
         std::uint64_t want = previousId;
+#ifdef SWITCHU_MENU
         if (want == 0)
-            want = m_core.launcher().suspendedTitleId();
+            want = runningCardId();
+#endif
         if (want == 0 && m_leaveSession.valid && m_leaveSession.focusTitleId != 0) {
             want = m_leaveSession.focusTitleId;
             DebugLog::log("[cards] focus restored from leave session: %016llX",
@@ -743,6 +753,24 @@ void CardsHomeActivity::onUpdate(float dt) {
             m_core.config().cards.isMedia(want) &&
             !m_core.config().cards.pageHidden(AppConfig::CardsPrefs::kMedia)) {
             m_page = AppConfig::CardsPrefs::kMedia;
+            m_catalog.setPage(m_page, m_core.config());
+            index = m_catalog.indexOf(want);
+        }
+        // A homebrew left open in its host game lives on the Homebrew page.
+        if (index < 0 && want != 0 && previousId == 0 && pages::isHomebrewId(want) &&
+            m_page != AppConfig::CardsPrefs::kHomebrew &&
+            !m_core.config().cards.pageHidden(AppConfig::CardsPrefs::kHomebrew)) {
+            m_page = AppConfig::CardsPrefs::kHomebrew;
+            m_catalog.setPage(m_page, m_core.config());
+            index = m_catalog.indexOf(want);
+        }
+        // A suspended game stays in focus even when the reopened page is
+        // another one (leave session page, below in onCreate).
+        if (index < 0 && want != 0 && previousId == 0 && !pages::isHomebrewId(want) &&
+            !pages::isSystemId(want) && m_page != AppConfig::CardsPrefs::kGames &&
+            !m_core.config().cards.isMedia(want) &&
+            !m_core.config().cards.pageHidden(AppConfig::CardsPrefs::kGames)) {
+            m_page = AppConfig::CardsPrefs::kGames;
             m_catalog.setPage(m_page, m_core.config());
             index = m_catalog.indexOf(want);
         }
@@ -792,7 +820,7 @@ void CardsHomeActivity::onUpdate(float dt) {
         if (m_closeConfirmQueued && !(m_userSelect && m_userSelect->isActive())) {
             m_closeConfirmQueued = false;
             if (m_selected >= 0 && m_selected < m_catalog.count() &&
-                m_core.launcher().isAppSuspended(m_catalog.at(m_selected).app.titleId))
+                isRunningCard(m_catalog.at(m_selected).app.titleId))
                 confirmCloseSuspended();
         }
         if (m_deleteConfirmId != 0 && !(m_userSelect && m_userSelect->isActive()))
@@ -1238,7 +1266,7 @@ void CardsHomeActivity::handleInput() {
                 openCardOptions();
         }
 #ifdef SWITCHU_MENU
-        else if (in.isDown(B::X) && m_core.launcher().isAppSuspended(m_catalog.at(m_selected).app.titleId)) {
+        else if (in.isDown(B::X) && isRunningCard(m_catalog.at(m_selected).app.titleId)) {
             confirmCloseSuspended();
         }
 #endif
@@ -1279,7 +1307,7 @@ void CardsHomeActivity::handleInput() {
 #ifdef SWITCHU_MENU
     // X on the suspended game's card asks to close it (as Classic does).
     if (in.isDown(B::X) && m_selected >= 0 && m_selected < m_catalog.count() &&
-        m_core.launcher().isAppSuspended(m_catalog.at(m_selected).app.titleId))
+        isRunningCard(m_catalog.at(m_selected).app.titleId))
         confirmCloseSuspended();
 #endif
 }
@@ -1313,6 +1341,11 @@ void CardsHomeActivity::startLaunchHomebrew(const std::string& path) {
 void CardsHomeActivity::launchTitle(const CardEntry& card) {
     if (card.isHomebrew) {
 #ifdef SWITCHU_MENU
+        if (isRunningCard(card.app.titleId)) {
+            // This homebrew is the one left open in its host game: go back to it.
+            resumeSuspended();
+            return;
+        }
         if (m_core.launcher().suspendedTitleId() != 0) {
             m_audio.playSfx(Sfx::ModalShow);
             if (m_userSelect) {
@@ -1330,7 +1363,7 @@ void CardsHomeActivity::launchTitle(const CardEntry& card) {
     }
     const AppEntry& entry = card.app;
 #ifdef SWITCHU_MENU
-    if (m_core.launcher().isAppSuspended(entry.titleId)) {
+    if (isRunningCard(entry.titleId)) {
         resumeSuspended();
         return;
     }
@@ -1420,6 +1453,14 @@ void CardsHomeActivity::startLaunch(std::uint64_t titleId, AccountUid uid) {
 }
 
 #ifdef SWITCHU_MENU
+std::uint64_t CardsHomeActivity::runningCardId() const {
+    const std::uint64_t suspended = m_core.launcher().suspendedTitleId();
+    if (suspended == 0)
+        return 0;
+    const std::string nro = m_core.launcher().runningHomebrew();
+    return nro.empty() ? suspended : pages::homebrewId(nro);
+}
+
 void CardsHomeActivity::confirmCloseSuspended() {
     if (!m_userSelect)
         return;
@@ -1626,7 +1667,7 @@ void CardsHomeActivity::drawCard(nxui::Renderer& ren, int index, const nxui::Rec
     if (chosen < 1.f)
         ren.drawRoundedRect(card, {0.f, 0.f, 0.f, 0.22f * (1.f - chosen)}, layout::kCardRadius);
 #ifdef SWITCHU_MENU
-    if (m_core.launcher().isAppSuspended(id) ||
+    if (isRunningCard(id) ||
         (m_leavePreviewSuspendedTitleId != 0 && m_leavePreviewSuspendedTitleId == id)) {
         // Running badge: a green pill at the top left.
         const nxui::Rect badge{card.x + 12.f, card.y + 12.f, 26.f, 26.f};
@@ -1676,7 +1717,7 @@ void CardsHomeActivity::drawPanel(nxui::Renderer& ren) {
 
     // Primary pill (Play / Resume), white with dark text, and the "..." circle.
 #ifdef SWITCHU_MENU
-    const bool suspended = m_core.launcher().isAppSuspended(id) ||
+    const bool suspended = isRunningCard(id) ||
         (m_leavePreviewSuspendedTitleId != 0 && m_leavePreviewSuspendedTitleId == id);
 #else
     const bool suspended = false;

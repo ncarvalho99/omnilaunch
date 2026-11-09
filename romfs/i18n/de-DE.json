@@ -1,7 +1,7 @@
 {
   "lock_screen": {
-    "password_hint": "Gib dein Passwort mit dem Steuerkreuz ein",
-    "recovery_hint": "Vergessen? Halte Minus (-) + Plus (+) 3 Sekunden, um das Passwort zu entfernen",
+    "password_hint": "Passwort mit dem Steuerkreuz eingeben. Vergessen? Drücke HOME",
+    "recovery_hint": "Halte jetzt Minus (-) + Plus (+) 3 Sekunden, um das Passwort zu entfernen",
     "setup_hint": "Neues Passwort: 4 bis 8 Steuerkreuz-Eingaben, dann +. B löscht oder bricht ab",
     "confirm_hint": "Gib dasselbe Passwort noch einmal ein, dann +",
     "hint": "Dieselbe Taste dreimal drücken zum Entsperren",

@@ -175,9 +175,10 @@ void CardsHomeActivity::openDotsMenu() {
         add(i18n.tr("cards.close_software", "Close software"), [this]() {
             m_sheet.close();
             // The suspended title may live on another page: go there first.
-            const std::uint64_t id = m_core.launcher().suspendedTitleId();
-            const int home = m_core.config().cards.isMedia(id) ? AppConfig::CardsPrefs::kMedia
-                                                                : AppConfig::CardsPrefs::kGames;
+            const std::uint64_t id = runningCardId();
+            const int home = pages::isHomebrewId(id) ? AppConfig::CardsPrefs::kHomebrew
+                           : m_core.config().cards.isMedia(id) ? AppConfig::CardsPrefs::kMedia
+                                                               : AppConfig::CardsPrefs::kGames;
             if (m_catalog.indexOf(id) < 0)
                 goToPage(home, 0);
             const int idx = m_catalog.indexOf(id);
@@ -264,16 +265,24 @@ void CardsHomeActivity::openSystemTile(std::uint64_t id) {
                                             "Close the suspended software first (X on its card)."));
         return;
     }
+    if (m_launching || m_leaving)
+        return;
     m_audio.playSfx(Sfx::Activate);
     DebugLog::log("[cards] system tile %d", static_cast<int>(tile));
-    auto& launcher = m_core.launcher();
-    switch (tile) {
-    case T::Album: launcher.launchAlbum(); break;
-    case T::Controllers: launcher.launchControllerPairing(); break;
-    case T::MiiEditor: launcher.launchMiiEditor(); break;
-    case T::Internet: launcher.launchNetConnect(); break;
-    default: break;
-    }
+    // Save the leave frame first so the applet returns to this page and tile
+    // (console run 2026-11-09: it came back to the Games page).
+    m_launching = true;
+    m_launchElapsed = 0.f;
+    scheduleLeaveCapture([this, tile]() {
+        auto& launcher = m_core.launcher();
+        switch (tile) {
+        case T::Album: launcher.launchAlbum(); break;
+        case T::Controllers: launcher.launchControllerPairing(); break;
+        case T::MiiEditor: launcher.launchMiiEditor(); break;
+        case T::Internet: launcher.launchNetConnect(); break;
+        default: m_launching = false; break;
+        }
+    });
 #endif
 }
 
@@ -449,7 +458,7 @@ void CardsHomeActivity::openCardOptions() {
         rows.push_back(std::move(r));
     };
 #ifdef SWITCHU_MENU
-    const bool suspended = m_core.launcher().isAppSuspended(titleId);
+    const bool suspended = isRunningCard(titleId);
 #else
     const bool suspended = false;
 #endif
