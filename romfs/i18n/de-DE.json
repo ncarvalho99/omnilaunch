@@ -1277,6 +1277,19 @@
     "art_sgdb_key_saved": "SteamGridDB-Schlüssel gespeichert",
     "art_sgdb_key_removed": "SteamGridDB-Schlüssel entfernt",
     "art_sgdb_none": "Keiner",
-    "art_sgdb_set": "Festgelegt"
+    "art_sgdb_set": "Festgelegt",
+    "news_title": "Neuigkeiten",
+    "news_hint": "Auf/Ab Auswählen    ZL/ZR Scrollen    B Zurück",
+    "news_empty": "Auf dieser Konsole sind noch keine Neuigkeiten gespeichert.",
+    "news_read_failed": "Die Neuigkeiten der Konsole konnten nicht gelesen werden ({code}).",
+    "news_loading": "Neuigkeiten werden geladen...",
+    "menu_news": "Neuigkeiten",
+    "tile_news": "Neuigkeiten",
+    "panel_button": "Leistentaste",
+    "panel_button_news": "Neuigkeiten",
+    "panel_button_none": "Keine",
+    "panel_unpin": "Von Leistentaste entfernen",
+    "panel_pinned_toast": "Auf Leistentaste platziert",
+    "panel_unpinned_toast": "Von Leistentaste entfernt (Neuigkeiten wiederhergestellt)"
   }
 }

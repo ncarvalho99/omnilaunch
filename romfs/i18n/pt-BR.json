@@ -1482,6 +1482,19 @@
     "art_sgdb_key_saved": "Chave SteamGridDB salva",
     "art_sgdb_key_removed": "Chave SteamGridDB removida",
     "art_sgdb_none": "Nenhuma",
-    "art_sgdb_set": "Definida"
+    "art_sgdb_set": "Definida",
+    "news_title": "Notícias",
+    "news_hint": "Cima/Baixo Escolher    ZL/ZR Rolar    B Voltar",
+    "news_empty": "Nenhuma notícia salva neste console ainda.",
+    "news_read_failed": "As notícias do console não puderam ser lidas ({code}).",
+    "news_loading": "Carregando notícias...",
+    "menu_news": "Notícias",
+    "tile_news": "Notícias",
+    "panel_button": "Botão do painel",
+    "panel_button_news": "Notícias",
+    "panel_button_none": "Nenhum",
+    "panel_unpin": "Remover do botão do painel",
+    "panel_pinned_toast": "Colocado no botão do painel",
+    "panel_unpinned_toast": "Removido do botão do painel (Notícias restauradas)"
   }
 }

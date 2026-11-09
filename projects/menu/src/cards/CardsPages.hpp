@@ -65,7 +65,8 @@ enum class SystemTile : int {
     HomeSettings,
     Eshop,
     SwitchOnline,
-    Friends
+    Friends,
+    News
 };
 inline std::uint64_t systemId(SystemTile t) { return kSystemIdBase | static_cast<std::uint64_t>(t); }
 inline SystemTile systemTileOf(std::uint64_t id) { return static_cast<SystemTile>(id & 0xFFu); }

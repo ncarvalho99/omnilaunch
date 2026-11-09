@@ -395,6 +395,39 @@ DecodedImage Texture::decodeFile(const std::string& path, int maxSide) {
     return out;
 }
 
+DecodedImage Texture::decodeMemory(const uint8_t* data, size_t size, int maxSide) {
+    DecodedImage out;
+    if (!data || size == 0 || size > 0x7FFFFFFFu)
+        return out;
+    int w, h, ch;
+    uint8_t* pixels = stbi_load_from_memory(data, (int)size, &w, &h, &ch, 4);
+    if (!pixels)
+        return out;
+    if (w <= 0 || h <= 0) {
+        stbi_image_free(pixels);
+        return out;
+    }
+    int dw = w, dh = h;
+    if (maxSide > 0 && (w > maxSide || h > maxSide)) {
+        float scale = std::min((float)maxSide / w, (float)maxSide / h);
+        dw = std::max(1, (int)(w * scale));
+        dh = std::max(1, (int)(h * scale));
+    }
+    out.width  = dw;
+    out.height = dh;
+    out.rgba.resize((size_t)dw * dh * 4);
+    for (int y = 0; y < dh; ++y) {
+        int sy = y * h / dh;
+        for (int x = 0; x < dw; ++x) {
+            int sx = x * w / dw;
+            std::memcpy(out.rgba.data() + ((size_t)y * dw + x) * 4,
+                        pixels          + ((size_t)sy * w + sx) * 4, 4);
+        }
+    }
+    stbi_image_free(pixels);
+    return out;
+}
+
 bool Texture::loadFromDecoded(GpuDevice& gpu, Renderer& ren, const DecodedImage& image) {
     if (!image.valid()) {
         m_valid = false;

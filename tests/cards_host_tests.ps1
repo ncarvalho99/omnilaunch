@@ -22,6 +22,8 @@ g++ -std=c++20 -Wall -Wextra -Iprojects/menu/src tests/gametdb_test.cpp projects
 (cd /tmp && rm -f romfs && ln -sf /src/romfs romfs && /tmp/gametdb_test)
 g++ -std=c++20 -Wall -Wextra -Iprojects/menu/src -Iprojects/common/include -I"${J%/nlohmann/json.hpp}" -idirafter lib/nxui/include tests/art_sources_test.cpp projects/menu/src/cards/CardsArtSources.cpp projects/menu/src/cards/GameTdbIndex.cpp projects/menu/src/steamgriddb/ArtworkCache.cpp -o /tmp/art_sources_test
 (cd /tmp && /tmp/art_sources_test)
+g++ -std=c++20 -Wall -Wextra -Iprojects/menu/src -Iprojects/common/include -I"${J%/nlohmann/json.hpp}" -idirafter lib/nxui/include tests/news_test.cpp projects/menu/src/news/NewsStore.cpp -o /tmp/news_test
+/tmp/news_test
 '@
 & docker run --rm --network none -v "${repo}:/src:ro" -v switchu-xmake:/root/.xmake:ro -w /src --entrypoint sh switchu-build:latest -c $script
 if ($LASTEXITCODE -ne 0) { throw "Cards host regressions failed (exit $LASTEXITCODE)." }

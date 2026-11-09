@@ -134,6 +134,11 @@ void CardsHomeActivity::openMusicSheet() {
     m_musicSheet.open(m_audio, m_core.config());
 }
 
+void CardsHomeActivity::openNewsSheet() {
+    m_audio.playSfx(Sfx::ModalShow);
+    m_newsSheet.open(m_core, m_chrome, m_time);
+}
+
 // ── "..." menu (E3, C-UI-2) ─────────────────────────────────────────────────
 void CardsHomeActivity::openDotsMenu() {
     auto& i18n = nxui::I18n::instance();
@@ -157,6 +162,10 @@ void CardsHomeActivity::openDotsMenu() {
         r.onA = std::move(fn);
         rows.push_back(std::move(r));
     };
+    add(i18n.tr("cards.menu_news", "News"), [this]() {
+        m_sheet.close();
+        openNewsSheet();
+    });
     add(i18n.tr("cards.menu_users", "Users"), [this]() { openUsersSheet(); });
     add(i18n.tr("cards.menu_quick", "Quick settings"), [this]() {
         m_sheet.close();
@@ -240,6 +249,10 @@ void CardsHomeActivity::drawPageDots(nxui::Renderer& ren, const nxui::Rect& p) {
 void CardsHomeActivity::openSystemTile(std::uint64_t id) {
     using T = pages::SystemTile;
     const T tile = pages::systemTileOf(id);
+    if (tile == T::News) {
+        openNewsSheet();
+        return;
+    }
     if (tile == T::Users) {
         openUsersSheet();
         return;
@@ -493,11 +506,23 @@ void CardsHomeActivity::openCardOptions() {
             auto& t = nxui::I18n::instance();
             showToast(media ? t.tr("cards.moved_games", "Moved to Games") : t.tr("cards.moved_media", "Moved to Media"));
         });
-    add(i18n.tr("cards.panel_pin", "Put on panel button"), [this, titleId]() {
-        m_core.config().cards.panelTitleId = titleId;
-        saveConfig("cards panel shortcut");
-        m_sheet.close();
-    });
+    const bool isPinned = (m_core.config().cards.panelTitleId == titleId);
+    if (!isPinned) {
+        add(i18n.tr("cards.panel_pin", "Put on panel button"), [this, titleId]() {
+            m_core.config().cards.panelTitleId = titleId;
+            m_core.config().cards.panelButtonEnabled = true;
+            saveConfig("cards panel shortcut");
+            m_sheet.close();
+            showToast(nxui::I18n::instance().tr("cards.panel_pinned_toast", "Placed on panel button"));
+        });
+    } else {
+        add(i18n.tr("cards.panel_unpin", "Remove from panel button"), [this]() {
+            m_core.config().cards.panelTitleId = 0;
+            saveConfig("cards panel shortcut");
+            m_sheet.close();
+            showToast(nxui::I18n::instance().tr("cards.panel_unpinned_toast", "Removed from panel button (News restored)"));
+        });
+    }
     add(i18n.tr("cards.art_choices", "Images"), [this, titleId]() { openArtSheet(titleId); });
     add(i18n.tr("cards.menu_achievements", "Achievements"), [this, titleId]() { openAchievementsSheet(titleId); });
     char id[24];
@@ -984,6 +1009,33 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
             saveConfig("cards ask user");
         };
         s.rows.push_back(std::move(ask));
+        Row panel;
+        panel.label = i18n.tr("cards.panel_button", "Panel button");
+        panel.value = [this]() {
+            auto& t = nxui::I18n::instance();
+            if (!m_core.config().cards.panelButtonEnabled)
+                return t.tr("cards.panel_button_none", "None");
+            const auto pin = m_core.config().cards.panelTitleId;
+            if (pin == 0)
+                return t.tr("cards.panel_button_news", "News");
+            for (const auto& a : m_catalog.all())
+                if (a.titleId == pin) return a.title;
+            return t.tr("cards.panel_missing", "Software unavailable");
+        };
+        panel.onChange = [this, reopen](int) {
+            auto& c = m_core.config().cards;
+            if (c.panelTitleId != 0) {
+                c.panelTitleId = 0;
+                c.panelButtonEnabled = true;
+            } else if (c.panelButtonEnabled) {
+                c.panelButtonEnabled = false;
+            } else {
+                c.panelButtonEnabled = true;
+            }
+            saveConfig("cards panel button");
+            reopen();
+        };
+        s.rows.push_back(std::move(panel));
         Row style;
         style.label = i18n.tr("cards.home_style", "HOME style");
         style.value = []() { return nxui::I18n::instance().tr("cards.home_style_cards", "Cards"); };

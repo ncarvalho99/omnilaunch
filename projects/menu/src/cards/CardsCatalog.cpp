@@ -67,6 +67,7 @@ void CardsCatalog::setPage(int page, const AppConfig& config) {
         auto& i18n = nxui::I18n::instance();
         struct Tile { pg::SystemTile id; const char* key; const char* fallback; const char* icon; };
         static const Tile kTiles[] = {
+            {pg::SystemTile::News, "cards.tile_news", "News", "cards/news.png"},
             {pg::SystemTile::Album, "cards.tile_album", "Album", "album.png"},
             {pg::SystemTile::Controllers, "cards.tile_controllers", "Controllers", "controller.png"},
             {pg::SystemTile::MiiEditor, "cards.tile_mii", "Mii Maker", "mii_editor.png"},

@@ -1277,6 +1277,19 @@
     "art_sgdb_key_saved": "SteamGridDB-sleutel opgeslagen",
     "art_sgdb_key_removed": "SteamGridDB-sleutel verwijderd",
     "art_sgdb_none": "Geen",
-    "art_sgdb_set": "Ingesteld"
+    "art_sgdb_set": "Ingesteld",
+    "news_title": "Nieuws",
+    "news_hint": "Omhoog/Omlaag Kiezen    ZL/ZR Scrollen    B Terug",
+    "news_empty": "Er is nog geen nieuws opgeslagen op dit systeem.",
+    "news_read_failed": "Het nieuws kon niet worden gelezen ({code}).",
+    "news_loading": "Nieuws laden...",
+    "menu_news": "Nieuws",
+    "tile_news": "Nieuws",
+    "panel_button": "Paneelknop",
+    "panel_button_news": "Nieuws",
+    "panel_button_none": "Geen",
+    "panel_unpin": "Verwijderen van paneelknop",
+    "panel_pinned_toast": "Geplaatst op paneelknop",
+    "panel_unpinned_toast": "Verwijderd van paneelknop (Nieuws hersteld)"
   }
 }

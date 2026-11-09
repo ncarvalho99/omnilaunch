@@ -165,6 +165,7 @@ bool AppConfig::load() {
         std::vector<std::uint64_t> panel;
         readIds("panelTitle", panel);
         cards.panelTitleId = panel.empty() ? 0 : panel.front();
+        readJsonOpt(c, "panelButtonEnabled", cards.panelButtonEnabled);
     }
     cards.normalize();
     readJsonOpt(j, "lastUpdateCheckDay", lastUpdateCheckDay);
@@ -387,6 +388,7 @@ bool AppConfig::save() const {
         c["logoTitles"] = ids(cards.logoTitles);
         c["panelTitle"] = ids(cards.panelTitleId ? std::vector<std::uint64_t>{cards.panelTitleId}
                                                : std::vector<std::uint64_t>{});
+        c["panelButtonEnabled"] = cards.panelButtonEnabled;
         c["settingsOrder"] = cards.settingsOrder;
         c["tutorialDone"] = cards.tutorialDone;
         c["accent"] = cards.accent;

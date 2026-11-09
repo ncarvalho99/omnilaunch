@@ -12,6 +12,7 @@
 #include "cards/CardsCatalog.hpp"
 #include "cards/CardsChrome.hpp"
 #include "cards/CardsMusicSheet.hpp"
+#include "cards/CardsNewsSheet.hpp"
 #include "cards/CardsSheet.hpp"
 #include "core/AudioManager.hpp"
 #include "core/LeaveFrameCache.hpp"
@@ -113,6 +114,7 @@ private:
     // HomeNX batch 1 (E1-E11): pages, move mode, sheets.
     void goToPage(int page, int dir);
     void drawPageDots(nxui::Renderer& ren, const nxui::Rect& panel);
+    void drawPanelButton(nxui::Renderer& ren, float cy);
     void drawMoveHint(nxui::Renderer& ren);
     void openSystemTile(std::uint64_t id);
     void startMove();
@@ -126,6 +128,7 @@ private:
     void openQuickSettings();
     void closeQuickSettings();
     void openMusicSheet();
+    void openNewsSheet();
     void requestText(const std::string& title, const std::string& guide, const std::string& initial,
                      std::function<void(const std::string&)> onAccept);
     void renameSelected();
@@ -209,6 +212,7 @@ private:
     // Sheets (E3-E7, E11), quick settings (E6), text entry (E9 part), picker (G2).
     CardsSheet m_sheet;
     CardsMusicSheet m_musicSheet;
+    CardsNewsSheet m_newsSheet;
     std::shared_ptr<QuickSettingsOverlay> m_quick;
     std::shared_ptr<TextEntryScreen> m_text;
     std::shared_ptr<SteamGridDbPickerScreen> m_picker;

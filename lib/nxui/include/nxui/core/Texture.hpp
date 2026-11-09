@@ -98,6 +98,8 @@ public:
     // which is the point: a caller that must not stall the frame does this on a
     // worker and hands the result to loadFromDecoded when it lands.
     static DecodedImage decodeFile(const std::string& path, int maxSide = 0);
+    // The same for an encoded image already in memory (JPEG/PNG).
+    static DecodedImage decodeMemory(const uint8_t* data, size_t size, int maxSide = 0);
 
     // Upload pixels already decoded. Cheap enough to do mid-frame.
     bool loadFromDecoded(GpuDevice& gpu, Renderer& ren, const DecodedImage& image);

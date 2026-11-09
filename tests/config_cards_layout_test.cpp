@@ -86,6 +86,26 @@ int main() {
         TEST_ASSERT(fallback.appLayoutMode == AppLayoutMode::Grid);
     }
 
+    // 5. Verify cards.panelButtonEnabled and panelTitleId serialization
+    {
+        AppConfig cfg;
+        TEST_ASSERT(cfg.cards.panelButtonEnabled == true);
+        TEST_ASSERT(cfg.cards.panelTitleId == 0);
+
+        cfg.cards.panelTitleId = 0x0100EA80032EA000ULL;
+        cfg.cards.panelButtonEnabled = false;
+        TEST_ASSERT(cfg.save());
+
+        auto j = readCfg(kPath);
+        TEST_ASSERT(j["cards"]["panelButtonEnabled"] == false);
+        TEST_ASSERT(!j["cards"]["panelTitle"].empty());
+
+        AppConfig loaded;
+        TEST_ASSERT(loaded.load());
+        TEST_ASSERT(loaded.cards.panelTitleId == 0x0100EA80032EA000ULL);
+        TEST_ASSERT(loaded.cards.panelButtonEnabled == false);
+    }
+
     std::system("rm -rf 'sdmc:'");
     std::printf("PASS: config_cards_layout_test passed all assertions!\n");
     return 0;

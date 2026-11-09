@@ -86,6 +86,8 @@ void CardsChrome::drawCover(nxui::Renderer& r, const nxui::Texture* tex, const n
 }
 
 void CardsChrome::icon(nxui::Renderer& r, const char* name, float cx, float cy, float size, const nxui::Color& tint) {
+    if (!name || !*name)
+        return; // a circle with no glyph (e.g. a picture drawn over it)
     auto it = m_icons.find(name);
     if (it == m_icons.end()) {
         auto tex = std::make_unique<nxui::Texture>();

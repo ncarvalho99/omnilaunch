@@ -1277,6 +1277,19 @@
     "art_sgdb_key_saved": "Ключ SteamGridDB сохранен",
     "art_sgdb_key_removed": "Ключ SteamGridDB удален",
     "art_sgdb_none": "Нет",
-    "art_sgdb_set": "Установлен"
+    "art_sgdb_set": "Установлен",
+    "news_title": "Новости",
+    "news_hint": "Вверх/Вниз Выбрать    ZL/ZR Прокрутка    B Назад",
+    "news_empty": "На этой консоли пока нет сохранённых новостей.",
+    "news_read_failed": "Не удалось прочитать новости консоли ({code}).",
+    "news_loading": "Загрузка новостей...",
+    "menu_news": "Новости",
+    "tile_news": "Новости",
+    "panel_button": "Кнопка панели",
+    "panel_button_news": "Новости",
+    "panel_button_none": "Нет",
+    "panel_unpin": "Убрать с кнопки панели",
+    "panel_pinned_toast": "Назначено на кнопку панели",
+    "panel_unpinned_toast": "Убрано с кнопки панели (Новости восстановлены)"
   }
 }

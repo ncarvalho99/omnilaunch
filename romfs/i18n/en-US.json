@@ -1482,6 +1482,19 @@
     "art_sgdb_key_saved": "SteamGridDB key saved",
     "art_sgdb_key_removed": "SteamGridDB key removed",
     "art_sgdb_none": "None",
-    "art_sgdb_set": "Set"
+    "art_sgdb_set": "Set",
+    "news_title": "News",
+    "news_hint": "Up/Down Choose    ZL/ZR Scroll    B Back",
+    "news_empty": "There is no news saved on this console yet.",
+    "news_read_failed": "The console news could not be read ({code}).",
+    "news_loading": "Loading news...",
+    "menu_news": "News",
+    "tile_news": "News",
+    "panel_button": "Panel button",
+    "panel_button_news": "News",
+    "panel_button_none": "None",
+    "panel_unpin": "Remove from panel button",
+    "panel_pinned_toast": "Placed on panel button",
+    "panel_unpinned_toast": "Removed from panel button (News restored)"
   }
 }

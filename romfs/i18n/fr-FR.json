@@ -1277,6 +1277,19 @@
     "art_sgdb_key_saved": "Clé SteamGridDB enregistrée",
     "art_sgdb_key_removed": "Clé SteamGridDB supprimée",
     "art_sgdb_none": "Aucune",
-    "art_sgdb_set": "Définie"
+    "art_sgdb_set": "Définie",
+    "news_title": "Nouvelles",
+    "news_hint": "Haut/Bas Choisir    ZL/ZR Défiler    B Retour",
+    "news_empty": "Aucune nouvelle enregistrée sur cette console pour le moment.",
+    "news_read_failed": "Impossible de lire les nouvelles de la console ({code}).",
+    "news_loading": "Chargement des nouvelles...",
+    "menu_news": "Nouvelles",
+    "tile_news": "Nouvelles",
+    "panel_button": "Bouton du panneau",
+    "panel_button_news": "Nouvelles",
+    "panel_button_none": "Aucun",
+    "panel_unpin": "Retirer du bouton du panneau",
+    "panel_pinned_toast": "Placé sur le bouton du panneau",
+    "panel_unpinned_toast": "Retiré du bouton du panneau (Nouvelles restaurées)"
   }
 }

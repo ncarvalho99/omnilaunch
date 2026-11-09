@@ -1326,6 +1326,19 @@
     "art_sgdb_key_saved": "Clave SteamGridDB guardada",
     "art_sgdb_key_removed": "Clave SteamGridDB eliminada",
     "art_sgdb_none": "Ninguna",
-    "art_sgdb_set": "Establecida"
+    "art_sgdb_set": "Establecida",
+    "news_title": "Noticias",
+    "news_hint": "Arriba/Abajo Elegir    ZL/ZR Desplazar    B Volver",
+    "news_empty": "No hay noticias guardadas en esta consola todavía.",
+    "news_read_failed": "No se pudieron leer las noticias de la consola ({code}).",
+    "news_loading": "Cargando noticias...",
+    "menu_news": "Noticias",
+    "tile_news": "Noticias",
+    "panel_button": "Botón del panel",
+    "panel_button_news": "Noticias",
+    "panel_button_none": "Ninguno",
+    "panel_unpin": "Quitar del botón del panel",
+    "panel_pinned_toast": "Colocado en el botón del panel",
+    "panel_unpinned_toast": "Quitado del botón del panel (Noticias restauradas)"
   }
 }

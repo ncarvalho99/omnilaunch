@@ -657,6 +657,8 @@ void CardsHomeActivity::onDestroy() {
     m_deleteProgress.reset();
     m_sheet.close();
     m_musicSheet.close();
+    m_newsSheet.close();
+    m_newsSheet.clearTextures();
     m_moving = false;
     m_quick.reset();
     m_text.reset();
@@ -778,7 +780,7 @@ void CardsHomeActivity::onUpdate(float dt) {
 
     const std::uint64_t previousId =
         (m_selected >= 0 && m_selected < m_catalog.count()) ? m_catalog.at(m_selected).app.titleId : 0;
-    if (!m_moving && !m_sheet.isOpen() && !m_musicSheet.isOpen() && !overlayActive() &&
+    if (!m_moving && !m_sheet.isOpen() && !m_musicSheet.isOpen() && !m_newsSheet.isOpen() && !overlayActive() &&
         m_catalog.poll(m_core.catalog(), m_core.config())) {
         // Keep the card in focus; on first load, prefer the suspended title,
         // then the leave-session title (PoloNX #104), then the last-opened one (C-SW-5).
@@ -838,7 +840,7 @@ void CardsHomeActivity::onUpdate(float dt) {
         maybeShowTutorial();
     }
 
-    if (m_refreshQueued && !m_moving && !m_sheet.isOpen() && !m_musicSheet.isOpen() &&
+    if (m_refreshQueued && !m_moving && !m_sheet.isOpen() && !m_musicSheet.isOpen() && !m_newsSheet.isOpen() &&
         --m_refreshDelayFrames <= 0 && !m_catalog.loading()) {
         m_refreshQueued = false;
         refreshCatalogue();
@@ -858,6 +860,7 @@ void CardsHomeActivity::onUpdate(float dt) {
     updateLock(dt);
     m_sheet.update(dt);
     m_musicSheet.update(dt, m_audio);
+    m_newsSheet.update(dt, app().gpu(), app().renderer(), m_core.threadPool(), m_chrome, m_time);
     if (m_quick)
         m_quick->update(dt);
     if (m_text)
@@ -936,6 +939,8 @@ void CardsHomeActivity::onUpdate(float dt) {
                 m_sheet.handleInput(app().input(), dt);
             } else if (m_musicSheet.isOpen()) {
                 m_musicSheet.handleInput(app().input(), m_audio, m_core.config());
+            } else if (m_newsSheet.isOpen()) {
+                m_newsSheet.handleInput(app().input(), dt, m_chrome, m_audio);
             } else if (m_moving) {
                 handleMoveInput();
             } else {
@@ -1307,14 +1312,18 @@ void CardsHomeActivity::handleInput() {
         return;
     }
     if (m_panelZone) {
-        if (m_catalog.count() == 0) {
+        const bool panelBtn = m_core.config().cards.panelButtonEnabled;
+        const bool empty = m_catalog.count() == 0;
+        if (empty && !panelBtn) {
             m_panelZone = false;
             return;
         }
+        if (empty)
+            m_panelIndex = 2; // only the panel button exists without a card
         const bool l = in.isDown(B::DLeft) || (in.isDown(B::LStickL) || in.isDown(B::RStickL));
         const bool r = in.isDown(B::DRight) || (in.isDown(B::LStickR) || in.isDown(B::RStickR));
-        if (l && m_panelIndex > 0) { --m_panelIndex; m_audio.playSfx(Sfx::Navigate); }
-        if (r && m_panelIndex < (m_core.config().cards.panelTitleId ? 2 : 1)) { ++m_panelIndex; m_audio.playSfx(Sfx::Navigate); }
+        if (l && !empty && m_panelIndex > 0) { --m_panelIndex; m_audio.playSfx(Sfx::Navigate); }
+        if (r && m_panelIndex < (panelBtn ? 2 : 1)) { ++m_panelIndex; m_audio.playSfx(Sfx::Navigate); }
         if (in.isDown(B::DUp) || (in.isDown(B::LStickU) || in.isDown(B::RStickU)) || in.isDown(B::B)) {
             m_panelZone = false;
             m_audio.playSfx(Sfx::Navigate);
@@ -1323,13 +1332,17 @@ void CardsHomeActivity::handleInput() {
                 activateSelected();
                 return;
             }
-            if (m_panelIndex == 2)
-                activatePanelShortcut();
-            else
+            if (m_panelIndex == 2 && panelBtn) {
+                if (m_core.config().cards.panelTitleId != 0)
+                    activatePanelShortcut();
+                else
+                    openNewsSheet();
+            } else {
                 openCardOptions();
+            }
         }
 #ifdef SWITCHU_MENU
-        else if (in.isDown(B::X) && isRunningCard(m_catalog.at(m_selected).app.titleId)) {
+        else if (!empty && in.isDown(B::X) && isRunningCard(m_catalog.at(m_selected).app.titleId)) {
             confirmCloseSuspended();
         }
 #endif
@@ -1340,9 +1353,10 @@ void CardsHomeActivity::handleInput() {
         m_audio.playSfx(Sfx::Navigate);
         return;
     }
-    if ((in.isDown(B::DDown) || (in.isDown(B::LStickD) || in.isDown(B::RStickD))) && m_catalog.count() > 0) {
+    if ((in.isDown(B::DDown) || (in.isDown(B::LStickD) || in.isDown(B::RStickD))) &&
+        (m_catalog.count() > 0 || m_core.config().cards.panelButtonEnabled)) {
         m_panelZone = true;
-        m_panelIndex = 0;
+        m_panelIndex = m_catalog.count() > 0 ? 0 : 2;
         m_audio.playSfx(Sfx::Navigate);
         return;
     }
@@ -1690,6 +1704,11 @@ void CardsHomeActivity::handleSystemAction(SysAction action) {
             m_waitRelease = true;
             break;
         }
+        if (m_newsSheet.isOpen()) {
+            m_newsSheet.close();
+            m_waitRelease = true;
+            break;
+        }
         if (m_moving) {
             finishMove(false);
             m_waitRelease = true;
@@ -1749,6 +1768,27 @@ void CardsHomeActivity::drawCard(nxui::Renderer& ren, int index, const nxui::Rec
     }
 }
 
+// The panel's right button (C-SK-5): News by default, a pinned title's icon, or nothing.
+void CardsHomeActivity::drawPanelButton(nxui::Renderer& ren, float cy) {
+    if (!m_core.config().cards.panelButtonEnabled)
+        return;
+    const bool focus = m_panelZone && m_panelIndex == 2;
+    const float cx = layout::kPanel.right() - 22.f - 38.5f;
+    const auto pin = m_core.config().cards.panelTitleId;
+    if (pin == 0) {
+        m_chrome.glassCircle(ren, cx, cy, 77.f, focus, "news", 32.f, m_time);
+        return;
+    }
+    const int idx = m_catalog.indexOf(pin);
+    const nxui::Texture* pic =
+        idx >= 0 && m_catalog.at(idx).icon && m_catalog.at(idx).icon->valid() ? m_catalog.at(idx).icon.get() : nullptr;
+    m_chrome.glassCircle(ren, cx, cy, 77.f, focus, pic ? nullptr : "play", 30.f, m_time);
+    if (pic) {
+        const float s = 44.f;
+        ren.drawTextureRounded(pic, {cx - s * 0.5f, cy - s * 0.5f, s, s}, 12.f, CardsChrome::kWhite);
+    }
+}
+
 void CardsHomeActivity::drawPanel(nxui::Renderer& ren) {
     const auto& p = layout::kPanel;
     ren.drawRoundedRect(p, CardsChrome::glassTint(1.12f), layout::kPanelRadius);
@@ -1758,6 +1798,7 @@ void CardsHomeActivity::drawPanel(nxui::Renderer& ren) {
         const std::string msg = m_catalog.loading() ? i18n.tr("cards.loading", "Loading...")
                                                     : i18n.tr("cards.empty", "No software installed");
         m_chrome.textMid(ren, m_chrome.labelFont(), msg, p.x + 40.f, p.y + p.height * 0.5f, CardsChrome::kWhite);
+        drawPanelButton(ren, p.bottom() - 97.f + 38.5f);
         drawPageDots(ren, p);
         return;
     }
@@ -1842,18 +1883,8 @@ void CardsHomeActivity::drawPanel(nxui::Renderer& ren) {
     m_chrome.textMid(ren, lf, label, triX + 26.f, cy, ink);
     m_chrome.glassCircle(ren, button.right() + 46.f, cy, 72.f, dotsFocus, "dots", 30.f, m_time);
 
-    if (m_core.config().cards.panelTitleId != 0) {
-        const auto pin = m_core.config().cards.panelTitleId;
-        std::string title;
-        for (const auto& a : m_catalog.all())
-            if (a.titleId == pin) { title = a.title; break; }
-        if (title.empty()) title = i18n.tr("cards.panel_missing", "Software unavailable");
-        const nxui::Rect shortcut{p.right()-440.f, cy-34.f, 416.f, 68.f};
-        ren.drawRoundedRect(shortcut, CardsChrome::glassTint(1.8f), 26.f);
-        if (m_panelZone && m_panelIndex == 2)
-            ren.drawRoundedRectOutline(shortcut, CardsChrome::accent(0.95f), 26.f, 2.f);
-        m_chrome.textMid(ren, lf, m_chrome.fit(lf, title, shortcut.width-30.f), shortcut.x+15.f, cy, white);
-    } else if (suspended) {
+    drawPanelButton(ren, cy);
+    if (suspended) {
         const std::string hint = i18n.tr("cards.hint_close", "X  Close software");
         m_chrome.textMid(ren, m_chrome.smallFont(), hint, button.right() + 100.f, cy, dim);
     }
@@ -1984,6 +2015,7 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
     drawMoveHint(ren);
     m_sheet.render(ren, m_chrome);
     m_musicSheet.render(ren, m_chrome, m_audio);
+    m_newsSheet.render(ren, m_chrome, m_time);
     drawTutorial(ren);
     if (m_quick && m_quick->isActive())
         m_quick->render(ren);

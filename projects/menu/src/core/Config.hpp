@@ -61,7 +61,8 @@ struct AppConfig {
         std::vector<std::uint64_t> mediaTitles; // moved to Media by hand
         std::vector<std::string> settingsOrder; // settings section keys
         bool tutorialDone = false;
-        std::uint64_t panelTitleId = 0; // right panel shortcut, 0 = none
+        bool panelButtonEnabled = true; // right panel button enabled (default News, or pinned app)
+        std::uint64_t panelTitleId = 0; // right panel shortcut, 0 = News default, >0 = pinned title
         std::vector<std::uint64_t> iconTitles; // use the installed icon, not a cover
         std::vector<std::uint64_t> coverBackgroundTitles; // cover instead of hero
         std::vector<std::uint64_t> plainBackgroundTitles; // no game background
