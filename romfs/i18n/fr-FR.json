@@ -1183,6 +1183,13 @@
     "hint_today": "Aujourd'hui"
   },
   "cards": {
+    "net_check": "Tester la connexion",
+    "net_check_desc": "État du réseau et une requête sécurisée de test",
+    "net_checking": "Test de la connexion...",
+    "net_connecting": "Pas encore connecté : la console se connecte",
+    "net_offline": "Aucune connexion internet",
+    "net_ok": "Connecté : requête sécurisée OK",
+    "net_failed": "Connecté, mais la requête de test a échoué : ",
     "safe_blocked_title": "Service en ligne indisponible",
     "safe_blocked_desc": "Ce service en ligne est bloqué par défaut pour protéger votre console des bannissements.",
     "music_title": "Musique",

@@ -43,6 +43,11 @@ HomeCore::HomeCore() {
         m_closingTrace.http_shutdown_done_tick = armGetSystemTick();
 #endif
     });
+    // G1: after the pool joined (no worker inside a request), before the HTTP
+    // runtime; both hold reference-counted leases on the shared runtime.
+    addShutdownHook(ShutdownPhase::Services, "net service", [this] {
+        m_net.shutdown();
+    });
     // The scrape runs on its own std::async thread and uses HTTP: stop it
     // before the HTTP runtime goes away (hooks run in reverse order).
     addShutdownHook(ShutdownPhase::Services, "steamgriddb", [this] {

@@ -1232,6 +1232,13 @@
     "title": "Tema automático"
   },
   "cards": {
+    "net_check": "Probar conexión",
+    "net_check_desc": "Estado de la red y una solicitud segura de prueba",
+    "net_checking": "Probando la conexión...",
+    "net_connecting": "Aún sin conexión: la consola se está conectando",
+    "net_offline": "Sin conexión a internet",
+    "net_ok": "Conectado: solicitud segura correcta",
+    "net_failed": "Conectado, pero la solicitud de prueba falló: ",
     "safe_blocked_title": "Servicio en línea no disponible",
     "safe_blocked_desc": "Este servicio en línea está bloqueado por defecto para proteger tu consola de baneos.",
     "music_title": "Música",

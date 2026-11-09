@@ -16,6 +16,8 @@ g++ -std=c++20 -Iprojects/menu/src -Iprojects/common/include -I"${J%/nlohmann/js
 (cd /tmp && ./config_cards_test)
 g++ -std=c++17 -pthread -Itests/home_audio/stubs -Iprojects/menu/src -idirafter lib/nxui/include tests/home_audio/home_audio_test.cpp projects/menu/src/home/HomeAudio.cpp projects/menu/src/home/HomeCore.cpp projects/menu/src/home/HomePlaytime.cpp -o /tmp/home_audio_test
 /tmp/home_audio_test
+g++ -std=c++17 -Wall -Wextra -Iprojects/menu/src tests/net_test.cpp projects/menu/src/net/NetUtil.cpp projects/menu/src/net/WsFrame.cpp -o /tmp/net_test
+/tmp/net_test
 '@
 & docker run --rm --network none -v "${repo}:/src:ro" -v switchu-xmake:/root/.xmake:ro -w /src --entrypoint sh switchu-build:latest -c $script
 if ($LASTEXITCODE -ne 0) { throw "Cards host regressions failed (exit $LASTEXITCODE)." }

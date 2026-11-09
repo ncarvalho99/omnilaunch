@@ -1303,6 +1303,13 @@
     "title": "Auto Theme"
   },
   "cards": {
+    "net_check": "Check connection",
+    "net_check_desc": "Network state and a secure test request",
+    "net_checking": "Checking the connection...",
+    "net_connecting": "Not connected yet: the console is still connecting",
+    "net_offline": "No internet connection",
+    "net_ok": "Connected: secure request OK",
+    "net_failed": "Connected, but the test request failed: ",
     "safe_blocked_title": "Online service unavailable",
     "safe_blocked_desc": "This online service is blocked by default to protect your console from bans.",
     "music_title": "Music",
@@ -1447,7 +1454,6 @@
     "lock_now": "Lock now",
     "lock_password_pending": "Password: batch 2 (E9)",
     "internet_settings": "Console network settings",
-    "network_pending": "Connection test: Part G",
     "bluetooth_failed": "Bluetooth change failed",
     "set_updates": "Updates",
     "updates_pending": "Update client: Part G6",

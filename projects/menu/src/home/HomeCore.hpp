@@ -14,9 +14,11 @@
 // C5a: play-time refresh (HomePlaytime).
 // C5b: SteamGridDB artwork scrape manager.
 // C5c: catalogue loader (AppListLoader).
+// G1: NetService (network state, HTTP with retry, WebSocket, bundled roots).
 
 #include "home/HomeAudio.hpp"
 #include "home/HomePlaytime.hpp"
+#include "net/NetService.hpp"
 #include "launcher/AppListLoader.hpp"
 #include "steamgriddb/SteamGridDbManager.hpp"
 #include "launcher/AppletLauncher.hpp"
@@ -66,6 +68,7 @@ public:
     const AppConfig& config() const { return m_config; }
     nxui::ThreadPool& threadPool() { return m_threadPool; }
     AppletLauncher& launcher() { return m_launcher; }
+    net::NetService& net() { return m_net; }
 
     void setRequestExit(std::function<void()> cb);
     void setFrontendQuiesce(std::function<void()> quiesce) { m_frontendQuiesce = std::move(quiesce); }
@@ -140,6 +143,7 @@ private:
     AppConfig m_config;
     nxui::ThreadPool m_threadPool{2};
     AppletLauncher m_launcher;
+    net::NetService m_net;
     std::function<void()> m_requestExit;
     std::function<void()> m_frontendQuiesce;
     bool m_frontendSwitch = false;

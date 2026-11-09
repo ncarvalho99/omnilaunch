@@ -63,6 +63,8 @@ __pycache__/
 .env.*
 !.env.example
 *.pem
+# Public root CA certificates bundled for TLS fallback (no private keys).
+!/romfs/certs/*.pem
 *.key
 *.p12
 *.pfx

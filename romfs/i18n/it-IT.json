@@ -1183,6 +1183,13 @@
     "hint_today": "Oggi"
   },
   "cards": {
+    "net_check": "Verifica connessione",
+    "net_check_desc": "Stato della rete e una richiesta sicura di prova",
+    "net_checking": "Verifica della connessione...",
+    "net_connecting": "Non ancora connesso: la console si sta connettendo",
+    "net_offline": "Nessuna connessione a internet",
+    "net_ok": "Connesso: richiesta sicura OK",
+    "net_failed": "Connesso, ma la richiesta di prova non è riuscita: ",
     "safe_blocked_title": "Servizio online non disponibile",
     "safe_blocked_desc": "Questo servizio online è bloccato come misura di sicurezza per proteggere la console dai ban.",
     "music_title": "Musica",

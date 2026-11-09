@@ -2,6 +2,7 @@
 
 #include <switchu/file_log.hpp>
 #include <switch.h>
+#include <curl/curl.h>
 
 #include <mutex>
 
@@ -66,6 +67,39 @@ void release() {
         nifmExit();
         g_nifmUp = false;
     }
+}
+
+namespace {
+std::mutex g_httpMutex;
+int g_httpRefs = 0;
+} // namespace
+
+bool acquireHttp() {
+    std::lock_guard<std::mutex> lock(g_httpMutex);
+    if (g_httpRefs > 0) {
+        ++g_httpRefs;
+        return true;
+    }
+    if (!acquire())
+        return false;
+    const CURLcode rc = curl_global_init(CURL_GLOBAL_DEFAULT);
+    if (rc != CURLE_OK) {
+        switchu::FileLog::log("[net] curl_global_init failed: %s", curl_easy_strerror(rc));
+        release();
+        return false;
+    }
+    g_httpRefs = 1;
+    return true;
+}
+
+void releaseHttp() {
+    std::lock_guard<std::mutex> lock(g_httpMutex);
+    if (g_httpRefs <= 0)
+        return;
+    if (--g_httpRefs > 0)
+        return;
+    curl_global_cleanup();
+    release();
 }
 
 } // namespace switchu::services::net

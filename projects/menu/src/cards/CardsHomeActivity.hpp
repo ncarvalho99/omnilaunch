@@ -253,6 +253,10 @@ private:
     };
     std::shared_ptr<Details> m_detailsPending;
     std::future<void> m_detailsFuture;
+    // G1: Internet settings "Check connection" (NetService), polled in onUpdate.
+    std::future<std::string> m_netCheck;
+    void startNetCheck();
+    void pollNetCheck();
     Details m_details;
     std::uint64_t m_detailsWanted = 0;
     float m_detailsDelay = 0.f;

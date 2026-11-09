@@ -16,9 +16,8 @@
 namespace {
 
 std::mutex g_themeHttpMutex;
-bool g_nifmInitialized = false;
-bool g_socketInitialized = false;
-bool g_curlInitialized = false;
+// This module's reference on the shared network + curl runtime (NetRuntime).
+bool g_runtimeHeld = false;
 themeshop::http::CancelScope g_cancelScope;
 // Per-transfer cancel of the calling thread (ThreadCancelGuard).
 thread_local const std::atomic<bool>* t_transferCancel = nullptr;
@@ -62,51 +61,28 @@ bool isOfficialHost(const std::string& url) {
 }
 
 bool runtimeInitializedLocked() {
-    return g_nifmInitialized && g_socketInitialized && g_curlInitialized;
+    return g_runtimeHeld;
 }
 
+// One reference on the shared network + curl runtime. Exiting the socket layer
+// (or curl's global state) directly here, between request retries, removed it
+// under other users (NTP, NetService); the shared runtime only tears down when
+// the last user lets go.
 void shutdownRuntimeLocked() {
-    if (g_curlInitialized) {
-        curl_global_cleanup();
-        g_curlInitialized = false;
+    if (g_runtimeHeld) {
+        switchu::services::net::releaseHttp();
+        g_runtimeHeld = false;
     }
-    // One reference on the shared network runtime. Exiting the socket layer
-    // directly here, between request retries, removed the "soc:" device while
-    // the NTP clock-sync thread still had a socket open, and that thread's
-    // close() then crashed the menu. The shared runtime only exits it when the
-    // last user (this module or NTP) lets go. Both flags below mean "this
-    // module holds its reference".
-    if (g_socketInitialized) {
-        switchu::services::net::release();
-        g_socketInitialized = false;
-    }
-    g_nifmInitialized = false;
 }
 
 bool initializeRuntimeLocked() {
-    if (runtimeInitializedLocked())
+    if (g_runtimeHeld)
         return true;
-
-    if (!g_socketInitialized) {
-        if (!switchu::services::net::acquire()) {
-            DebugLog::log("[themeshop] network runtime unavailable");
-            shutdownRuntimeLocked();
-            return false;
-        }
-        g_socketInitialized = true;
-        g_nifmInitialized = true;
+    if (!switchu::services::net::acquireHttp()) {
+        DebugLog::log("[themeshop] network runtime unavailable");
+        return false;
     }
-
-    if (!g_curlInitialized) {
-        CURLcode rc = curl_global_init(CURL_GLOBAL_DEFAULT);
-        if (rc != CURLE_OK) {
-            DebugLog::log("[themeshop] curl_global_init failed: %s", curl_easy_strerror(rc));
-            shutdownRuntimeLocked();
-            return false;
-        }
-        g_curlInitialized = true;
-    }
-
+    g_runtimeHeld = true;
     DebugLog::log("[themeshop] http runtime ready");
     return true;
 }
@@ -358,6 +334,10 @@ void openFrontendScope() {
 
 void closeFrontendScope() {
     g_cancelScope.closeFrontend();
+}
+
+CancelScope& cancelScope() {
+    return g_cancelScope;
 }
 
 ThreadCancelGuard::ThreadCancelGuard(const std::atomic<bool>* cancel)

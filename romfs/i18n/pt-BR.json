@@ -1303,6 +1303,13 @@
     "title": "Tema automático"
   },
   "cards": {
+    "net_check": "Testar conexão",
+    "net_check_desc": "Estado da rede e uma requisição segura de teste",
+    "net_checking": "Testando a conexão...",
+    "net_connecting": "Ainda não conectado: o console está conectando",
+    "net_offline": "Sem conexão com a internet",
+    "net_ok": "Conectado: requisição segura OK",
+    "net_failed": "Conectado, mas a requisição de teste falhou: ",
     "safe_blocked_title": "Serviço online indisponível",
     "safe_blocked_desc": "Este serviço online é bloqueado por padrão para proteger seu console contra banimento.",
     "music_title": "Música",
@@ -1447,7 +1454,6 @@
     "lock_now": "Bloquear agora",
     "lock_password_pending": "Senha: lote 2 (E9)",
     "internet_settings": "Configurações de rede do console",
-    "network_pending": "Teste de conexão: Parte G",
     "bluetooth_failed": "Falha ao alterar Bluetooth",
     "set_updates": "Atualizações",
     "updates_pending": "Cliente de atualização: Parte G6",

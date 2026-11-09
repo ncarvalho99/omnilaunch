@@ -1183,6 +1183,13 @@
     "hint_today": "Heute"
   },
   "cards": {
+    "net_check": "Verbindung testen",
+    "net_check_desc": "Netzwerkstatus und eine sichere Testanfrage",
+    "net_checking": "Verbindung wird getestet...",
+    "net_connecting": "Noch nicht verbunden: die Konsole verbindet sich",
+    "net_offline": "Keine Internetverbindung",
+    "net_ok": "Verbunden: sichere Anfrage OK",
+    "net_failed": "Verbunden, aber die Testanfrage ist fehlgeschlagen: ",
     "safe_blocked_title": "Online-Dienst nicht verfügbar",
     "safe_blocked_desc": "Dieser Online-Dienst ist standardmäßig gesperrt, um deine Konsole vor Sperren zu schützen.",
     "music_title": "Musik",

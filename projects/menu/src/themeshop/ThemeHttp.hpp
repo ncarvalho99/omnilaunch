@@ -30,6 +30,11 @@ void cancelPendingRequests();
 void openFrontendScope();
 void closeFrontendScope();
 
+// The process-wide scope above, shared with NetService (HomeNX G1) so one
+// frontend switch / launch hand-off cancels every network user the same way.
+class CancelScope;
+CancelScope& cancelScope();
+
 // Thrown when a request stops because it was cancelled (frontend scope,
 // terminal cancel, or the per-transfer flag below). Lets callers tell a user
 // cancel from a real failure without re-reading a flag that may have been

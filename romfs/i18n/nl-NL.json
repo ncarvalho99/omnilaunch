@@ -1183,6 +1183,13 @@
     "hint_today": "Vandaag"
   },
   "cards": {
+    "net_check": "Verbinding testen",
+    "net_check_desc": "Netwerkstatus en een beveiligd testverzoek",
+    "net_checking": "Verbinding wordt getest...",
+    "net_connecting": "Nog niet verbonden: de console maakt verbinding",
+    "net_offline": "Geen internetverbinding",
+    "net_ok": "Verbonden: beveiligd verzoek OK",
+    "net_failed": "Verbonden, maar het testverzoek is mislukt: ",
     "safe_blocked_title": "Onlinedienst niet beschikbaar",
     "safe_blocked_desc": "Deze onlinedienst is standaard geblokkeerd om je console tegen bans te beschermen.",
     "music_title": "Muziek",

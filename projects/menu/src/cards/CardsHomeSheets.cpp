@@ -14,6 +14,7 @@
 #include "widgets/ProgressDialog.hpp"
 #include "launcher/HekateReboot.hpp"
 #include "widgets/LockPassword.hpp"
+#include "net/NetService.hpp"
 #ifdef SWITCHU_MENU
 #include "core/NsService.hpp"
 #include <switchu/control_cache.hpp>
@@ -1216,10 +1217,11 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         r.label = i18n.tr("cards.internet_settings", "Open console network settings");
         r.onA = [this]() { m_sheet.close(); openSystemTile(pages::systemId(pages::SystemTile::Internet)); };
         s.rows.push_back(std::move(r));
-        Row pending;
-        pending.label = i18n.tr("cards.network_pending", "Connection test: Part G");
-        pending.enabled = false;
-        s.rows.push_back(std::move(pending));
+        Row check;
+        check.label = i18n.tr("cards.net_check", "Check connection");
+        check.detail = i18n.tr("cards.net_check_desc", "Network state and a secure test request");
+        check.onA = [this]() { startNetCheck(); };
+        s.rows.push_back(std::move(check));
         all["internet"] = std::move(s);
     }
     {
@@ -1418,6 +1420,66 @@ void CardsHomeActivity::openArtSheet(std::uint64_t titleId) {
     local.label = tr.tr("cards.art_local_only", "Existing local images only; new downloads in G4");
     local.enabled = false;
     m_sheet.open(tr.tr("cards.art_choices", "Images"), {{std::string(), {card, background, title, local}}});
+}
+
+// ── Internet: connection check (HomeNX G1, C-NET-1) ─────────────────────────
+// Network state plus one verified HTTPS request through NetService, on the
+// Core pool. Cloudflare's 204 endpoint, as HomeNX uses for its test; the full
+// speed test (C-NET-7) is G4.
+void CardsHomeActivity::startNetCheck() {
+    auto& tr = nxui::I18n::instance();
+    if (m_netCheck.valid()) {
+        showToast(tr.tr("cards.net_checking", "Checking the connection..."));
+        return;
+    }
+    // The pool is shut down only on the main thread, after this frontend.
+    if (!m_core.threadPool().acceptingTasks())
+        return;
+    m_sheet.close();
+    showToast(tr.tr("cards.net_checking", "Checking the connection..."));
+    net::NetService* service = &m_core.net();
+    auto promise = std::make_shared<std::promise<std::string>>();
+    m_netCheck = promise->get_future();
+    // Texts are looked up here, on the main thread; the worker only picks one.
+    struct Texts { std::string connecting, offline, ok, failed; };
+    Texts texts{tr.tr("cards.net_connecting", "Not connected yet: the console is still connecting"),
+                tr.tr("cards.net_offline", "No internet connection"),
+                tr.tr("cards.net_ok", "Connected: secure request OK"),
+                tr.tr("cards.net_failed", "Connected, but the test request failed: ")};
+    m_core.threadPool().submit([service, promise, texts]() {
+        std::string text;
+        const net::NetState state = service->state();
+        if (state != net::NetState::Online) {
+            text = state == net::NetState::Connecting ? texts.connecting : texts.offline;
+        } else {
+            net::Request req;
+            req.method = "HEAD";
+            req.url = "https://cp.cloudflare.com/generate_204";
+            req.timeoutMs = 8000;
+            req.attempts = 1;
+            const net::Response res = service->request(req);
+            char ms[32];
+            std::snprintf(ms, sizeof(ms), " (%u ms)", res.elapsedMs);
+            if (res.cancelled)
+                text.clear();
+            else if (res.status == 204 || res.ok())
+                text = texts.ok + ms;
+            else
+                text = texts.failed +
+                       (res.error.empty() ? "HTTP " + std::to_string(res.status) : res.error);
+        }
+        DebugLog::log("[net] connection check: %s", text.empty() ? "cancelled" : text.c_str());
+        promise->set_value(std::move(text));
+    });
+}
+
+void CardsHomeActivity::pollNetCheck() {
+    if (!m_netCheck.valid() ||
+        m_netCheck.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+        return;
+    const std::string text = m_netCheck.get();
+    if (!text.empty())
+        showToast(text);
 }
 
 } // namespace cards

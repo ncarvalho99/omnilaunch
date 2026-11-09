@@ -584,6 +584,8 @@ void CardsHomeActivity::onDestroy() {
     // handed to the next frontend.
     if (m_detailsPending)
         m_detailsPending.reset();
+    if (m_netCheck.valid())
+        m_netCheck.wait(); // the scope closed above cancels the request
     if (m_detailsFuture.valid())
         m_detailsFuture.wait();
     m_catalog.releaseAll();
@@ -797,6 +799,7 @@ void CardsHomeActivity::onUpdate(float dt) {
     finishAudioLoad();
     m_audio.update();
     pollPlaytime();
+    pollNetCheck();
     updateLock(dt);
     m_sheet.update(dt);
     m_musicSheet.update(dt, m_audio);
