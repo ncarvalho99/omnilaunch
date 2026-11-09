@@ -99,6 +99,11 @@ xmake install -o "$DIST" --root || exit $?
 if [ "$VARIANT" = sysmodule ]; then
     [ -d "$DIST/atmosphere" ] || { echo "faltou $DIST/atmosphere"; exit 1; }
     [ -d "$DIST/switch" ] || { echo "faltou $DIST/switch"; exit 1; }
+    if [ -f "$DIST/bin/OmniLaunch-Loader.nro" ]; then
+        cp -f "$DIST/bin/OmniLaunch-Loader.nro" "$DIST/switch/OmniLaunch/bin/loader.nro"
+    elif [ -f "build/cross/aarch64/$MODE/OmniLaunch-Loader.nro" ]; then
+        cp -f "build/cross/aarch64/$MODE/OmniLaunch-Loader.nro" "$DIST/switch/OmniLaunch/bin/loader.nro"
+    fi
     mkdir -p artifacts
     ZIP="$PWD/artifacts/OmniLaunch-1.2.2.zip"
     rm -f "$ZIP" "$PWD/artifacts/OmniLaunch-sysmodule-$MODE.zip"

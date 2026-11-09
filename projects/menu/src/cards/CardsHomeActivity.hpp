@@ -62,6 +62,7 @@ private:
     void activateSelected();
     void launchTitle(const CardEntry& entry);
     void startLaunch(std::uint64_t titleId, AccountUid uid);
+    void startLaunchHomebrew(const std::string& path);
     void resumeSuspended();
 #ifdef SWITCHU_MENU
     void confirmCloseSuspended();
@@ -225,6 +226,7 @@ private:
     int m_leaveIndex = -1;
     std::uint64_t m_leaveTitleId = 0;
     AccountUid m_leaveUid = {};
+    std::string m_leaveHomebrewPath;
     bool m_refreshQueued = false;
     bool m_audioStarted = false;
     bool m_playtimeQueued = true;

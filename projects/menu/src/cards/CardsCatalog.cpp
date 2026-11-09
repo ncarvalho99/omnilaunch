@@ -2,6 +2,7 @@
 #include "cards/CardsPages.hpp"
 #include "core/Config.hpp"
 #include "core/DebugLog.hpp"
+#include "homebrew/HomebrewStore.hpp"
 #include "launcher/AppListLoader.hpp"
 #include <nxui/core/GpuDevice.hpp>
 #include <nxui/core/I18n.hpp>
@@ -84,6 +85,24 @@ void CardsCatalog::setPage(int page, const AppConfig& config) {
             adopt(c);
             m_entries.push_back(std::move(c));
         }
+    } else if (page == pg::Prefs::kHomebrew) {
+#ifdef SWITCHU_MENU
+        for (HomebrewApp& hb : scanHomebrew("sdmc:/switch/OmniLaunch/OmniLaunch.nro", false)) {
+            CardEntry c;
+            c.system = false;
+            c.isHomebrew = true;
+            c.homebrewPath = hb.path;
+            c.author = std::move(hb.author);
+            c.version = std::move(hb.version);
+            c.app.title = hb.name.empty() ? std::filesystem::path(c.homebrewPath).stem().string() : std::move(hb.name);
+            c.app.englishTitle = c.author;
+            c.app.titleId = pg::kHomebrewIdBase | (std::hash<std::string>{}(c.homebrewPath) & 0x00FFFFFFFFFFFFFFULL);
+            c.app.kind = GridEntryKind::Application;
+            c.app.userRequired = false;
+            adopt(c);
+            m_entries.push_back(std::move(c));
+        }
+#endif
     } else {
         const bool media = page == pg::Prefs::kMedia;
         for (const auto& a : m_all) {
@@ -134,6 +153,12 @@ void CardsCatalog::sort(const AppConfig& config) {
     namespace pg = cards::pages;
     if (m_page == pg::Prefs::kNintendo)
         return; // fixed tile order
+    if (m_page == pg::Prefs::kHomebrew) {
+        std::stable_sort(m_entries.begin(), m_entries.end(), [](const CardEntry& a, const CardEntry& b) {
+            return lowered(a.app.title) < lowered(b.app.title);
+        });
+        return;
+    }
     // Ties keep last-opened order, so "most played" with no figures yet and
     // equal names stay where the owner expects them.
     auto recent = [&config](const CardEntry& a, const CardEntry& b) {
@@ -237,8 +262,9 @@ void CardsCatalog::pumpIcons(nxui::GpuDevice& gpu, nxui::Renderer& ren, nxui::Th
         auto cancelled = p.cancelled;
         const std::uint64_t titleId = p.titleId;
         const std::string iconFile = card.system ? card.iconFile : std::string();
+        const std::string hbPath = card.isHomebrew ? card.homebrewPath : std::string();
         try {
-            p.future = pool.submit([decoded, cancelled, titleId, iconFile]() {
+            p.future = pool.submit([decoded, cancelled, titleId, iconFile, hbPath]() {
                 if (cancelled->load())
                     return;
                 if (!iconFile.empty()) {
@@ -251,6 +277,15 @@ void CardsCatalog::pumpIcons(nxui::GpuDevice& gpu, nxui::Renderer& ren, nxui::Th
                     }
                     return;
                 }
+#ifdef SWITCHU_MENU
+                if (!hbPath.empty()) {
+                    std::vector<std::uint8_t> bytes = readHomebrewIcon(hbPath);
+                    if (!bytes.empty()) {
+                        *decoded = IconStreamer::decodeIconData(bytes);
+                        return;
+                    }
+                }
+#endif
                 *decoded = IconStreamer::decodeIconData(AppListLoader::loadIconData(titleId));
             });
         } catch (...) {

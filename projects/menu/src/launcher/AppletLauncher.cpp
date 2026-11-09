@@ -1,7 +1,14 @@
 #include "AppletLauncher.hpp"
 #include "core/DebugLog.hpp"
+#include "homebrew/HomebrewStore.hpp"
 #include "usb/Mtp.hpp"
 #include <switchu/file_log.hpp>
+#include <algorithm>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <vector>
+#include <strings.h>
 #ifdef SWITCHU_MENU
 #include "smi_commands.hpp"
 #include <switchu/smi_protocol.hpp>
@@ -292,6 +299,173 @@ void AppletLauncher::terminateApplicationForce() {
 void AppletLauncher::checkRunningApplication() {
 }
 
+namespace {
+constexpr const char* kHblDir = "sdmc:/switch/OmniLaunch/bin/hbl";
+constexpr const char* kHblNsp = "sdmc:/atmosphere/hbl.nsp";
+constexpr const char* kLoaderNro = "sdmc:/switch/OmniLaunch/bin/loader.nro";
+constexpr const char* kHbmenu = "sdmc:/hbmenu.nro";
+constexpr const char* kHbmenuOriginal = "sdmc:/hbmenu.nro.omnilaunch-original";
+constexpr const char* kLoaderNext = "sdmc:/config/OmniLaunch/hbl_next.txt";
+constexpr const char* kChained = "sdmc:/config/OmniLaunch/hbl_chained.txt";
+constexpr const char* kApplicationOnly = "sdmc:/config/OmniLaunch/homebrew_application_only";
+
+static bool patchHblNpdmAsApplication(std::vector<char>& npdm) {
+    auto u32At = [&](std::size_t off) -> u32 {
+        u32 v = 0;
+        if (off + 4 <= npdm.size()) std::memcpy(&v, npdm.data() + off, 4);
+        return v;
+    };
+    auto patchKac = [&](std::size_t kacOff, std::size_t kacSize) {
+        int patched = 0;
+        for (std::size_t off = kacOff; off + 4 <= kacOff + kacSize && off + 4 <= npdm.size(); off += 4) {
+            const u32 cap = u32At(off);
+            if ((cap & 0x3FFF) == 0x1FFF && ((cap >> 14) & 7) != 1) {
+                const u32 app = (1u << 14) | 0x1FFF;
+                std::memcpy(npdm.data() + off, &app, 4);
+                ++patched;
+            }
+        }
+        return patched;
+    };
+    if (npdm.size() < 0x80 || u32At(0) != 0x4154454D /* META */) return false;
+    const std::size_t aci = u32At(0x70), acid = u32At(0x78);
+    if (u32At(aci) != 0x30494341 /* ACI0 */ || u32At(acid + 0x200) != 0x44494341 /* ACID */) return false;
+    const int a = patchKac(aci + u32At(aci + 0x30), u32At(aci + 0x34));
+    const int b = patchKac(acid + u32At(acid + 0x230), u32At(acid + 0x234));
+    DebugLog::log("[launcher] hbl npdm application type patched aci=%d acid=%d", a, b);
+    return true;
+}
+
+static std::vector<std::uint8_t> readFileBytes(const char* path) {
+    std::ifstream in(path, std::ios::binary);
+    return std::vector<std::uint8_t>{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+}
+
+static bool nroNamed(const char* path, const char* name) {
+    HomebrewApp app;
+    return readHomebrew(path, app, false) && strcasecmp(app.name.c_str(), name) == 0;
+}
+
+static void writeSingleLine(const char* path, const std::string& line) {
+    std::error_code ec;
+    std::filesystem::create_directories(std::filesystem::path(path).parent_path(), ec);
+    if (FILE* f = std::fopen(path, "w")) {
+        std::fputs((line + "\n").c_str(), f);
+        std::fclose(f);
+    }
+}
+} // namespace
+
+bool AppletLauncher::prepareHbl() {
+    std::error_code ec;
+    const std::string mainPath = std::string(kHblDir) + "/main";
+    const std::string npdmPath = std::string(kHblDir) + "/main.npdm";
+    const std::string stampPath = std::string(kHblDir) + "/source-size";
+    if (!std::filesystem::exists(kHblNsp, ec)) return false;
+    const std::string size = std::to_string(std::filesystem::file_size(kHblNsp, ec)) + "-app";
+    {
+        std::ifstream stamp(stampPath);
+        std::string seen;
+        if (std::getline(stamp, seen) && seen == size
+            && std::filesystem::exists(mainPath, ec) && std::filesystem::exists(npdmPath, ec))
+            return true;
+    }
+    std::ifstream in(kHblNsp, std::ios::binary);
+    std::vector<char> nsp{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+    struct Header { u32 magic, count, strings, reserved; };
+    struct Entry { u64 offset, size; u32 name, reserved; };
+    if (nsp.size() < sizeof(Header)) return false;
+    Header h;
+    std::memcpy(&h, nsp.data(), sizeof(h));
+    const std::size_t entriesEnd = sizeof(Header) + std::size_t(h.count) * sizeof(Entry);
+    if (h.magic != 0x30534650 /* PFS0 */ || h.count > 16 || entriesEnd + h.strings > nsp.size()) return false;
+    const std::size_t dataStart = entriesEnd + h.strings;
+    std::filesystem::create_directories(kHblDir, ec);
+    bool gotMain = false, gotNpdm = false;
+    for (u32 i = 0; i < h.count; ++i) {
+        Entry e;
+        std::memcpy(&e, nsp.data() + sizeof(Header) + i * sizeof(Entry), sizeof(e));
+        if (e.name >= h.strings || dataStart + e.offset + e.size > nsp.size()) return false;
+        const char* name = nsp.data() + entriesEnd + e.name;
+        const char* stringsEnd = nsp.data() + entriesEnd + h.strings;
+        const std::string n(name, std::find(name, stringsEnd, '\0'));
+        if (n != "main" && n != "main.npdm") continue;
+        std::vector<char> data(nsp.begin() + dataStart + e.offset,
+                               nsp.begin() + dataStart + e.offset + e.size);
+        if (n == "main.npdm" && !patchHblNpdmAsApplication(data)) return false;
+        std::ofstream(std::string(kHblDir) + "/" + n, std::ios::binary | std::ios::trunc)
+            .write(data.data(), static_cast<std::streamsize>(data.size()));
+        (n == "main" ? gotMain : gotNpdm) = true;
+    }
+    if (gotMain && gotNpdm) std::ofstream(stampPath) << size;
+    DebugLog::log("[launcher] hbl unpacked main=%d npdm=%d", gotMain, gotNpdm);
+    return gotMain && gotNpdm;
+}
+
+bool AppletLauncher::installLoader() {
+    const std::vector<std::uint8_t> loader = readFileBytes(kLoaderNro);
+    if (loader.empty()) {
+        DebugLog::log("[launcher] loader.nro missing in switch/OmniLaunch/bin/");
+        return false;
+    }
+    std::error_code ec;
+    if (std::filesystem::exists(kHbmenu, ec)) {
+        if (readFileBytes(kHbmenu) == loader) return true;
+        if (!nroNamed(kHbmenu, "OmniLaunch-Loader") && !nroNamed(kHbmenu, "HomeNX-Loader")) {
+            std::filesystem::remove(kHbmenuOriginal, ec);
+            ec.clear();
+            std::filesystem::rename(kHbmenu, kHbmenuOriginal, ec);
+            if (ec) DebugLog::log("[launcher] backup hbmenu.nro failed ec=%d", ec.value());
+        }
+    }
+    const std::string tmp = std::string(kHbmenu) + ".omnilaunch-tmp";
+    FILE* f = std::fopen(tmp.c_str(), "wb");
+    if (!f) return false;
+    const bool written = std::fwrite(loader.data(), 1, loader.size(), f) == loader.size();
+    std::fclose(f);
+    ec.clear();
+    if (written) {
+        std::filesystem::remove(kHbmenu, ec);
+        ec.clear();
+        std::filesystem::rename(tmp, kHbmenu, ec);
+    }
+    if (!written || ec || readFileBytes(kHbmenu) != loader) {
+        std::filesystem::remove(tmp, ec);
+        return false;
+    }
+    DebugLog::log("[launcher] OmniLaunch Loader installed as hbmenu.nro (%zu bytes)", loader.size());
+    return true;
+}
+
+bool AppletLauncher::launchNro(const std::string& path, uint64_t hostTitleId, AccountUid uid,
+                               bool applicationOnly) {
+    if (!prepareHbl()) {
+        DebugLog::log("[launcher] prepareHbl failed");
+        return false;
+    }
+    if (!installLoader()) {
+        DebugLog::log("[launcher] installLoader failed");
+        return false;
+    }
+    writeSingleLine(kLoaderNext, path);
+    std::error_code ec;
+    std::filesystem::remove(kChained, ec);
+    if (applicationOnly) {
+        if (FILE* f = std::fopen(kApplicationOnly, "w")) std::fclose(f);
+    } else {
+        std::filesystem::remove(kApplicationOnly, ec);
+    }
+    quiesceForPower("launch-nro");
+    const Result rc = switchu::menu::smi_cmd::launchHomebrewApp(uid, hostTitleId);
+    DebugLog::log("[launcher] launchHomebrewApp host=0x%016llX rc=0x%X",
+                  static_cast<unsigned long long>(hostTitleId), rc);
+    if (R_SUCCEEDED(rc)) {
+        if (m_cb.requestExit) m_cb.requestExit();
+        return true;
+    }
+    return false;
+}
+
 #else
 
 bool AppletLauncher::isAppRunning() const            { return false; }
@@ -311,9 +485,9 @@ void AppletLauncher::launchUserPage(AccountUid) {}
 void AppletLauncher::enterSleep()              {}
 void AppletLauncher::shutdown()                {}
 void AppletLauncher::reboot()                  {}
-// No daemon to hand the removal to. A failure, not a pretend success: the
-// caller then reports that nothing was changed instead of waiting for a
-// restart that will never come.
+bool AppletLauncher::launchNro(const std::string&, uint64_t, AccountUid, bool) { return false; }
+bool AppletLauncher::prepareHbl()              { return false; }
+bool AppletLauncher::installLoader()           { return false; }
 Result AppletLauncher::requestSelfUninstall()  {
     return MAKERESULT(Module_Libnx, LibnxError_NotInitialized);
 }

@@ -28,6 +28,11 @@ struct CardEntry {
     // opened through AppletLauncher, no play data (HomeNX E1).
     bool system = false;
     std::string iconFile;
+    // Homebrew NRO (Part F): path to .nro on SD card.
+    bool isHomebrew = false;
+    std::string homebrewPath;
+    std::string author;
+    std::string version;
 };
 
 class CardsCatalog {

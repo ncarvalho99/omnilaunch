@@ -51,6 +51,7 @@ enum class SystemMessage : uint32_t {
     // account operation the menu had no route to at all.
     LaunchUserCreator     = 15,
     LaunchControllerRemapping = 16,
+    LaunchHomebrewApp     = 17,
 
     EnterSleep            = 20,
     Shutdown              = 21,
@@ -157,6 +158,11 @@ static_assert(sizeof(ResumeAppArgs) == 56);
 
 struct UserArgs {
     uint8_t user_uid[16];
+};
+
+struct LaunchHomebrewArgs {
+    AccountUid uid;
+    uint64_t   host_title_id;
 };
 static_assert(sizeof(UserArgs) == 16);
 

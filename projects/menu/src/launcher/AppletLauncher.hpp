@@ -1,6 +1,7 @@
 #pragma once
 #include <functional>
 #include <atomic>
+#include <string>
 #include <switch.h>
 #include <switchu/smi_protocol.hpp>
 
@@ -49,6 +50,10 @@ public:
                               switchu::smi::LaunchTransitionTrace& trace);
     void launchApplication(uint64_t titleId, AccountUid uid,
                            switchu::smi::LaunchTransitionTrace trace);
+    bool launchNro(const std::string& path, uint64_t hostTitleId = 0, AccountUid uid = {},
+                   bool applicationOnly = false);
+    static bool prepareHbl();
+    static bool installLoader();
 #ifdef SWITCHU_PREFLIGHT_EDGE_TEST
     void launchApplicationFailureDiagnostic(
         uint64_t titleId, AccountUid uid,

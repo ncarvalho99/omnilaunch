@@ -39,14 +39,20 @@ constexpr float kMoveRepeatDelay = 0.35f;
 constexpr float kMoveRepeatRate = 0.14f; // C-IN-2: slower while carrying a card
 
 const char* pageKey(int page) {
-    return page == AppConfig::CardsPrefs::kGames ? "cards.page_games"
-         : page == AppConfig::CardsPrefs::kNintendo ? "cards.page_nintendo"
-                                                    : "cards.page_media";
+    switch (page) {
+    case AppConfig::CardsPrefs::kHomebrew: return "cards.page_homebrew";
+    case AppConfig::CardsPrefs::kNintendo: return "cards.page_nintendo";
+    case AppConfig::CardsPrefs::kMedia: return "cards.page_media";
+    default: return "cards.page_games";
+    }
 }
 const char* pageFallback(int page) {
-    return page == AppConfig::CardsPrefs::kGames ? "Games"
-         : page == AppConfig::CardsPrefs::kNintendo ? "Nintendo"
-                                                    : "Media";
+    switch (page) {
+    case AppConfig::CardsPrefs::kHomebrew: return "Homebrew";
+    case AppConfig::CardsPrefs::kNintendo: return "Nintendo";
+    case AppConfig::CardsPrefs::kMedia: return "Media";
+    default: return "Games";
+    }
 }
 std::string onOff(bool v) {
     auto& t = nxui::I18n::instance();

@@ -868,7 +868,13 @@ void CardsHomeActivity::onUpdate(float dt) {
             m_launching = true;
             m_launchElapsed = 0.f;
 #ifdef SWITCHU_MENU
-            if (m_leaveIsResume) {
+            if (!m_leaveHomebrewPath.empty()) {
+                const std::string hbPath = m_leaveHomebrewPath;
+                m_leaveHomebrewPath.clear();
+                scheduleLeaveCapture([this, hbPath]() {
+                    m_core.launcher().launchNro(hbPath, 0, m_leaveUid, true);
+                }, m_leaveTitleId);
+            } else if (m_leaveIsResume) {
                 switchu::smi::LaunchTransitionTrace trace{};
                 trace.activation_tick = armGetSystemTick();
                 trace.user_selected_tick = trace.activation_tick;
@@ -1288,7 +1294,40 @@ void CardsHomeActivity::activateSelected() {
     launchTitle(m_catalog.at(m_selected));
 }
 
+void CardsHomeActivity::startLaunchHomebrew(const std::string& path) {
+    if (m_launching || m_leaving)
+        return;
+    m_leaveHomebrewPath = path;
+    m_leaving = true;
+    m_leaveIsResume = false;
+    m_leaveT = 0.f;
+    m_leaveIndex = m_selected;
+    m_leaveTitleId = (m_selected >= 0 && m_selected < m_catalog.count())
+                         ? m_catalog.at(m_selected).app.titleId
+                         : 0;
+    m_leaveUid = {};
+    m_leaveDur = m_core.config().cardsLaunchStyle == 1 ? 0.90f : 0.65f;
+    m_audio.playSfx(Sfx::LaunchGame);
+}
+
 void CardsHomeActivity::launchTitle(const CardEntry& card) {
+    if (card.isHomebrew) {
+#ifdef SWITCHU_MENU
+        if (m_core.launcher().suspendedTitleId() != 0) {
+            m_audio.playSfx(Sfx::ModalShow);
+            if (m_userSelect) {
+                auto& i18n = nxui::I18n::instance();
+                m_userSelect->show(i18n.tr("cards.suspended_title", "Software suspended"),
+                                   i18n.tr("cards.suspended_body", "Close the suspended software first (X on its card)."),
+                                   {{i18n.tr("button.ok", "OK"), []() {}, true}}, 0, {});
+                focusManager().setFocus(m_userSelect.get());
+            }
+            return;
+        }
+        startLaunchHomebrew(card.homebrewPath);
+#endif
+        return;
+    }
     const AppEntry& entry = card.app;
 #ifdef SWITCHU_MENU
     if (m_core.launcher().isAppSuspended(entry.titleId)) {
@@ -1784,6 +1823,7 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
     m_chrome.drawTopBar(ren, m_status, static_cast<TopButton>(m_topIndex), m_topZone, m_time);
     auto& tr = nxui::I18n::instance();
     const std::string pageLabel = m_page == AppConfig::CardsPrefs::kGames ? tr.tr("cards.page_games", "Games")
+        : m_page == AppConfig::CardsPrefs::kHomebrew ? tr.tr("cards.page_homebrew", "Homebrew")
         : m_page == AppConfig::CardsPrefs::kNintendo ? tr.tr("cards.page_nintendo", "Nintendo")
                                                     : tr.tr("cards.page_media", "Media");
     m_chrome.textMid(ren, m_chrome.smallFont(), "ZL  " + pageLabel + "  ZR", 30.f, 111.f,

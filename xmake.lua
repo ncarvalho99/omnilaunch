@@ -453,6 +453,25 @@ target("SwitchU-Manager")
     set_values("switch.format",  "nro")
 target_end()
 
+-- OmniLaunch Loader: installed as sdmc:/hbmenu.nro so Atmosphere's homebrew
+-- loader chains directly into the picked .nro in full application mode (HomeNX F0/F2).
+target("OmniLaunch-Loader")
+    set_kind("binary")
+    if not is_plat("cross") then return end
+
+    set_toolchains("devkita64")
+    set_languages("c++20")
+    add_rules("switch")
+    add_files("projects/loader/src/*.cpp")
+    add_syslinks("nx")
+
+    set_values("switch.name",    "OmniLaunch-Loader")
+    set_values("switch.author",  "OmniLaunch")
+    set_values("switch.version", version)
+    set_values("switch.icon",    "projects/manager/icon.jpg")
+    set_values("switch.format",  "nro")
+target_end()
+
 target("switchu-daemon")
     set_kind("binary")
     add_defines(version_define)

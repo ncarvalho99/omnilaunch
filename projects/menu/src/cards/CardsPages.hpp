@@ -40,10 +40,12 @@ bool setMedia(Prefs& prefs, std::uint64_t id, bool media);
 /// Returns true when anything changed.
 bool forgetTitle(Prefs& prefs, std::uint64_t id);
 
-/// Synthetic ids for the Nintendo page tiles. Real application ids never use
-/// the top byte 0xFF.
+/// Synthetic ids for the Nintendo page tiles (0xFF) and Homebrew cards (0xFE).
+/// Real application ids never use top bytes 0xFE or 0xFF.
 inline constexpr std::uint64_t kSystemIdBase = 0xFF00000000000000ULL;
+inline constexpr std::uint64_t kHomebrewIdBase = 0xFE00000000000000ULL;
 inline bool isSystemId(std::uint64_t id) { return (id & 0xFF00000000000000ULL) == kSystemIdBase; }
+inline bool isHomebrewId(std::uint64_t id) { return (id & 0xFF00000000000000ULL) == kHomebrewIdBase; }
 
 /// Nintendo page tiles (C-PG-3). Safe F1: Album, Controllers, Mii, Internet,
 /// Users and Settings open local services; Eshop, Friends and Switch Online

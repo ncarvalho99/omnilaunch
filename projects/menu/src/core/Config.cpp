@@ -523,8 +523,8 @@ bool AppConfig::save() const {
 }
 
 void AppConfig::CardsPrefs::normalize() {
-    // Pages offered in this build. Homebrew (1) joins with the NRO host (F3).
-    static constexpr int kListed[] = {kGames, kNintendo, kMedia};
+    // Pages offered in this build. Homebrew (1) active from Part F.
+    static constexpr int kListed[] = {kGames, kHomebrew, kNintendo, kMedia};
     auto listed = [](int p) {
         for (int k : kListed)
             if (k == p) return true;

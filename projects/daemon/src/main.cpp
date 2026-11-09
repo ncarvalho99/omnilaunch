@@ -368,6 +368,7 @@ enum class ActionType : uint32_t {
     OpenNetConnect,
     OpenUserPage,
     OpenUserCreator,
+    LaunchHomebrewApp,
 };
 
 struct Action {
@@ -1950,6 +1951,19 @@ static void handleMenuCommand() {
                               g_actionQueue.size());
         break;
 
+    case smi::SystemMessage::LaunchHomebrewApp: {
+        auto args = reader.pop<smi::LaunchHomebrewArgs>();
+        Action action{};
+        action.type = ActionType::LaunchHomebrewApp;
+        action.title_id = args.host_title_id;
+        action.uid = args.uid;
+        action.commandReceivedTick = commandReceiveTick;
+        g_actionQueue.push_back(action);
+        switchu::FileLog::log("[smi] queued Homebrew App launch (host=0x%016llX, actions=%zu)",
+                              (unsigned long long)action.title_id, g_actionQueue.size());
+        break;
+    }
+
     case smi::SystemMessage::EnterSleep:
         startSleepSequence("smi-sleep");
         break;
@@ -2131,6 +2145,43 @@ static void recoverMenuAfterApplicationHandoffFailure(
         daemon::app::suspendedTitleId());
 }
 
+static uint64_t g_homebrewHostTitleId = 0;
+
+static void releaseHomebrewHost() {
+    if (g_homebrewHostTitleId != 0) {
+        switchu::daemon::unregisterExternalContent(g_homebrewHostTitleId);
+        switchu::FileLog::log("[action] released homebrew host 0x%016llX",
+                              (unsigned long long)g_homebrewHostTitleId);
+        g_homebrewHostTitleId = 0;
+    }
+}
+
+static std::vector<uint64_t> homebrewHostCandidates(uint64_t preferred) {
+    std::vector<uint64_t> out;
+    if (preferred != 0 && (preferred >> 56) != 0x05 &&
+        preferred != 0x0100000000001000ULL && preferred != 0x010000000000100DULL &&
+        preferred != daemon::app::suspendedTitleId()) {
+        out.push_back(preferred);
+    }
+    std::vector<switchu::ns::ExtApplicationRecord> records;
+    std::vector<switchu::ns::ExtApplicationView> views;
+    if (listApplicationRecords(records, "hbl-candidates") && queryApplicationViews(records, views, "hbl-candidates")) {
+        for (size_t i = 0; i < records.size() && i < views.size(); ++i) {
+            const uint64_t tid = records[i].id;
+            if (tid == 0 || tid == 0x0100000000001000ULL || tid == 0x010000000000100DULL ||
+                tid == daemon::app::suspendedTitleId() || (tid >> 56) == 0x05)
+                continue;
+            const uint32_t flags = views[i].flags;
+            if (switchu::ns::viewHasFlag(flags, switchu::ns::AppViewFlag_IsGameCard) ||
+                switchu::ns::viewHasFlag(flags, switchu::ns::AppViewFlag_NeedsVerify))
+                continue;
+            if (std::find(out.begin(), out.end(), tid) == out.end())
+                out.push_back(tid);
+        }
+    }
+    return out;
+}
+
 static bool handleAction(Action& action) {
     if (daemon::menu_la::hasHolder() || g_foregroundAppletActive ||
         daemon::app::isTerminating())
@@ -2260,6 +2311,37 @@ static bool handleAction(Action& action) {
             return true;
         }
 
+        case ActionType::LaunchHomebrewApp: {
+            if (daemon::app::isRunning() || daemon::app::suspendedTitleId() != 0) {
+                switchu::FileLog::log("[action] homebrew launch refused: an application is running/suspended (0x%016llX)",
+                                      (unsigned long long)daemon::app::suspendedTitleId());
+                recoverMenuAfterApplicationHandoffFailure("launch-homebrew-refused", action.title_id,
+                                                          MAKERESULT(Module_Libnx, LibnxError_AlreadyInitialized));
+                return true;
+            }
+            Result rc = MAKERESULT(Module_Libnx, LibnxError_NotFound);
+            for (const uint64_t host : homebrewHostCandidates(action.title_id)) {
+                rc = switchu::daemon::registerExternalContent(host, "/switch/OmniLaunch/bin/hbl");
+                if (R_SUCCEEDED(rc)) {
+                    g_homebrewHostTitleId = host;
+                    daemon::app::LaunchTiming timing{};
+                    rc = daemon::app::launch(host, action.uid, &timing);
+                }
+                if (R_SUCCEEDED(rc)) {
+                    action.title_id = host;
+                    switchu::FileLog::log("[action] homebrew host 0x%016llX launch OK", (unsigned long long)host);
+                    break;
+                }
+                switchu::FileLog::log("[action] homebrew host 0x%016llX FAIL: 0x%X", (unsigned long long)host, rc);
+                releaseHomebrewHost();
+            }
+            if (R_FAILED(rc)) {
+                switchu::FileLog::log("[action] homebrew app FAIL: 0x%X (no game could be borrowed)", rc);
+                recoverMenuAfterApplicationHandoffFailure("launch-homebrew", action.title_id, rc);
+            }
+            return true;
+        }
+
         case ActionType::OpenUserPage: {
             Result rc = friendsLaShowMyProfileForHomeMenu(action.uid);
             if (R_FAILED(rc))
@@ -2350,6 +2432,7 @@ static void waitForMainWork() {
 
 static void routeFinishedApplication(const char* source) {
     switchu::FileLog::log("[main] app exited source=%s", source);
+    releaseHomebrewHost();
     restoreNormalPerformance("app-exit");
     if (daemon::menu_la::isActive()) {
         pushNotification(smi::MenuMessage::ApplicationExited);

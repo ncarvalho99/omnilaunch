@@ -144,6 +144,19 @@ inline Result launchUserPage(AccountUid uid) {
     return pushOutStorage(buf, sizeof(buf));
 }
 
+inline Result launchHomebrewApp(AccountUid uid, uint64_t hostTitleId = 0) {
+    uint8_t buf[sizeof(smi::CommandHeader) + sizeof(smi::LaunchHomebrewArgs)]{};
+    auto* hdr = reinterpret_cast<smi::CommandHeader*>(buf);
+    auto* args = reinterpret_cast<smi::LaunchHomebrewArgs*>(buf + sizeof(smi::CommandHeader));
+
+    hdr->magic = smi::kCommandMagic;
+    hdr->message = static_cast<uint32_t>(smi::SystemMessage::LaunchHomebrewApp);
+    args->uid = uid;
+    args->host_title_id = hostTitleId;
+
+    return pushOutStorage(buf, sizeof(buf));
+}
+
 inline Result sendResumeApplicationCommand(smi::SystemMessage message,
                                            smi::LaunchTransitionTrace trace) {
     uint8_t buf[sizeof(smi::CommandHeader) + sizeof(smi::ResumeAppArgs)]{};

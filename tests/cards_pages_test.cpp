@@ -34,14 +34,15 @@ namespace pg = cards::pages;
 static void pagesTest() {
     Prefs p;
     p.normalize();
-    CHECK((p.pageOrder == std::vector<int>{Prefs::kGames, Prefs::kNintendo, Prefs::kMedia}));
+    CHECK((p.pageOrder == std::vector<int>{Prefs::kGames, Prefs::kHomebrew, Prefs::kNintendo, Prefs::kMedia}));
     CHECK(pg::first(p) == Prefs::kGames);
-    CHECK(pg::step(p, Prefs::kGames, 1) == Prefs::kNintendo);
+    CHECK(pg::step(p, Prefs::kGames, 1) == Prefs::kHomebrew);
     CHECK(pg::step(p, Prefs::kGames, -1) == Prefs::kMedia); // wraps
     CHECK(pg::step(p, Prefs::kMedia, 1) == Prefs::kGames);
 
     // Hidden pages are skipped; the last shown page cannot be hidden.
     CHECK(pg::togglePage(p, Prefs::kNintendo));
+    CHECK(pg::togglePage(p, Prefs::kHomebrew));
     CHECK(pg::step(p, Prefs::kGames, 1) == Prefs::kMedia);
     CHECK(pg::togglePage(p, Prefs::kMedia));
     CHECK(!pg::togglePage(p, Prefs::kGames));
@@ -52,15 +53,16 @@ static void pagesTest() {
     // Order: the first shown page is where Cards opens.
     CHECK(pg::movePage(p, Prefs::kMedia, -1));
     CHECK(pg::movePage(p, Prefs::kMedia, -1));
+    CHECK(pg::movePage(p, Prefs::kMedia, -1));
     CHECK(!pg::movePage(p, Prefs::kMedia, -1));
     CHECK(pg::first(p) == Prefs::kMedia);
 
-    // normalize: junk, duplicates, Homebrew (not offered yet), all hidden.
+    // normalize: junk, duplicates, Homebrew active, all hidden.
     Prefs q;
     q.pageOrder = {3, 3, 9, 1, 0};
-    q.hiddenPages = {0, 2, 3, 3, 7};
+    q.hiddenPages = {0, 1, 2, 3, 7}; // hides all 4 listed pages (0, 1, 2, 3) + junk (7)
     q.normalize();
-    CHECK((q.pageOrder == std::vector<int>{Prefs::kMedia, Prefs::kGames, Prefs::kNintendo}));
+    CHECK((q.pageOrder == std::vector<int>{Prefs::kMedia, Prefs::kHomebrew, Prefs::kGames, Prefs::kNintendo}));
     CHECK(pg::shown(q).size() == 1 && pg::shown(q).front() == Prefs::kMedia);
 }
 
@@ -127,7 +129,7 @@ static void configTest() {
     {
         AppConfig c;
         c.cardsSort = 3;
-        c.cards.pageOrder = {Prefs::kNintendo, Prefs::kGames, Prefs::kMedia};
+        c.cards.pageOrder = {Prefs::kNintendo, Prefs::kHomebrew, Prefs::kGames, Prefs::kMedia};
         c.cards.hiddenPages = {Prefs::kMedia};
         c.cards.gamesOrder = {0x0100000000010000ULL, 0x01007EF00011E000ULL};
         c.cards.mediaOrder = {0x01003A400C3DA000ULL};

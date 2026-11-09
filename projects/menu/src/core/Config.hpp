@@ -54,7 +54,7 @@ struct AppConfig {
         static constexpr int kHomebrew = 1;
         static constexpr int kNintendo = 2;
         static constexpr int kMedia = 3;
-        std::vector<int> pageOrder = {kGames, kNintendo, kMedia};
+        std::vector<int> pageOrder = {kGames, kHomebrew, kNintendo, kMedia};
         std::vector<int> hiddenPages;
         std::vector<std::uint64_t> gamesOrder;  // "My order" on Games
         std::vector<std::uint64_t> mediaOrder;  // order on Media
