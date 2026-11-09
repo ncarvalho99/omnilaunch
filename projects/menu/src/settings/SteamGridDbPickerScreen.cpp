@@ -1,5 +1,6 @@
 #include "SteamGridDbPickerScreen.hpp"
 
+#include "net/NetService.hpp"
 #include "themeshop/ThemeHttp.hpp"
 #include "settings/SettingsGlassTuning.hpp"
 
@@ -168,10 +169,24 @@ void SteamGridDbPickerScreen::schedulePreview(std::size_t index) {
     auto state = slot.state;
     const std::string url = slot.candidate.thumbnailUrl.empty()
         ? slot.candidate.url : slot.candidate.thumbnailUrl;
-    slot.future = m_threadPool.submit([state, url]() {
+    slot.future = m_threadPool.submit([state, url, net = m_net]() {
         try {
-            if (!state->cancelled.load())
-                state->image = decodePreview(themeshop::http::getBytes(url));
+            if (!state->cancelled.load()) {
+                std::vector<std::uint8_t> bytes;
+                if (net) {
+                    net::Request req;
+                    req.url = url;
+                    req.cancel = &state->cancelled;
+                    req.timeoutMs = 10000;
+                    req.attempts = 1;
+                    auto res = net->request(req);
+                    if (res.ok() && !state->cancelled.load())
+                        bytes.assign(res.body.begin(), res.body.end());
+                } else {
+                    bytes = themeshop::http::getBytes(url);
+                }
+                state->image = decodePreview(bytes);
+            }
         } catch (...) {
         }
     });

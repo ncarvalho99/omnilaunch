@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+namespace net { class NetService; }
+
 class SteamGridDbPickerScreen final : public nxui::GlassWidget {
 public:
     using BrowseResult = SteamGridDbManager::BrowseResult;
@@ -28,6 +30,7 @@ public:
     void setFont(nxui::Font* font) { m_font = font; }
     void setSmallFont(nxui::Font* font) { m_smallFont = font; }
     void setTheme(const nxui::Theme* theme) { m_theme = theme; }
+    void setNetService(net::NetService* net) { m_net = net; }
     void showLoading(std::uint64_t titleId, const std::string& title,
                      const std::string& query, SteamGridDbManager::ArtworkKind kind);
     void setResult(BrowseResult result);
@@ -85,6 +88,7 @@ private:
     nxui::Font* m_font = nullptr;
     nxui::Font* m_smallFont = nullptr;
     const nxui::Theme* m_theme = nullptr;
+    net::NetService* m_net = nullptr;
     BrowseResult m_result;
     std::array<PreviewSlot, 18> m_slots;
     std::vector<std::future<void>> m_retiredFutures;

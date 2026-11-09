@@ -8,6 +8,7 @@
 // sheets, toasts, sort, settings and the live switch follow in D1b+/D2.
 
 #include "cards/CardsArt.hpp"
+#include "cards/CardsArtSources.hpp"
 #include "cards/CardsCatalog.hpp"
 #include "cards/CardsChrome.hpp"
 #include "cards/CardsMusicSheet.hpp"
@@ -18,6 +19,7 @@
 #include "home/HomeStyle.hpp"
 #include "widgets/LockScreen.hpp"
 #include "widgets/QuickSettingsOverlay.hpp"
+#include "settings/SteamGridDbPickerScreen.hpp"
 #include "settings/TextEntryScreen.hpp"
 #include <nxui/Activity.hpp>
 #include <nxui/Theme.hpp>
@@ -128,6 +130,13 @@ private:
                      std::function<void(const std::string&)> onAccept);
     void renameSelected();
     void openArtSheet(std::uint64_t titleId);
+    void openTitlePicker(std::uint64_t titleId, const std::string& title,
+                         SteamGridDbManager::ArtworkKind kind, const std::string& query = "");
+    void applyPickerCandidate(const SteamGridDbManager::BrowseResult& browse,
+                              const SteamGridDbManager::Candidate& candidate);
+    void downloadSingleTitleArt(std::uint64_t titleId, const std::string& title);
+    void startSaveAll(bool forceAll);
+    bool saveAllRunning() const;
     void activatePanelShortcut();
     void reorderSettingsSection(int delta);
     void maybeShowTutorial();
@@ -197,11 +206,12 @@ private:
     bool m_playtimeSortDeferred = false;
     int m_moveFrom = -1;
     std::vector<std::uint64_t> m_moveBackup;
-    // Sheets (E3-E7, E11), quick settings (E6), text entry (E9 part).
+    // Sheets (E3-E7, E11), quick settings (E6), text entry (E9 part), picker (G2).
     CardsSheet m_sheet;
     CardsMusicSheet m_musicSheet;
     std::shared_ptr<QuickSettingsOverlay> m_quick;
     std::shared_ptr<TextEntryScreen> m_text;
+    std::shared_ptr<SteamGridDbPickerScreen> m_picker;
     nxui::Theme m_overlayTheme = nxui::Theme::dark();
     nxui::Font m_fontIcons;
     // Welcome tutorial (E9, C-UI-1): 0 = hidden, else card 1..4.
@@ -257,6 +267,17 @@ private:
     std::future<std::string> m_netCheck;
     void startNetCheck();
     void pollNetCheck();
+
+    // G2: Art sources (GameTDB, nlib, SteamGridDB picker and Save All).
+    std::future<SteamGridDbManager::BrowseResult> m_browseFuture;
+    std::future<bool> m_applyFuture;
+    std::future<int> m_saveAllFuture;
+    std::future<CardsArtSources::SingleTitleResult> m_singleArtFuture;
+    std::atomic<int> m_saveAllDone{0};
+    std::atomic<int> m_saveAllTotal{0};
+    std::atomic<int> m_saveAllSaved{0};
+    std::atomic<bool> m_saveAllStop{false};
+    void pollArtJobs();
     Details m_details;
     std::uint64_t m_detailsWanted = 0;
     float m_detailsDelay = 0.f;

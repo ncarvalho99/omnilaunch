@@ -1,5 +1,16 @@
 #pragma once
+#ifdef __SWITCH__
 #include <switch.h>
+#else
+using Result = uint32_t;
+struct NsApplicationRecord {
+    uint64_t id;
+    uint8_t  last_event;
+    uint8_t  attributes;
+    uint8_t  reserved[6];
+    uint64_t last_updated;
+};
+#endif
 #include <cstdint>
 
 
@@ -58,6 +69,7 @@ inline constexpr bool viewHasFlag(uint32_t flags, uint32_t flag) {
     return (flags & flag) != 0;
 }
 
+#ifdef __SWITCH__
 inline Result queryApplicationViews(const uint64_t* titleIds, int count,
                                     ExtApplicationView* outViews) {
     return nsGetApplicationView(
@@ -73,5 +85,6 @@ inline bool applicationNeedsUpdate(uint64_t titleId) {
 inline Result getLastGameCardMountFailure() {
     return nsGetLastGameCardMountFailureResult();
 }
+#endif
 
 }

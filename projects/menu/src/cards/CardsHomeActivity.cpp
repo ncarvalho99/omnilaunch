@@ -380,6 +380,17 @@ bool CardsHomeActivity::onCreate() {
         m_fadeIn = 0.f;
     }
     m_core.setFrontendQuiesce([this] {
+        m_saveAllStop.store(true);
+        if (m_saveAllFuture.valid())
+            m_saveAllFuture.wait();
+        if (m_singleArtFuture.valid())
+            m_singleArtFuture.wait();
+        if (m_applyFuture.valid())
+            m_applyFuture.wait();
+        if (m_browseFuture.valid())
+            m_browseFuture.wait();
+        if (m_picker)
+            m_picker->wait();
         m_catalog.releaseAll();
         m_art.releaseAll();
     });
@@ -468,6 +479,8 @@ bool CardsHomeActivity::onCreate() {
             m_quick->hide();
         if (m_text && m_text->isActive())
             m_text->hide(false);
+        if (m_picker && m_picker->isActive())
+            m_picker->hide();
         if (m_moving)
             finishMove(false);
         m_closeConfirmQueued = false;
@@ -495,6 +508,32 @@ bool CardsHomeActivity::onCreate() {
     m_text->onKeySfx([this]() { m_audio.playSfx(Sfx::Activate); });
     m_text->onNavigateSfx([this]() { m_audio.playSfx(Sfx::Navigate); });
     m_text->onCloseSfx([this]() { m_audio.playSfx(Sfx::ModalHide); });
+
+    m_picker = std::make_shared<SteamGridDbPickerScreen>(gpu, ren, m_core.threadPool());
+    m_picker->setFont(&m_font);
+    m_picker->setSmallFont(&m_fontSmall);
+    m_picker->setTheme(&m_overlayTheme);
+    m_picker->setNetService(&m_core.net());
+    m_picker->onClosed([this]() {
+        m_overlayLatch = true;
+    });
+    m_picker->onSearch([this]() {
+        if (!m_picker || !m_picker->isActive())
+            return;
+        const auto kind = m_picker->artworkKind();
+        const auto titleId = m_picker->titleId();
+        const auto title = m_picker->title();
+        requestText(nxui::I18n::instance().tr("settings.steamgriddb.scan", "Search artwork"),
+                    "SteamGridDB", m_picker->query(),
+                    [this, titleId, title, kind](const std::string& typed) {
+                        if (!typed.empty())
+                            openTitlePicker(titleId, title, kind, typed);
+                    });
+    });
+    m_picker->onApply([this](const SteamGridDbManager::BrowseResult& browse,
+                             const SteamGridDbManager::Candidate& candidate) {
+        applyPickerCandidate(browse, candidate);
+    });
 
     // Pages (E1): open on the first shown page of the user's order.
     m_page = pages::first(m_core.config().cards);
@@ -588,6 +627,19 @@ void CardsHomeActivity::onDestroy() {
         m_netCheck.wait(); // the scope closed above cancels the request
     if (m_detailsFuture.valid())
         m_detailsFuture.wait();
+    m_saveAllStop.store(true);
+    if (m_saveAllFuture.valid())
+        m_saveAllFuture.wait();
+    if (m_singleArtFuture.valid())
+        m_singleArtFuture.wait();
+    if (m_applyFuture.valid())
+        m_applyFuture.wait();
+    if (m_browseFuture.valid())
+        m_browseFuture.wait();
+    if (m_picker) {
+        m_picker->wait();
+        m_picker.reset();
+    }
     m_catalog.releaseAll();
     m_art.releaseAll();
     m_core.catalog().waitIdle();
@@ -621,6 +673,8 @@ nxui::Widget* CardsHomeActivity::focusRoot() {
         return m_userSelect.get();
     if (m_text && m_text->isActive())
         return m_text.get();
+    if (m_picker && m_picker->isActive())
+        return m_picker.get();
     if (m_quick && m_quick->isActive())
         return m_quick.get();
     // The row and the sheets handle their own input.
@@ -800,6 +854,7 @@ void CardsHomeActivity::onUpdate(float dt) {
     m_audio.update();
     pollPlaytime();
     pollNetCheck();
+    pollArtJobs();
     updateLock(dt);
     m_sheet.update(dt);
     m_musicSheet.update(dt, m_audio);
@@ -807,6 +862,8 @@ void CardsHomeActivity::onUpdate(float dt) {
         m_quick->update(dt);
     if (m_text)
         m_text->update(dt);
+    if (m_picker)
+        m_picker->update(dt);
     if (m_pageIn < 1.f)
         m_pageIn = std::min(1.f, m_pageIn + dt / 0.22f);
     if (m_tutorialCard > 0)
@@ -817,8 +874,11 @@ void CardsHomeActivity::onUpdate(float dt) {
             if (m_userSelect->isActive())
                 m_userSelect->handleTouch(app().input());
         }
-        if (m_text && m_text->isActive())
+        if (m_text && m_text->isActive()) {
             m_text->handleTouch(app().input());
+        } else if (m_picker && m_picker->isActive()) {
+            m_picker->handleTouch(app().input());
+        }
 #ifdef SWITCHU_MENU
         if (m_closeConfirmQueued && !(m_userSelect && m_userSelect->isActive())) {
             m_closeConfirmQueued = false;
@@ -1603,6 +1663,11 @@ void CardsHomeActivity::handleSystemAction(SysAction action) {
             m_overlayLatch = true;
             break;
         }
+        if (m_picker && m_picker->isActive()) {
+            m_picker->hide();
+            m_overlayLatch = true;
+            break;
+        }
         if (m_quick && m_quick->isActive()) {
             closeQuickSettings();
             m_overlayLatch = true;
@@ -1710,7 +1775,8 @@ void CardsHomeActivity::drawPanel(nxui::Renderer& ren) {
         ren.drawCircle({iconRect.x + 39.f, iconRect.y + 39.f}, 39.f, {1.f, 1.f, 1.f, 0.15f * d}, 40);
     const float tx = iconRect.right() + 15.f;
     const float maxW = p.right() - 30.f - tx;
-    if (const auto* logo = m_art.logo(id)) {
+    const bool showLogo = m_core.config().cards.titlePics;
+    if (const auto* logo = showLogo ? m_art.logo(id) : nullptr) {
         const float scale = std::min(maxW / static_cast<float>(logo->width()), 48.f / static_cast<float>(logo->height()));
         ren.drawTexture(logo, {tx, p.y + 12.f, logo->width()*scale, logo->height()*scale}, white);
     } else {
@@ -1921,6 +1987,8 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
     drawTutorial(ren);
     if (m_quick && m_quick->isActive())
         m_quick->render(ren);
+    if (m_picker && m_picker->isActive())
+        m_picker->render(ren);
     if (m_text && m_text->isActive())
         m_text->render(ren);
     if (m_userSelect && m_userSelect->isActive())

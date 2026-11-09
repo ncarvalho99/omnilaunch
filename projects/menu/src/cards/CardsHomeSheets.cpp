@@ -4,6 +4,7 @@
 // to keep that file navigable; same class, same thread (main) rules.
 
 #include "cards/CardsAchievements.hpp"
+#include "cards/CardsArtSources.hpp"
 #include "cards/CardsHomeActivity.hpp"
 #include "cards/CardsPages.hpp"
 #include "core/DebugLog.hpp"
@@ -63,7 +64,8 @@ std::string onOff(bool v) {
 
 bool CardsHomeActivity::overlayActive() const {
     return (m_userSelect && m_userSelect->isActive()) || (m_text && m_text->isActive()) ||
-           (m_quick && m_quick->isActive()) || (m_deleteProgress && m_deleteProgress->isActive());
+           (m_quick && m_quick->isActive()) || (m_deleteProgress && m_deleteProgress->isActive()) ||
+           (m_picker && m_picker->isActive());
 }
 
 void CardsHomeActivity::saveConfig(const char* why) {
@@ -1251,10 +1253,89 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
             else showToast(nxui::I18n::instance().tr("cards.ach_pick", "Choose a game first"));
         };
         s.rows.push_back(std::move(r));
-        Row pending;
-        pending.label = i18n.tr("cards.art_download_pending", "New image downloads: G4");
-        pending.enabled = false;
-        s.rows.push_back(std::move(pending));
+
+        Row cardPics;
+        cardPics.label = i18n.tr("cards.art_card_pictures", "Card pictures");
+        cardPics.value = [this]() {
+            auto& t = nxui::I18n::instance();
+            return m_core.config().cards.boxArt
+                ? t.tr("cards.art_box_covers", "Box covers")
+                : t.tr("cards.art_eshop_banners", "eShop banners");
+        };
+        cardPics.onChange = [this](int) {
+            auto& c = m_core.config().cards;
+            c.boxArt = !c.boxArt;
+            saveConfig("cards boxArt");
+            m_art.releaseAll();
+        };
+        s.rows.push_back(std::move(cardPics));
+
+        Row titlePics;
+        titlePics.label = i18n.tr("cards.art_title_pictures", "Title logos");
+        titlePics.value = [this]() {
+            return onOff(m_core.config().cards.titlePics);
+        };
+        titlePics.onChange = [this](int) {
+            auto& c = m_core.config().cards;
+            c.titlePics = !c.titlePics;
+            saveConfig("cards titlePics");
+            m_art.releaseAll();
+        };
+        titlePics.detail = i18n.tr("cards.art_title_pictures_desc", "Show game logo on background instead of text");
+        s.rows.push_back(std::move(titlePics));
+
+        Row saveAll;
+        saveAll.label = i18n.tr("cards.art_save_all", "Save all pictures now");
+        saveAll.value = [this]() {
+            if (saveAllRunning()) {
+                char buf[64];
+                std::snprintf(buf, sizeof(buf), "%d / %d", m_saveAllDone.load(), m_saveAllTotal.load());
+                return std::string(buf);
+            }
+            return m_saveAllTotal.load() > 0 ? nxui::I18n::instance().tr("cards.art_save_all_done", "All saved") : std::string();
+        };
+        saveAll.onA = [this]() {
+            startSaveAll(false);
+        };
+        saveAll.detail = i18n.tr("cards.art_save_all_desc", "Download covers and backgrounds for all games");
+        s.rows.push_back(std::move(saveAll));
+
+        Row dlAgain;
+        dlAgain.label = i18n.tr("cards.art_download_again", "Download all pictures again");
+        dlAgain.onA = [this]() {
+            startSaveAll(true);
+        };
+        dlAgain.detail = i18n.tr("cards.art_download_again_desc", "Refresh artwork from online sources");
+        s.rows.push_back(std::move(dlAgain));
+
+        Row sgdbKey;
+        sgdbKey.label = i18n.tr("cards.art_sgdb_key", "SteamGridDB API key");
+        sgdbKey.value = [this]() {
+            auto& t = nxui::I18n::instance();
+            return m_core.config().steamGridDbApiKey.empty()
+                ? t.tr("cards.art_sgdb_none", "None")
+                : t.tr("cards.art_sgdb_set", "Set");
+        };
+        sgdbKey.onA = [this]() {
+            auto& t = nxui::I18n::instance();
+            requestText(t.tr("cards.art_sgdb_key", "SteamGridDB API key"),
+                        t.tr("cards.art_sgdb_key_desc", "Free at steamgriddb.com (Preferences > API)"),
+                        m_core.config().steamGridDbApiKey,
+                        [this](const std::string& entered) {
+                            std::string key;
+                            for (char c : entered)
+                                if (!std::isspace(static_cast<unsigned char>(c))) key += c;
+                            m_core.config().steamGridDbApiKey = key;
+                            saveConfig("cards sgdb key");
+                            auto& tr = nxui::I18n::instance();
+                            showToast(key.empty()
+                                ? tr.tr("cards.art_sgdb_key_removed", "SteamGridDB key removed")
+                                : tr.tr("cards.art_sgdb_key_saved", "SteamGridDB key saved"));
+                        });
+        };
+        sgdbKey.detail = i18n.tr("cards.art_sgdb_key_desc", "Free at steamgriddb.com (Preferences > API)");
+        s.rows.push_back(std::move(sgdbKey));
+
         all["images"] = std::move(s);
     }
     {
@@ -1372,6 +1453,12 @@ void CardsHomeActivity::openArtSheet(std::uint64_t titleId) {
         v.erase(std::remove(v.begin(), v.end(), id), v.end());
         if (enabled) v.push_back(id);
     };
+
+    std::string titleName;
+    const int idx = m_catalog.indexOf(titleId);
+    if (idx >= 0 && idx < m_catalog.count())
+        titleName = m_catalog.at(idx).app.title;
+
     Row card;
     card.label = tr.tr("cards.art_card", "Card image");
     card.value = [this, titleId, contains]() {
@@ -1416,10 +1503,37 @@ void CardsHomeActivity::openArtSheet(std::uint64_t titleId) {
         m_art.releaseAll();
         saveConfig("cards title image");
     };
-    Row local;
-    local.label = tr.tr("cards.art_local_only", "Existing local images only; new downloads in G4");
-    local.enabled = false;
-    m_sheet.open(tr.tr("cards.art_choices", "Images"), {{std::string(), {card, background, title, local}}});
+
+    Row pickCover;
+    pickCover.label = tr.tr("cards.art_pick_cover", "Choose card cover");
+    pickCover.onA = [this, titleId, titleName]() {
+        m_sheet.close();
+        openTitlePicker(titleId, titleName, SteamGridDbManager::ArtworkKind::Cover);
+    };
+
+    Row pickHero;
+    pickHero.label = tr.tr("cards.art_pick_hero", "Choose background image");
+    pickHero.onA = [this, titleId, titleName]() {
+        m_sheet.close();
+        openTitlePicker(titleId, titleName, SteamGridDbManager::ArtworkKind::Hero);
+    };
+
+    Row pickLogo;
+    pickLogo.label = tr.tr("cards.art_pick_logo", "Choose title logo");
+    pickLogo.onA = [this, titleId, titleName]() {
+        m_sheet.close();
+        openTitlePicker(titleId, titleName, SteamGridDbManager::ArtworkKind::Logo);
+    };
+
+    Row dlNow;
+    dlNow.label = tr.tr("cards.art_download_now", "Download artwork for this title");
+    dlNow.onA = [this, titleId, titleName]() {
+        m_sheet.close();
+        downloadSingleTitleArt(titleId, titleName);
+    };
+
+    m_sheet.open(tr.tr("cards.art_choices", "Images"),
+                 {{std::string(), {card, background, title, pickCover, pickHero, pickLogo, dlNow}}});
 }
 
 // ── Internet: connection check (HomeNX G1, C-NET-1) ─────────────────────────
@@ -1480,6 +1594,189 @@ void CardsHomeActivity::pollNetCheck() {
     const std::string text = m_netCheck.get();
     if (!text.empty())
         showToast(text);
+}
+
+// ── Art sources: pickers, single title download, save-all (HomeNX G2, C-NET-4, C-UI-4) ───
+void CardsHomeActivity::openTitlePicker(std::uint64_t titleId, const std::string& title,
+                                        SteamGridDbManager::ArtworkKind kind, const std::string& query) {
+    if (!m_picker)
+        return;
+    m_sheet.close();
+    const std::string q = query.empty() ? title : query;
+    m_picker->showLoading(titleId, title, q, kind);
+    m_overlayLatch = true;
+    focusManager().setFocus(m_picker.get());
+
+    if (m_browseFuture.valid() &&
+        m_browseFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+        // A browse task is already running; the newest generation in picker discards old responses.
+        return;
+    }
+
+    const std::string apiKey = m_core.config().steamGridDbApiKey;
+    auto promise = std::make_shared<std::promise<SteamGridDbManager::BrowseResult>>();
+    m_browseFuture = promise->get_future();
+    m_core.threadPool().submit([this, titleId, title, q, kind, apiKey, promise]() {
+        try {
+            promise->set_value(CardsArtSources::browseAll(m_core.net(), apiKey,
+                                                          titleId, title, q, kind));
+        } catch (...) {
+            promise->set_exception(std::current_exception());
+        }
+    });
+}
+
+void CardsHomeActivity::applyPickerCandidate(const SteamGridDbManager::BrowseResult& browse,
+                                             const SteamGridDbManager::Candidate& candidate) {
+    if (!m_picker)
+        return;
+    m_picker->hide();
+    m_overlayLatch = true;
+    auto& tr = nxui::I18n::instance();
+
+    if (m_applyFuture.valid() &&
+        m_applyFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+        showToast(tr.tr("cards.art_downloading", "Downloading artwork..."));
+        return;
+    }
+
+    showToast(tr.tr("cards.art_downloading", "Downloading artwork..."));
+    auto promise = std::make_shared<std::promise<bool>>();
+    m_applyFuture = promise->get_future();
+    m_core.threadPool().submit([this, browse, candidate, promise]() {
+        try {
+            promise->set_value(CardsArtSources::applyCandidate(m_core.net(), browse, candidate));
+        } catch (...) {
+            promise->set_exception(std::current_exception());
+        }
+    });
+}
+
+void CardsHomeActivity::downloadSingleTitleArt(std::uint64_t titleId, const std::string& title) {
+    if (titleId == 0)
+        return;
+    auto& tr = nxui::I18n::instance();
+    if (!m_core.net().online()) {
+        showToast(tr.tr("cards.net_offline", "No internet connection"));
+        return;
+    }
+    if (m_singleArtFuture.valid() &&
+        m_singleArtFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+        showToast(tr.tr("cards.art_downloading", "Downloading artwork..."));
+        return;
+    }
+
+    showToast(tr.tr("cards.art_downloading", "Downloading artwork..."));
+    const std::string apiKey = m_core.config().steamGridDbApiKey;
+    const bool boxArt = m_core.config().cards.boxArt;
+    const bool titlePics = m_core.config().cards.titlePics;
+
+    auto promise = std::make_shared<std::promise<CardsArtSources::SingleTitleResult>>();
+    m_singleArtFuture = promise->get_future();
+    m_core.threadPool().submit([this, titleId, title, apiKey, boxArt, titlePics, promise]() {
+        try {
+            promise->set_value(CardsArtSources::downloadTitleArt(m_core.net(), apiKey,
+                                                                 titleId, title, boxArt,
+                                                                 titlePics));
+        } catch (...) {
+            promise->set_exception(std::current_exception());
+        }
+    });
+}
+
+void CardsHomeActivity::startSaveAll(bool forceAll) {
+    auto& tr = nxui::I18n::instance();
+    if (saveAllRunning()) {
+        showToast(tr.tr("cards.art_save_all_saving", "Saving pictures in progress..."));
+        return;
+    }
+    if (!m_core.net().online()) {
+        showToast(tr.tr("cards.net_offline", "No internet connection"));
+        return;
+    }
+    m_saveAllStop.store(false);
+    std::vector<AppEntry> apps = m_catalog.all();
+    showToast(tr.tr("cards.art_save_all_desc", "Download covers and backgrounds for all games"));
+
+    const std::string apiKey = m_core.config().steamGridDbApiKey;
+    const bool boxArt = m_core.config().cards.boxArt;
+    const bool titlePics = m_core.config().cards.titlePics;
+
+    auto promise = std::make_shared<std::promise<int>>();
+    m_saveAllFuture = promise->get_future();
+    m_core.threadPool().submit([this, apps, forceAll, apiKey, boxArt, titlePics, promise]() {
+        try {
+            CardsArtSources::runSaveAll(m_core.net(), apiKey,
+                                        apps, boxArt, titlePics, forceAll,
+                                        m_saveAllDone, m_saveAllTotal, m_saveAllSaved,
+                                        m_saveAllStop);
+            promise->set_value(m_saveAllSaved.load(std::memory_order_relaxed));
+        } catch (...) {
+            promise->set_exception(std::current_exception());
+        }
+    });
+}
+
+bool CardsHomeActivity::saveAllRunning() const {
+    return m_saveAllFuture.valid() &&
+           m_saveAllFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready;
+}
+
+void CardsHomeActivity::pollArtJobs() {
+    auto& tr = nxui::I18n::instance();
+    if (m_browseFuture.valid() &&
+        m_browseFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        try {
+            auto res = m_browseFuture.get();
+            if (m_picker && m_picker->isActive())
+                m_picker->setResult(std::move(res));
+        } catch (const std::exception& e) {
+            if (m_picker && m_picker->isActive())
+                m_picker->setMessage(e.what(), false);
+        } catch (...) {
+            if (m_picker && m_picker->isActive())
+                m_picker->setMessage("Browse failed", false);
+        }
+    }
+    if (m_applyFuture.valid() &&
+        m_applyFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        bool ok = false;
+        try {
+            ok = m_applyFuture.get();
+        } catch (...) {
+        }
+        m_art.releaseAll();
+        showToast(ok ? tr.tr("cards.art_downloaded", "Artwork updated")
+                     : tr.tr("cards.art_download_failed", "Could not download artwork"));
+    }
+    if (m_singleArtFuture.valid() &&
+        m_singleArtFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        CardsArtSources::SingleTitleResult res{};
+        try {
+            res = m_singleArtFuture.get();
+        } catch (...) {
+        }
+        m_art.releaseAll();
+        if (res.cover || res.hero || res.logo) {
+            showToast(tr.tr("cards.art_downloaded", "Artwork updated"));
+        } else {
+            showToast(tr.tr("cards.art_download_failed", "Could not download artwork"));
+        }
+    }
+    if (m_saveAllFuture.valid() &&
+        m_saveAllFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        int savedCount = 0;
+        try {
+            savedCount = m_saveAllFuture.get();
+        } catch (...) {
+        }
+        m_art.releaseAll();
+        if (savedCount > 0) {
+            showToast(tr.tr("cards.art_save_all_done", "All pictures saved"));
+        } else {
+            showToast(tr.tr("cards.art_download_failed", "Could not download artwork"));
+        }
+    }
 }
 
 } // namespace cards

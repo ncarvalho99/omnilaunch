@@ -137,6 +137,8 @@ bool AppConfig::load() {
         readJsonOpt(c, "haze", cards.haze);
         readJsonOpt(c, "bgMotion", cards.bgMotion);
         readJsonOpt(c, "motion", cards.motion);
+        readJsonOpt(c, "boxArt", cards.boxArt);
+        readJsonOpt(c, "titlePics", cards.titlePics);
         auto readIds = [&c](const char* key, std::vector<std::uint64_t>& out) {
             out.clear();
             auto f = c.find(key);
@@ -392,6 +394,8 @@ bool AppConfig::save() const {
         c["haze"] = cards.haze;
         c["bgMotion"] = cards.bgMotion;
         c["motion"] = cards.motion;
+        c["boxArt"] = cards.boxArt;
+        c["titlePics"] = cards.titlePics;
         j["cards"] = std::move(c);
     }
     j["lastUpdateCheckDay"] = lastUpdateCheckDay;

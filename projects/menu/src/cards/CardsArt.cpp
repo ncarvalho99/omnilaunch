@@ -176,7 +176,7 @@ void CardsArt::pump(nxui::GpuDevice& gpu, nxui::Renderer& ren, nxui::ThreadPool&
     if (focused != 0) {
         if (!m_config || !has(m_config->cards.plainBackgroundTitles, focused))
             request(pool, focused, 1);
-        if (m_config && has(m_config->cards.logoTitles, focused))
+        if (m_config && m_config->cards.titlePics && has(m_config->cards.logoTitles, focused))
             request(pool, focused, 2);
     }
     for (auto it = m_logos.begin(); it != m_logos.end();)
