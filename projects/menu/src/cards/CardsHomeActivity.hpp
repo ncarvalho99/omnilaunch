@@ -17,6 +17,7 @@
 #include "core/AudioManager.hpp"
 #include "core/LeaveFrameCache.hpp"
 #include "core/SystemMessages.hpp"
+#include "homebrew/HomebrewUpdateCatalog.hpp"
 #include "home/HomeStyle.hpp"
 #include "widgets/LockScreen.hpp"
 #include "widgets/QuickSettingsOverlay.hpp"
@@ -271,6 +272,48 @@ private:
     std::future<std::string> m_netCheck;
     void startNetCheck();
     void pollNetCheck();
+
+    // G4: connection test (C-NET-7) against the project server: ping,
+    // download, upload. The worker writes the atomics; the sheet reads them.
+    struct SpeedTest {
+        std::atomic<int> stage{0};     ///< 0 idle, 1 ping, 2 down, 3 up, 4 done
+        std::atomic<int> pingMs{-1};
+        std::atomic<int> downKbps{-1};
+        std::atomic<int> upKbps{-1};
+        std::atomic<int> signal{-1};   ///< Wi-Fi bars 0-3, 4 wired, -1 unknown
+        std::atomic<bool> online{false};
+        std::atomic<bool> failed{false};
+        std::atomic<bool> stop{false};
+    };
+    std::shared_ptr<SpeedTest> m_speed;
+    std::future<void> m_speedJob;
+    void openSpeedTest();
+    void startSpeedTest();
+    void stopSpeedTest(); ///< cancel and wait (onDestroy, quiesce)
+
+    // G5: homebrew updates (C-NET-6, C-UI-13). One job at a time (check or
+    // install), on the Core pool; results land in pollHomebrewUpdates().
+public:
+    struct HbPending {
+        hbupdate::Installed app;
+        hbupdate::Offer offer;
+    };
+private:
+    struct HbJob;
+    std::vector<HbPending> m_hbPending; ///< from the last job (main thread)
+    std::shared_ptr<HbJob> m_hbJob;
+    std::future<void> m_hbFuture;
+    std::shared_ptr<const hbupdate::State> m_hbState; ///< last loaded or checked state (main thread)
+    bool m_hbCheckedThisRun = false;
+    bool m_hbSheetWanted = false; ///< reopen the updates sheet when the job lands
+    bool m_hbReturnActivation = false; ///< this activation is a return from a game/applet
+    void checkHomebrewUpdates(bool force, bool openSheet);
+    void openHomebrewUpdates();
+    void installHomebrewUpdates(std::vector<std::string> paths);
+    void pollHomebrewUpdates();
+    void stopHomebrewUpdates(); ///< cancel and wait (onDestroy, quiesce)
+    int homebrewUpdateCount() const;
+    bool homebrewHasUpdate(const std::string& path, const std::string& version) const;
 
     // G2: Art sources (GameTDB, nlib, SteamGridDB picker and Save All).
     std::future<SteamGridDbManager::BrowseResult> m_browseFuture;

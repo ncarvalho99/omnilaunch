@@ -380,6 +380,8 @@ bool CardsHomeActivity::onCreate() {
         m_fadeIn = 0.f;
     }
     m_core.setFrontendQuiesce([this] {
+        stopSpeedTest();
+        stopHomebrewUpdates();
         m_saveAllStop.store(true);
         if (m_saveAllFuture.valid())
             m_saveAllFuture.wait();
@@ -402,6 +404,7 @@ bool CardsHomeActivity::onCreate() {
                              m_core.transitionReason() == switchu::smi::MenuTransitionReason::Unknown ||
                              m_core.startMode() == switchu::smi::MenuStartMode::StartupBoot);
     m_fastReturn = !isSwitch && (!isColdBoot || m_core.launcher().suspendedTitleId() != 0);
+    m_hbReturnActivation = m_fastReturn; // kept: m_fastReturn clears after the first frame
     m_tutorialBlocked = m_fastReturn; // first-frame code clears m_fastReturn
     m_fastReturnStartupTick = m_fastReturn ? createStartTick : 0;
     initPerfLog(isSwitch, isColdBoot);
@@ -625,6 +628,8 @@ void CardsHomeActivity::onDestroy() {
         m_detailsPending.reset();
     if (m_netCheck.valid())
         m_netCheck.wait(); // the scope closed above cancels the request
+    stopSpeedTest();
+    stopHomebrewUpdates();
     if (m_detailsFuture.valid())
         m_detailsFuture.wait();
     m_saveAllStop.store(true);
@@ -857,6 +862,7 @@ void CardsHomeActivity::onUpdate(float dt) {
     pollPlaytime();
     pollNetCheck();
     pollArtJobs();
+    pollHomebrewUpdates();
     updateLock(dt);
     m_sheet.update(dt);
     m_musicSheet.update(dt, m_audio);
@@ -1762,6 +1768,14 @@ void CardsHomeActivity::drawCard(nxui::Renderer& ren, int index, const nxui::Rec
         ren.drawCircle({badge.x + 13.f, badge.y + 13.f}, 8.f, CardsChrome::kGreen, 24);
     }
 #endif
+    if (entry.isHomebrew && homebrewHasUpdate(entry.homebrewPath, entry.version)) {
+        // Update badge (G5): an accent dot with an arrow at the top right.
+        const nxui::Vec2 c{card.right() - 25.f, card.y + 25.f};
+        ren.drawCircle(c, 14.f, {0.f, 0.f, 0.f, 0.45f}, 24);
+        ren.drawCircle(c, 10.f, CardsChrome::accent(1.f), 24);
+        ren.drawRect({c.x - 1.5f, c.y - 5.f, 3.f, 9.f}, CardsChrome::kWhite);
+        ren.drawRect({c.x - 5.f, c.y - 5.f, 10.f, 2.5f}, CardsChrome::kWhite);
+    }
     if (chosen > 0.5f && !m_topZone && !m_panelZone) {
         const float pulse = 0.8f + 0.2f * std::sin(m_time * 5.f);
         ren.drawRoundedRectOutline(card, CardsChrome::accent(pulse * chosen), layout::kCardRadius, 3.f);

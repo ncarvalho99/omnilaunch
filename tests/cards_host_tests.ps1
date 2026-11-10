@@ -24,6 +24,8 @@ g++ -std=c++20 -Wall -Wextra -Iprojects/menu/src -Iprojects/common/include -I"${
 (cd /tmp && /tmp/art_sources_test)
 g++ -std=c++20 -Wall -Wextra -Iprojects/menu/src -Iprojects/common/include -I"${J%/nlohmann/json.hpp}" -idirafter lib/nxui/include tests/news_test.cpp projects/menu/src/news/NewsStore.cpp -o /tmp/news_test
 /tmp/news_test
+g++ -std=c++20 -Wall -Wextra -Iprojects/menu/src -I"${J%/nlohmann/json.hpp}" tests/homebrew_update_test.cpp projects/menu/src/homebrew/HomebrewUpdateCatalog.cpp -o /tmp/homebrew_update_test
+/tmp/homebrew_update_test
 '@
 & docker run --rm --network none -v "${repo}:/src:ro" -v switchu-xmake:/root/.xmake:ro -w /src --entrypoint sh switchu-build:latest -c $script
 if ($LASTEXITCODE -ne 0) { throw "Cards host regressions failed (exit $LASTEXITCODE)." }

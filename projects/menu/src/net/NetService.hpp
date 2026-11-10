@@ -46,6 +46,19 @@ struct Request {
     const std::atomic<bool>* cancel = nullptr; ///< extra per-request cancel
 };
 
+/// A GET whose body goes to a file (HomeNX G5 homebrew updates).
+struct Download {
+    std::string url;
+    std::string path;                    ///< written in place; removed on failure
+    std::uint64_t maxBytes = 64u << 20;  ///< larger bodies fail
+    long timeoutMs = 300000;
+    /// Release downloads redirect to a CDN on another host. Followed only for
+    /// HTTPS -> HTTPS, and a Download carries no headers or body to leak.
+    int maxRedirects = 5;
+    const std::atomic<bool>* cancel = nullptr;
+    std::function<void(std::uint64_t done, std::uint64_t total)> progress; ///< worker thread
+};
+
 struct Response {
     long status = 0;          ///< HTTP status, 0 when no response arrived
     std::string body;
@@ -70,6 +83,8 @@ public:
     /// Blocking; never call it on the render thread.
     Response request(const Request& req);
     Response get(const std::string& url, std::vector<std::string> headers = {});
+    /// Blocking. `Response::body` stays empty; status/error/cancelled as above.
+    Response download(const Download& dl);
 
     /// Directory of the bundled root certificates (with trailing slash).
     static const char* certDir();

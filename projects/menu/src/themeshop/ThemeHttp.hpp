@@ -78,6 +78,29 @@ std::uint64_t getToFile(const std::string& url,
 std::string getText(const std::string& url,
                     const std::list<std::string>& headers = {});
 
+// Connection test (HomeNX G4, requirement C-NET-7) against the project's own
+// server, whose /speedtest/ endpoints require the client key. It lives here
+// because this module is the only code allowed to send that key; the URLs are
+// fixed below and never come from the caller.
+// Blocking: run it on a worker. Cancelled by the frontend/terminal scope and
+// by `cancel`.
+enum class SpeedProbeKind { Ping, Download, Upload };
+struct SpeedProbeResult {
+    bool ok = false;
+    bool cancelled = false;
+    long status = 0;
+    std::uint64_t bytes = 0;  ///< payload moved (download/upload)
+    double seconds = 0.0;     ///< transfer time, excluding connection setup
+    double rttMs = 0.0;       ///< ping: best request round trip on a warm connection
+    std::string error;
+    /// Kilobits per second, or -1 when the run moved too little to tell.
+    int kbps() const {
+        if (!ok || bytes < 64 * 1024 || seconds <= 0.0) return -1;
+        return static_cast<int>(static_cast<double>(bytes) * 8.0 / 1000.0 / seconds);
+    }
+};
+SpeedProbeResult speedProbe(SpeedProbeKind kind, long limitMs, const std::atomic<bool>* cancel = nullptr);
+
 std::string postJson(const std::string& url,
                      const std::string& jsonBody,
                      const std::list<std::string>& headers = {});

@@ -10,6 +10,7 @@
 #include <switch.h>
 
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <strings.h>
@@ -371,6 +372,180 @@ Response NetService::request(const Request& req) {
         DebugLog::log("[net] %s %s failed: %s (status %ld, %d attempt(s))", req.method.c_str(),
                       parts.host.c_str(), res.error.empty() ? "http" : res.error.c_str(), res.status,
                       res.attempts);
+    return finish(res);
+}
+
+namespace {
+
+struct FileSink {
+    std::FILE* out = nullptr;
+    std::uint64_t written = 0;
+    std::uint64_t max = 0;
+    bool overflow = false;
+    bool writeFailed = false;
+    const std::function<void(std::uint64_t, std::uint64_t)>* progress = nullptr;
+    curl_off_t total = 0;
+};
+
+size_t onFileBody(char* ptr, size_t size, size_t count, void* user) {
+    auto* s = static_cast<FileSink*>(user);
+    const size_t n = size * count;
+    if (s->written + n > s->max) {
+        s->overflow = true;
+        return 0;
+    }
+    if (std::fwrite(ptr, 1, n, s->out) != n) {
+        s->writeFailed = true;
+        return 0;
+    }
+    s->written += n;
+    if (s->progress && *s->progress) {
+        try {
+            (*s->progress)(s->written, s->total > 0 ? static_cast<std::uint64_t>(s->total) : 0);
+        } catch (...) {
+            return 0;
+        }
+    }
+    return n;
+}
+
+struct DownloadCtx {
+    CancelCtx* cancel;
+    FileSink* sink;
+};
+
+int onDownloadProgress(void* user, curl_off_t dltotal, curl_off_t, curl_off_t, curl_off_t) {
+    auto* d = static_cast<DownloadCtx*>(user);
+    d->sink->total = dltotal;
+    return onProgress(d->cancel, 0, 0, 0, 0);
+}
+
+} // namespace
+
+Response NetService::download(const Download& dl) {
+    Response res;
+    const std::uint64_t start = nowMs();
+    auto& scope = themeshop::http::cancelScope();
+    CancelCtx cancel{&scope, scope.begin(), dl.cancel};
+    auto finish = [&](Response& r) -> Response& {
+        r.elapsedMs = static_cast<std::uint32_t>(nowMs() - start);
+        if (!r.ok())
+            std::remove(dl.path.c_str());
+        return r;
+    };
+    UrlParts parts;
+    if (!parseUrl(dl.url, parts) || parts.scheme != "https") {
+        res.error = "bad url";
+        return finish(res);
+    }
+    {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        if (!ensureRuntime()) {
+            res.error = m_closed ? "network service stopped" : "network runtime unavailable";
+            return finish(res);
+        }
+    }
+    switchu::services::net::HttpLease lease;
+    if (!lease) {
+        res.error = "network runtime unavailable";
+        return finish(res);
+    }
+    if (state() != NetState::Online) {
+        res.error = "offline";
+        return finish(res);
+    }
+    CURL* c = curl_easy_init();
+    if (!c) {
+        res.error = "curl init failed";
+        return finish(res);
+    }
+    std::string url = dl.url;
+    int redirects = 0;
+    for (;;) {
+        res.attempts = redirects + 1;
+        res.status = 0;
+        res.error.clear();
+        std::FILE* out = std::fopen(dl.path.c_str(), "wb");
+        if (!out) {
+            res.error = "cannot write " + dl.path;
+            break;
+        }
+        FileSink sink{out, 0, dl.maxBytes, false, false, &dl.progress};
+        DownloadCtx dctx{&cancel, &sink};
+        std::string root = rootFor(url);
+        curl_easy_reset(c);
+        const std::string agent = std::string("OmniLaunch/") + SWITCHU_VERSION;
+        curl_easy_setopt(c, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(c, CURLOPT_NOSIGNAL, 1L);
+        curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, 0L);
+        curl_easy_setopt(c, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
+        curl_easy_setopt(c, CURLOPT_CONNECTTIMEOUT_MS, 8000L);
+        curl_easy_setopt(c, CURLOPT_TIMEOUT_MS, dl.timeoutMs);
+        curl_easy_setopt(c, CURLOPT_LOW_SPEED_LIMIT, 1024L);
+        curl_easy_setopt(c, CURLOPT_LOW_SPEED_TIME, 30L);
+        curl_easy_setopt(c, CURLOPT_BUFFERSIZE, 128 * 1024L);
+        curl_easy_setopt(c, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+        curl_easy_setopt(c, CURLOPT_USERAGENT, agent.c_str());
+        curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, onFileBody);
+        curl_easy_setopt(c, CURLOPT_WRITEDATA, &sink);
+        curl_easy_setopt(c, CURLOPT_NOPROGRESS, 0L);
+        curl_easy_setopt(c, CURLOPT_XFERINFOFUNCTION, onDownloadProgress);
+        curl_easy_setopt(c, CURLOPT_XFERINFODATA, &dctx);
+        if (!root.empty())
+            curl_easy_setopt(c, CURLOPT_CAINFO, (std::string(kCertDir) + root).c_str());
+        CURLcode rc = curl_easy_perform(c);
+        if (rc != CURLE_OK && certRefused(rc)) {
+            const std::string refused = root;
+            for (const std::string& next : bundledRoots()) {
+                if (next == refused || cancelledFor(scope, cancel.token, dl.cancel))
+                    continue;
+                std::rewind(out);
+                sink.written = 0;
+                curl_easy_setopt(c, CURLOPT_CAINFO, (std::string(kCertDir) + next).c_str());
+                rc = curl_easy_perform(c);
+                if (rc == CURLE_OK) {
+                    rememberRoot(url, next);
+                    break;
+                }
+                if (!certRefused(rc))
+                    break;
+            }
+        }
+        curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &res.status);
+        std::string location;
+        if (rc == CURLE_OK && res.status >= 300 && res.status < 400) {
+            char* redirect = nullptr;
+            if (curl_easy_getinfo(c, CURLINFO_REDIRECT_URL, &redirect) == CURLE_OK && redirect)
+                location = redirect;
+        }
+        const bool closed = std::fclose(out) == 0;
+        if (cancel.hit || cancelledFor(scope, cancel.token, dl.cancel)) {
+            res.cancelled = true;
+            res.error = "cancelled";
+            break;
+        }
+        if (!location.empty()) {
+            UrlParts next;
+            if (redirects < dl.maxRedirects && parseUrl(location, next) && next.scheme == "https") {
+                ++redirects;
+                url = location;
+                continue;
+            }
+            res.error = "redirect not followed";
+            break;
+        }
+        if (sink.overflow)
+            res.error = "download too large";
+        else if (sink.writeFailed || !closed)
+            res.error = "write failed";
+        else if (rc != CURLE_OK)
+            res.error = curl_easy_strerror(rc);
+        break;
+    }
+    curl_easy_cleanup(c);
+    if (!res.ok() && !res.cancelled)
+        DebugLog::log("[net] download %s failed: %s (status %ld)", parts.host.c_str(),
+                      res.error.empty() ? "http" : res.error.c_str(), res.status);
     return finish(res);
 }
 

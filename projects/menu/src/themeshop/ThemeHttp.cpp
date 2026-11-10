@@ -8,7 +8,9 @@
 #include <curl/curl.h>
 #include <switch.h>
 
+#include <algorithm>
 #include <cstdio>
+#include <cstring>
 #include <atomic>
 #include <mutex>
 #include <stdexcept>
@@ -471,6 +473,161 @@ std::string postJson(const std::string& url,
     allHeaders.push_back("Content-Type: application/json");
     auto bytes = performBytes(url, allHeaders, {}, jsonBody);
     return std::string(bytes.begin(), bytes.end());
+}
+
+// ── Connection test (HomeNX G4, C-NET-7) ────────────────────────────────────
+namespace {
+
+constexpr const char* kSpeedBase = "https://themes.nclabs.dev/speedtest/";
+constexpr curl_off_t kUploadBytes = 32ll * 1024 * 1024; // server accepts up to 40 MiB
+
+struct SpeedCtx {
+    const themeshop::http::CancelScope::Token* token = nullptr;
+    const std::atomic<bool>* cancel = nullptr;
+    curl_off_t uploadLeft = 0;
+    bool aborted = false;
+    bool stop() const {
+        return g_cancelScope.cancelled(*token) || transferCancelled(cancel);
+    }
+};
+
+size_t speedDiscard(char*, size_t size, size_t count, void* user) {
+    auto* c = static_cast<SpeedCtx*>(user);
+    if (c->stop()) {
+        c->aborted = true;
+        return 0;
+    }
+    return size * count;
+}
+
+size_t speedZeros(char* buf, size_t size, size_t count, void* user) {
+    auto* c = static_cast<SpeedCtx*>(user);
+    if (c->stop()) {
+        c->aborted = true;
+        return CURL_READFUNC_ABORT;
+    }
+    const curl_off_t n = std::min<curl_off_t>(c->uploadLeft, static_cast<curl_off_t>(size * count));
+    std::memset(buf, 0, static_cast<size_t>(n));
+    c->uploadLeft -= n;
+    return static_cast<size_t>(n);
+}
+
+int speedProgress(void* user, curl_off_t, curl_off_t, curl_off_t, curl_off_t) {
+    auto* c = static_cast<SpeedCtx*>(user);
+    if (c->stop()) {
+        c->aborted = true;
+        return 1;
+    }
+    return 0;
+}
+
+} // namespace
+
+SpeedProbeResult speedProbe(SpeedProbeKind kind, long limitMs, const std::atomic<bool>* cancel) {
+    SpeedProbeResult res;
+    const auto token = g_cancelScope.begin();
+    SpeedCtx ctx{&token, cancel};
+    if (ctx.stop()) {
+        res.cancelled = true;
+        res.error = "cancelled";
+        return res;
+    }
+    if (!switchu::auth::kClientKey || switchu::auth::kClientKey[0] == '\0') {
+        res.error = "no client key";
+        return res;
+    }
+    // Own reference on the runtime; never the Theme Shop mutex, so a long
+    // transfer here does not hold up a catalogue request.
+    switchu::services::net::HttpLease lease;
+    if (!lease) {
+        res.error = "network runtime unavailable";
+        return res;
+    }
+    CURL* c = curl_easy_init();
+    if (!c) {
+        res.error = "curl init failed";
+        return res;
+    }
+    const char* path = kind == SpeedProbeKind::Ping ? "ping" : kind == SpeedProbeKind::Download ? "down" : "up";
+    const std::string url = std::string(kSpeedBase) + path;
+    const std::string agent = std::string("OmniLaunch/") + SWITCHU_VERSION;
+    const std::string key = std::string("X-OmniLaunch-Key: ") + switchu::auth::kClientKey;
+    struct curl_slist* headers = curl_slist_append(nullptr, key.c_str());
+    if (kind == SpeedProbeKind::Upload)
+        headers = curl_slist_append(headers, "Content-Type: application/octet-stream");
+    curl_easy_setopt(c, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(c, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, 0L);
+    curl_easy_setopt(c, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(c, CURLOPT_CONNECTTIMEOUT_MS, 8000L);
+    curl_easy_setopt(c, CURLOPT_TIMEOUT_MS, limitMs);
+    curl_easy_setopt(c, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+    curl_easy_setopt(c, CURLOPT_USERAGENT, agent.c_str());
+    curl_easy_setopt(c, CURLOPT_BUFFERSIZE, 128 * 1024L);
+    curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, speedDiscard);
+    curl_easy_setopt(c, CURLOPT_WRITEDATA, &ctx);
+    curl_easy_setopt(c, CURLOPT_NOPROGRESS, 0L);
+    curl_easy_setopt(c, CURLOPT_XFERINFOFUNCTION, speedProgress);
+    curl_easy_setopt(c, CURLOPT_XFERINFODATA, &ctx);
+    if (kind == SpeedProbeKind::Upload) {
+        ctx.uploadLeft = kUploadBytes;
+        curl_easy_setopt(c, CURLOPT_POST, 1L);
+        curl_easy_setopt(c, CURLOPT_POSTFIELDSIZE_LARGE, kUploadBytes);
+        curl_easy_setopt(c, CURLOPT_READFUNCTION, speedZeros);
+        curl_easy_setopt(c, CURLOPT_READDATA, &ctx);
+        curl_easy_setopt(c, CURLOPT_UPLOAD_BUFFERSIZE, 128 * 1024L);
+    }
+
+    CURLcode rc = curl_easy_perform(c);
+    curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &res.status);
+    if (kind == SpeedProbeKind::Ping && rc == CURLE_OK && res.status == 204) {
+        // The first request paid for DNS, TCP and TLS; the round trip is the
+        // best of a few more on the same connection.
+        double best = -1.0;
+        for (int i = 0; i < 4 && !ctx.stop(); ++i) {
+            if (curl_easy_perform(c) != CURLE_OK)
+                break;
+            long sample = 0;
+            curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &sample);
+            if (sample != 204)
+                break; // rate limited or failing: only real 204 answers count
+            curl_off_t total = 0;
+            curl_easy_getinfo(c, CURLINFO_TOTAL_TIME_T, &total);
+            const double ms = static_cast<double>(total) / 1000.0;
+            if (best < 0.0 || ms < best)
+                best = ms;
+        }
+        res.rttMs = best;
+    }
+    curl_off_t moved = 0, total = 0, start = 0;
+    curl_easy_getinfo(c, kind == SpeedProbeKind::Upload ? CURLINFO_SIZE_UPLOAD_T : CURLINFO_SIZE_DOWNLOAD_T, &moved);
+    curl_easy_getinfo(c, CURLINFO_TOTAL_TIME_T, &total);
+    curl_easy_getinfo(c, CURLINFO_PRETRANSFER_TIME_T, &start);
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(c);
+
+    res.bytes = moved > 0 ? static_cast<std::uint64_t>(moved) : 0;
+    res.seconds = total > start ? static_cast<double>(total - start) / 1e6 : 0.0;
+    if (ctx.aborted || ctx.stop()) {
+        res.cancelled = true;
+        res.error = "cancelled";
+        return res;
+    }
+    // A transfer cut by its time limit is the normal end of a speed run.
+    const bool timedOut = rc == CURLE_OPERATION_TIMEDOUT && kind != SpeedProbeKind::Ping;
+    if (rc != CURLE_OK && !timedOut) {
+        res.error = curl_easy_strerror(rc);
+    } else if (!timedOut && (res.status < 200 || res.status >= 300)) {
+        res.error = "HTTP " + std::to_string(res.status);
+    } else {
+        res.ok = kind != SpeedProbeKind::Ping || res.rttMs >= 0.0;
+        if (!res.ok)
+            res.error = "no round trip";
+    }
+    DebugLog::log("[speedtest] %s status=%ld bytes=%llu s=%.2f rtt=%.1f ok=%d%s%s", path, res.status,
+                  static_cast<unsigned long long>(res.bytes), res.seconds, res.rttMs, res.ok ? 1 : 0,
+                  res.error.empty() ? "" : " error=", res.error.c_str());
+    return res;
 }
 
 } // namespace themeshop::http

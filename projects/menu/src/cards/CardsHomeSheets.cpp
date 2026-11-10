@@ -16,6 +16,7 @@
 #include "launcher/HekateReboot.hpp"
 #include "widgets/LockPassword.hpp"
 #include "net/NetService.hpp"
+#include "themeshop/ThemeHttp.hpp"
 #ifdef SWITCHU_MENU
 #include "core/NsService.hpp"
 #include <switchu/control_cache.hpp>
@@ -172,6 +173,10 @@ void CardsHomeActivity::openDotsMenu() {
         openQuickSettings();
     });
     add(i18n.tr("cards.menu_notifications", "Notifications"), [this]() { openNotificationsSheet(); });
+    add(homebrewUpdateCount() > 0
+            ? i18n.tr("cards.menu_updates", "Updates") + " (" + std::to_string(homebrewUpdateCount()) + ")"
+            : i18n.tr("cards.menu_updates", "Updates"),
+        [this]() { openHomebrewUpdates(); });
     add(i18n.tr("cards.menu_achievements", "Achievements"), [this]() {
         const bool game = m_selected >= 0 && m_selected < m_catalog.count() && !m_catalog.at(m_selected).system;
         openAchievementsSheet(game ? m_catalog.at(m_selected).app.titleId : 0);
@@ -1276,6 +1281,11 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         check.detail = i18n.tr("cards.net_check_desc", "Network state and a secure test request");
         check.onA = [this]() { startNetCheck(); };
         s.rows.push_back(std::move(check));
+        Row speed;
+        speed.label = i18n.tr("cards.speed_test", "Connection test");
+        speed.detail = i18n.tr("cards.speed_test_desc", "Ping, download and upload speed");
+        speed.onA = [this]() { openSpeedTest(); };
+        s.rows.push_back(std::move(speed));
         all["internet"] = std::move(s);
     }
     {
@@ -1397,10 +1407,15 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         version.value = []() { return std::string(SWITCHU_VERSION); };
         version.enabled = false;
         s.rows.push_back(std::move(version));
-        Row pending;
-        pending.label = i18n.tr("cards.updates_pending", "Update client: Part G6");
-        pending.enabled = false;
-        s.rows.push_back(std::move(pending));
+        Row hb;
+        hb.label = i18n.tr("cards.hb_title", "Homebrew updates");
+        hb.value = [this]() {
+            const int n = homebrewUpdateCount();
+            return n > 0 ? std::to_string(n) : std::string();
+        };
+        hb.detail = i18n.tr("cards.hb_sources", "Homebrew App Store and GitHub releases");
+        hb.onA = [this]() { openHomebrewUpdates(); };
+        s.rows.push_back(std::move(hb));
         all["updates"] = std::move(s);
     }
     // Saved order: unknown keys dropped, new keys appended.
@@ -1640,12 +1655,147 @@ void CardsHomeActivity::startNetCheck() {
 }
 
 void CardsHomeActivity::pollNetCheck() {
+    if (m_speedJob.valid() && m_speedJob.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        try { m_speedJob.get(); } catch (...) {}
+    }
     if (!m_netCheck.valid() ||
         m_netCheck.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
         return;
     const std::string text = m_netCheck.get();
     if (!text.empty())
         showToast(text);
+}
+
+// ── Internet: connection test (HomeNX G4, C-NET-7) ──────────────────────────
+// Ping, download and upload against the project server's keyed /speedtest/
+// endpoints (themeshop::http::speedProbe, the only code that sends the key).
+// HomeNX used Cloudflare/Tele2 and a STUN NAT probe; OmniLaunch measures
+// against its own server only.
+namespace {
+std::string speedText(int kbps) {
+    char buf[32];
+    if (kbps >= 1000)
+        std::snprintf(buf, sizeof(buf), "%.1f Mbps", static_cast<double>(kbps) / 1000.0);
+    else
+        std::snprintf(buf, sizeof(buf), "%d kbps", kbps);
+    return buf;
+}
+} // namespace
+
+void CardsHomeActivity::openSpeedTest() {
+    auto& i18n = nxui::I18n::instance();
+    if (!m_speed)
+        m_speed = std::make_shared<SpeedTest>();
+    auto st = m_speed;
+    using Row = CardsSheet::Row;
+    auto value = [st](int which) {
+        return [st, which]() -> std::string {
+            auto& tr = nxui::I18n::instance();
+            const int stage = st->stage.load();
+            if (stage == 0) return "-";
+            const int v = which == 1 ? st->pingMs.load() : which == 2 ? st->downKbps.load() : st->upKbps.load();
+            if (v >= 0) return which == 1 ? std::to_string(v) + " ms" : speedText(v);
+            if (stage == which) return "...";
+            if (stage > which && st->online.load()) return tr.tr("cards.speed_failed", "Couldn't test");
+            return "-";
+        };
+    };
+    Row status;
+    status.label = i18n.tr("cards.speed_status", "Connection");
+    status.enabled = false;
+    status.value = [st]() -> std::string {
+        auto& tr = nxui::I18n::instance();
+        const int stage = st->stage.load();
+        if (stage == 0) return tr.tr("cards.speed_ready", "Press A on Start test");
+        if (stage < 4) return tr.tr("cards.speed_running", "Testing...");
+        if (!st->online.load()) return tr.tr("cards.net_offline", "No internet connection");
+        return st->failed.load() ? tr.tr("cards.speed_partial", "Connected, some tests failed")
+                                 : tr.tr("cards.speed_done", "Connected");
+    };
+    Row signal;
+    signal.label = i18n.tr("cards.speed_signal", "Signal");
+    signal.enabled = false;
+    signal.value = [st]() -> std::string {
+        const int s = st->signal.load();
+        if (s < 0) return "-";
+        if (s >= 4) return nxui::I18n::instance().tr("cards.speed_wired", "Wired");
+        return std::string(static_cast<std::size_t>(s), '|') + std::string(static_cast<std::size_t>(3 - s), '.');
+    };
+    Row ping;
+    ping.label = "Ping";
+    ping.enabled = false;
+    ping.value = value(1);
+    Row down;
+    down.label = i18n.tr("cards.speed_down", "Download");
+    down.enabled = false;
+    down.value = value(2);
+    Row up;
+    up.label = i18n.tr("cards.speed_up", "Upload");
+    up.enabled = false;
+    up.value = value(3);
+    Row run;
+    run.label = i18n.tr("cards.speed_start", "Start test");
+    run.detail = i18n.tr("cards.speed_note", "About 20 seconds, with the OmniLaunch server");
+    run.onA = [this]() { startSpeedTest(); };
+    m_sheet.open(i18n.tr("cards.speed_test", "Connection test"),
+                 {{std::string(), {run, status, signal, ping, down, up}}});
+}
+
+void CardsHomeActivity::startSpeedTest() {
+    if (m_speedJob.valid() || !m_speed)
+        return; // one run at a time; the sheet shows its progress
+    if (!m_core.threadPool().acceptingTasks())
+        return;
+    // A fresh state per run, so a finished worker never writes into the next.
+    auto st = std::make_shared<SpeedTest>();
+    st->stage = 1;
+    m_speed = st;
+    openSpeedTest(); // rebind the rows to the new state, focus stays on Start
+    net::NetService* service = &m_core.net();
+    try {
+        m_speedJob = m_core.threadPool().submit([st, service]() {
+#ifdef SWITCHU_MENU
+            NifmInternetConnectionType type{};
+            u32 strength = 0;
+            NifmInternetConnectionStatus status{};
+            if (R_SUCCEEDED(nifmGetInternetConnectionStatus(&type, &strength, &status)))
+                st->signal = type == NifmInternetConnectionType_WiFi ? static_cast<int>(strength) : 4;
+#endif
+            st->online = service->state() == net::NetState::Online;
+            if (!st->online || st->stop) {
+                st->stage = 4;
+                return;
+            }
+            using themeshop::http::SpeedProbeKind;
+            auto p = themeshop::http::speedProbe(SpeedProbeKind::Ping, 8000, &st->stop);
+            if (p.ok) st->pingMs = std::max(1, static_cast<int>(p.rttMs + 0.5));
+            else st->failed = true;
+            if (st->stop || p.cancelled) { st->stage = 4; return; }
+            st->stage = 2;
+            auto d = themeshop::http::speedProbe(SpeedProbeKind::Download, 8000, &st->stop);
+            if (d.kbps() > 0) st->downKbps = d.kbps();
+            else st->failed = true;
+            if (st->stop || d.cancelled) { st->stage = 4; return; }
+            st->stage = 3;
+            auto u = themeshop::http::speedProbe(SpeedProbeKind::Upload, 8000, &st->stop);
+            if (u.kbps() > 0) st->upKbps = u.kbps();
+            else st->failed = true;
+            DebugLog::log("[speedtest] result ping=%d down=%d up=%d kbps signal=%d", st->pingMs.load(),
+                          st->downKbps.load(), st->upKbps.load(), st->signal.load());
+            st->stage = 4;
+        });
+    } catch (...) {
+        st->stage = 0; // pool shutting down
+    }
+}
+
+void CardsHomeActivity::stopSpeedTest() {
+    if (m_speed)
+        m_speed->stop = true;
+    if (m_speedJob.valid()) {
+        m_speedJob.wait();
+        try { m_speedJob.get(); } catch (...) {}
+    }
 }
 
 // ── Art sources: pickers, single title download, save-all (HomeNX G2, C-NET-4, C-UI-4) ───
