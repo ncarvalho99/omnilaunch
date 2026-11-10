@@ -1434,7 +1434,7 @@
     "tut3_title": "Pages",
     "tut3_body": "ZL and ZR change page: Games, Nintendo and Media.",
     "tut4_title": "Quick settings",
-    "tut4_body": "R opens quick settings: volume and power.",
+    "tut4_body": "Click the left stick for quick settings. R or Minus switches to Classic.",
     "tut_hint": "A  Next     B  Skip",
     "panel_pin": "Put on panel button",
     "panel_missing": "Software unavailable",
@@ -1581,6 +1581,7 @@
     "ach_games5": "Explorer",
     "ach_games15": "Globetrotter",
     "ach_total100": "Marathon",
-    "ach_total500": "Lifer"
+    "ach_total500": "Lifer",
+    "hb_delete_busy": "Wait for the homebrew update to finish"
   }
 }

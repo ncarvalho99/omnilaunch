@@ -33,6 +33,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdio>
+#include <chrono>
 #include <ctime>
 #include <sys/statvfs.h>
 #include <cstring>
@@ -690,6 +691,13 @@ void CardsHomeActivity::openHomebrewOptions() {
                 title + "\n" + path,
                 {{t.tr("button.cancel", "Cancel"), []() {}, true},
                  {t.tr("cards.hb_delete_confirm", "Delete"), [this, path, title, id]() {
+                      // The updater may be swapping this very file.
+                      if (m_hbFuture.valid() &&
+                          m_hbFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+                          showToast(nxui::I18n::instance().tr("cards.hb_delete_busy",
+                                                              "Wait for the homebrew update to finish"));
+                          return;
+                      }
                       std::error_code ec;
                       const bool ok = std::filesystem::remove(path, ec) && !ec;
                       switchu::commitSdCard("cards homebrew delete");
@@ -1582,14 +1590,18 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
 #endif
         Row freeSd;
         freeSd.label = i18n.tr("cards.set_free_sd", "Free on the SD card");
-        freeSd.value = [this]() {
+        std::string freeText = "-";
+        {
+            // Read once per sheet build: the value lambda runs every frame.
             struct statvfs st{};
-            if (statvfs("sdmc:/", &st) != 0) return std::string("-");
-            char buf[24];
-            std::snprintf(buf, sizeof(buf), "%.1f GB",
-                          static_cast<double>(st.f_bavail) * static_cast<double>(st.f_frsize) / 1e9);
-            return std::string(buf);
-        };
+            if (statvfs("sdmc:/", &st) == 0) {
+                char buf[24];
+                std::snprintf(buf, sizeof(buf), "%.1f GB",
+                              static_cast<double>(st.f_bavail) * static_cast<double>(st.f_frsize) / 1e9);
+                freeText = buf;
+            }
+        }
+        freeSd.value = [freeText]() { return freeText; };
         freeSd.enabled = false;
         s.rows.push_back(std::move(freeSd));
         Row order;
@@ -1909,7 +1921,7 @@ void CardsHomeActivity::drawTutorial(nxui::Renderer& ren) {
         {"cards.tut2_title", "Card options", "cards.tut2_body",
          "Press + on a card to move it, rename it or send it to Media."},
         {"cards.tut3_title", "Pages", "cards.tut3_body", "ZL and ZR change page: Games, Nintendo and Media."},
-        {"cards.tut4_title", "Quick settings", "cards.tut4_body", "R opens quick settings: volume and power."},
+        {"cards.tut4_title", "Quick settings", "cards.tut4_body", "Click the left stick for quick settings: volume and power."},
     };
     const Card& c = kCards[std::clamp(m_tutorialCard, 1, 4) - 1];
     const float a = m_tutorialIn;

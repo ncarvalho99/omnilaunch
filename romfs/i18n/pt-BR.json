@@ -1434,7 +1434,7 @@
     "tut3_title": "Páginas",
     "tut3_body": "ZL e ZR trocam de página: Jogos, Nintendo e Mídia.",
     "tut4_title": "Configurações rápidas",
-    "tut4_body": "R abre as configurações rápidas: volume e energia.",
+    "tut4_body": "Clique o analógico esquerdo para as configurações rápidas. R ou Menos troca para o Classic.",
     "tut_hint": "A  Próximo     B  Pular",
     "panel_pin": "Colocar no botão do painel",
     "panel_missing": "Software indisponível",
@@ -1581,6 +1581,7 @@
     "ach_games5": "Explorador",
     "ach_games15": "Viajante",
     "ach_total100": "Maratona",
-    "ach_total500": "Veterano"
+    "ach_total500": "Veterano",
+    "hb_delete_busy": "Aguarde a atualização do homebrew terminar"
   }
 }

@@ -1425,6 +1425,8 @@
     "ach_games5": "Explorer",
     "ach_games15": "Globetrotter",
     "ach_total100": "Marathon",
-    "ach_total500": "Lifer"
+    "ach_total500": "Lifer",
+    "hb_delete_busy": "Wait for the homebrew update to finish",
+    "tut4_body": "Click the left stick for quick settings. R or Minus switches to Classic."
   }
 }

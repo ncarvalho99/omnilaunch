@@ -613,6 +613,10 @@ void CardsHomeActivity::onDestroy() {
     m_leaveIsResume = false;
     m_leaveT = 0.f;
     m_core.setFrontendQuiesce(nullptr);
+    // The mixer is shared: hand Classic its own sound and shuffle settings
+    // back, since its audio restore skips an already loaded mixer.
+    m_audio.setSfxVolume(m_core.config().sfxVolume);
+    m_audio.setShuffle(m_core.config().customBgmShuffle);
 #ifdef SWITCHU_MENU
     auto& closingTrace = m_core.closingTrace();
     const auto& shutdownTrace = app().shutdownTrace();
@@ -1324,7 +1328,23 @@ void CardsHomeActivity::handleInput() {
         goToPage(pages::step(m_core.config().cards, m_page, d), d);
         return;
     }
-    if (in.isDown(B::R)) { openQuickSettings(); return; }
+    // Same R / Minus contract as Classic (Settings > view switch button): the
+    // chosen button switches the view (here: back to Classic), the other one
+    // sorts. Quick settings: left stick click, as Classic, or the top bar.
+    const std::string& viewBtnName = m_core.config().viewSwitchButton;
+    const bool viewOnMinus = viewBtnName == "Minus" || viewBtnName == "-";
+    const B viewBtn = viewOnMinus ? B::Minus : B::R;
+    const B sortBtn = viewOnMinus ? B::R : B::Minus;
+    if (in.isDown(viewBtn) && !in.isHeld(B::Plus)) {
+        if (!m_launching && !m_leaving) {
+            m_audio.playSfx(Sfx::Activate);
+            m_switchQueued = true;
+            m_switchTarget = home::HomeStyle::Classic;
+        }
+        return;
+    }
+    if (in.isDown(sortBtn) && !in.isHeld(B::Plus)) { openSortSheet(); return; }
+    if (in.isDown(B::LStick)) { openQuickSettings(); return; }
     if (in.isDown(B::L)) { openDiscord(); return; }
     if (in.isDown(B::Y)) { openSortSheet(); return; }
     if (in.isDown(B::Plus)) { openCardOptions(); return; }
@@ -1675,8 +1695,10 @@ void CardsHomeActivity::pollDaemonNotifications() {
             if (m_core.config().cards.lockScreen || m_lock.passwordActive()) {
                 ensureClockFont();
                 m_lock.lockNow();
-                m_lock.showAfterSystemWake();
             }
+            // A lock taken by hand still shows itself on wake.
+            if (m_lock.isLocked())
+                m_lock.showAfterSystemWake();
             m_lock.resetSleepCountdown();
             m_lockLowPowerPrimed = false;
             app().setRenderEnabled(true);

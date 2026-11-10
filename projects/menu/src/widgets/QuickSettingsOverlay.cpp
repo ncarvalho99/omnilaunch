@@ -348,6 +348,13 @@ void QuickSettingsOverlay::stepItem(int dir) {
     if (m_callbacks.onNavigateSfx) m_callbacks.onNavigateSfx();
 }
 
+nxui::Rect QuickSettingsOverlay::miniButtonRect(int index) const {
+    const nxui::Rect mp = computeItemRect(ItemIndex::MiniPlayer);
+    const float w = 40.f;
+    const float x = mp.right() - 12.f - w * 3.f + w * static_cast<float>(index);
+    return {x, mp.y + 4.f, w, mp.height - 8.f};
+}
+
 int QuickSettingsOverlay::powerCount() const {
     return m_extended ? static_cast<int>(PowerAction::Count) : static_cast<int>(PowerAction::Hekate);
 }
@@ -725,13 +732,15 @@ void QuickSettingsOverlay::handleTouch(nxui::Input& input) {
             if (mpRect.contains(tx, ty)) {
                 m_selectedItem = ItemIndex::MiniPlayer;
                 updateCursorTarget();
-                const float third = mpRect.width / 3.f;
-                if (tx < mpRect.x + third) {
+                // Title area selects only; the three drawn buttons act.
+                if (miniButtonRect(0).contains(tx, ty)) {
                     if (m_callbacks.onMusicSkip) m_callbacks.onMusicSkip(-1);
-                } else if (tx > mpRect.right() - third) {
+                } else if (miniButtonRect(1).contains(tx, ty)) {
+                    if (m_callbacks.onMusicToggle) m_callbacks.onMusicToggle();
+                } else if (miniButtonRect(2).contains(tx, ty)) {
                     if (m_callbacks.onMusicSkip) m_callbacks.onMusicSkip(+1);
-                } else if (m_callbacks.onMusicToggle) {
-                    m_callbacks.onMusicToggle();
+                } else {
+                    return;
                 }
                 if (m_callbacks.onActivateSfx) m_callbacks.onActivateSfx();
                 return;
@@ -1033,21 +1042,19 @@ void QuickSettingsOverlay::render(nxui::Renderer& ren) {
             // Drawn shapes, not glyphs: the UI font has no media symbols.
 
             const float cyM = mp.y + mp.height * 0.5f;
-            const float bx = mp.right() - 120.f;
             const nxui::Color ic(1.f, 1.f, 1.f, alpha);
-            // previous: bar + triangle
+            // Centred in the same rects the touch test uses.
+            const float bx = miniButtonRect(0).x + miniButtonRect(0).width * 0.5f - 7.f;
             ren.drawRect({bx, cyM - 7.f, 3.f, 14.f}, ic);
             ren.drawTriangle({bx + 3.f, cyM}, {bx + 15.f, cyM - 7.f}, {bx + 15.f, cyM + 7.f}, ic);
-            // play / pause
-            const float px = bx + 44.f;
+            const float px = miniButtonRect(1).x + miniButtonRect(1).width * 0.5f - 7.f;
             if (playing) {
                 ren.drawRect({px, cyM - 8.f, 4.f, 16.f}, ic);
                 ren.drawRect({px + 9.f, cyM - 8.f, 4.f, 16.f}, ic);
             } else {
                 ren.drawTriangle({px, cyM - 8.f}, {px, cyM + 8.f}, {px + 14.f, cyM}, ic);
             }
-            // next: triangle + bar
-            const float nx = bx + 86.f;
+            const float nx = miniButtonRect(2).x + miniButtonRect(2).width * 0.5f - 7.f;
             ren.drawTriangle({nx, cyM - 7.f}, {nx, cyM + 7.f}, {nx + 12.f, cyM}, ic);
             ren.drawRect({nx + 12.f, cyM - 7.f, 3.f, 14.f}, ic);
         }

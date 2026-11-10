@@ -102,6 +102,8 @@ private:
     bool itemShown(ItemIndex item) const;
     void stepItem(int dir);
     int powerCount() const;
+    /// Mini player buttons: 0 previous, 1 play/pause, 2 next (draw and touch).
+    nxui::Rect miniButtonRect(int index) const;
 
     nxui::Rect computePanelRect() const;
     nxui::Rect computeItemRect(ItemIndex item) const;
