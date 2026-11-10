@@ -58,18 +58,24 @@ bool parseAccountsJson(const std::string& json, std::vector<Account>& outAccount
     outAccounts.clear();
     outCurrentId.clear();
 
-    auto parseAccountObj = [](const nlohmann::json& obj, Account& acc) -> bool {
+    // value() throws on an explicit null (SwitchCord files store null avatars).
+    auto str = [](const nlohmann::json& o, const char* key) -> std::string {
+        const auto it = o.find(key);
+        return (it != o.end() && it->is_string()) ? it->get<std::string>() : std::string();
+    };
+    auto parseAccountObj = [&str](const nlohmann::json& obj, Account& acc) -> bool {
         if (!obj.is_object()) return false;
-        acc.id = obj.value("id", "");
-        acc.username = obj.value("username", "");
-        acc.globalName = obj.value("globalName", obj.value("global_name", ""));
-        acc.avatar = obj.value("avatar", "");
-        acc.token = obj.value("token", "");
+        acc.id = str(obj, "id");
+        acc.username = str(obj, "username");
+        acc.globalName = str(obj, "globalName");
+        if (acc.globalName.empty()) acc.globalName = str(obj, "global_name");
+        acc.avatar = str(obj, "avatar");
+        acc.token = str(obj, "token");
         return !acc.id.empty() && !acc.token.empty();
     };
 
     if (j.is_object()) {
-        outCurrentId = j.value("current", "");
+        outCurrentId = str(j, "current");
         auto it = j.find("accounts");
         if (it != j.end() && it->is_array()) {
             for (const auto& a : *it) {

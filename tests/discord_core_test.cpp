@@ -133,6 +133,44 @@ int main() {
     assert(msgs[0].content == "Hello from Switch!");
     assert(msgs[0].author.username == "friend1");
 
+    // 6. Explicit nulls as the gateway READY payload sends them must not throw
+    // (json::value() raised type_error 302 and aborted the menu on hardware).
+    const std::string nullChannelsJson = R"([
+        {"id": "4001", "type": 0, "name": "general", "topic": null,
+         "parent_id": null, "last_message_id": null, "position": 2},
+        {"id": "4002", "type": 1, "name": null, "last_message_id": null,
+         "recipients": [{"id": "5001", "username": "pal", "global_name": null, "avatar": null}]}
+    ])";
+    std::vector<Channel> nullChannels;
+    assert(api::parseChannelsJson(nullChannelsJson, nullChannels));
+    assert(nullChannels.size() == 2);
+    assert(nullChannels[0].topic.empty() && nullChannels[0].parentId == 0);
+    assert(nullChannels[0].position == 2);
+    assert(nullChannels[1].name == "pal");
+
+    const std::string nullGuildsJson = R"([
+        {"id": "6001", "name": "G", "icon": null, "description": null,
+         "channels": [{"id": "6002", "name": "c", "type": 0, "topic": null, "parent_id": null}]}
+    ])";
+    std::vector<Guild> nullGuilds;
+    assert(api::parseGuildsJson(nullGuildsJson, nullGuilds));
+    assert(nullGuilds.size() == 1 && nullGuilds[0].icon.empty());
+    assert(nullGuilds[0].channels.size() == 1);
+
+    User nullUser;
+    assert(api::parseUserJson(R"({"id":"7001","username":"u","global_name":null,"avatar":null,"bot":null})", nullUser));
+    assert(nullUser.globalName.empty() && nullUser.avatar.empty() && !nullUser.bot);
+
+    std::vector<Message> nullMsgs;
+    assert(api::parseMessagesJson(R"([{"id":"8001","channel_id":"4001","content":"hi","timestamp":null,
+        "author":{"id":"5001","username":"pal","avatar":null},"attachments":[{"url":null}]}])", nullMsgs));
+    assert(nullMsgs.size() == 1 && nullMsgs[0].author.username == "pal");
+
+    std::vector<Account> nullAccs;
+    std::string nullCur;
+    assert(parseAccountsJson(R"({"current":null,"accounts":[{"id":"9001","token":"t","username":"n","avatar":null,"globalName":null}]})",
+                             nullAccs, nullCur));
+    assert(nullAccs.size() == 1 && nullCur == "9001"); // null current falls back to the first account
     std::cout << "discord_core_test: all passed" << std::endl;
     return 0;
 }

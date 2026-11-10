@@ -109,6 +109,9 @@ void DiscordGateway::run(net::NetService& net) {
         while (!m_stop.load() && ws.isOpen()) {
             std::vector<net::ws::Message> msgs;
             if (ws.wait(msgs, 400, &m_stop)) {
+                // An exception escaping this thread terminates the HOME Menu,
+                // so a payload the parser rejects only drops that batch.
+                try {
                 for (const auto& msg : msgs) {
                     if (msg.binary) continue;
                     const auto j = nlohmann::json::parse(msg.data, nullptr, false);
@@ -153,7 +156,7 @@ void DiscordGateway::run(net::NetService& net) {
                         else hb["d"] = m_lastSeq;
                         ws.sendText(hb.dump());
                     } else if (op == 0) { // Dispatch
-                        const std::string t = j.value("t", "");
+                        const std::string t = (j.contains("t") && j["t"].is_string()) ? j["t"].get<std::string>() : std::string();
                         if (t == "READY") {
                             setState(State::Connected);
                             if (j.contains("d") && j["d"].is_object()) {
@@ -177,7 +180,7 @@ void DiscordGateway::run(net::NetService& net) {
                         ws.close();
                         break;
                     } else if (op == 9) { // Invalid Session
-                        const bool resumable = j.value("d", false);
+                        const bool resumable = j.contains("d") && j["d"].is_boolean() && j["d"].get<bool>();
                         DebugLog::log("[discord-gw] invalid session (resumable=%d)", resumable);
                         if (!resumable) {
                             m_sessionId.clear();
@@ -186,6 +189,9 @@ void DiscordGateway::run(net::NetService& net) {
                         ws.close();
                         break;
                     }
+                }
+                } catch (const std::exception& e) {
+                    DebugLog::log("[discord-gw] dropped gateway payload: %s", e.what());
                 }
             }
 

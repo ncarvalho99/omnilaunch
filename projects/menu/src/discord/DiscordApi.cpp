@@ -24,11 +24,39 @@ std::string formatError(const net::Response& res) {
     if (!res.error.empty()) return res.error;
     if (!res.body.empty()) {
         const auto j = nlohmann::json::parse(res.body, nullptr, false);
-        if (!j.is_discarded() && j.is_object() && j.contains("message")) {
+        if (!j.is_discarded() && j.is_object() && j.contains("message") && j["message"].is_string()) {
             return j["message"].get<std::string>();
         }
     }
     return "HTTP " + std::to_string(res.status);
+}
+
+// Discord sends explicit nulls for absent optional fields (topic, parent_id,
+// last_message_id, icon, avatar, global_name, ...). nlohmann's value() only
+// falls back for a missing key and throws type_error 302 for a null or
+// mistyped one, so every field read goes through these instead.
+std::string str(const nlohmann::json& o, const char* key, const char* def = "") {
+    const auto it = o.find(key);
+    return (it != o.end() && it->is_string()) ? it->get<std::string>() : std::string(def);
+}
+
+template <typename T>
+T num(const nlohmann::json& o, const char* key, T def) {
+    const auto it = o.find(key);
+    return (it != o.end() && it->is_number()) ? it->get<T>() : def;
+}
+
+bool flag(const nlohmann::json& o, const char* key, bool def) {
+    const auto it = o.find(key);
+    return (it != o.end() && it->is_boolean()) ? it->get<bool>() : def;
+}
+
+Snowflake snowflake(const nlohmann::json& o, const char* key) {
+    const auto it = o.find(key);
+    if (it == o.end()) return 0;
+    if (it->is_string()) return stringToSnowflake(it->get<std::string>());
+    if (it->is_number_unsigned()) return it->get<Snowflake>();
+    return 0;
 }
 
 } // namespace
@@ -36,12 +64,12 @@ std::string formatError(const net::Response& res) {
 bool parseUserJson(const std::string& json, User& outUser) {
     const auto j = nlohmann::json::parse(json, nullptr, false);
     if (j.is_discarded() || !j.is_object()) return false;
-    outUser.id = stringToSnowflake(j.value("id", "0"));
-    outUser.username = j.value("username", "");
-    outUser.globalName = j.value("global_name", "");
-    outUser.discriminator = j.value("discriminator", "0");
-    outUser.avatar = j.value("avatar", "");
-    outUser.bot = j.value("bot", false);
+    outUser.id = snowflake(j, "id");
+    outUser.username = str(j, "username");
+    outUser.globalName = str(j, "global_name");
+    outUser.discriminator = str(j, "discriminator", "0");
+    outUser.avatar = str(j, "avatar");
+    outUser.bot = flag(j, "bot", false);
     return outUser.id != 0;
 }
 
@@ -52,18 +80,18 @@ bool parseChannelsJson(const std::string& json, std::vector<Channel>& outChannel
     for (const auto& item : j) {
         if (!item.is_object()) continue;
         Channel c;
-        c.id = stringToSnowflake(item.value("id", "0"));
-        c.type = static_cast<ChannelType>(item.value("type", 0));
-        c.guildId = stringToSnowflake(item.value("guild_id", "0"));
-        c.name = item.value("name", "");
-        c.topic = item.value("topic", "");
-        c.parentId = stringToSnowflake(item.value("parent_id", "0"));
-        c.position = item.value("position", 0);
-        c.lastMessageId = stringToSnowflake(item.value("last_message_id", "0"));
+        c.id = snowflake(item, "id");
+        c.type = static_cast<ChannelType>(num<int>(item, "type", 0));
+        c.guildId = snowflake(item, "guild_id");
+        c.name = str(item, "name");
+        c.topic = str(item, "topic");
+        c.parentId = snowflake(item, "parent_id");
+        c.position = num<int>(item, "position", 0);
+        c.lastMessageId = snowflake(item, "last_message_id");
         if (item.contains("recipients") && item["recipients"].is_array()) {
             for (const auto& r : item["recipients"]) {
                 if (r.is_object()) {
-                    c.recipientIds.push_back(stringToSnowflake(r.value("id", "0")));
+                    c.recipientIds.push_back(snowflake(r, "id"));
                     if (c.name.empty()) {
                         std::string gName;
                         if (r.contains("global_name") && r["global_name"].is_string()) {
@@ -90,10 +118,10 @@ bool parseGuildsJson(const std::string& json, std::vector<Guild>& outGuilds) {
     for (const auto& item : j) {
         if (!item.is_object()) continue;
         Guild g;
-        g.id = stringToSnowflake(item.value("id", "0"));
-        g.name = item.value("name", "");
-        g.icon = item.value("icon", "");
-        g.description = item.value("description", "");
+        g.id = snowflake(item, "id");
+        g.name = str(item, "name");
+        g.icon = str(item, "icon");
+        g.description = str(item, "description");
         if (item.contains("channels") && item["channels"].is_array()) {
             parseChannelsJson(item["channels"].dump(), g.channels);
         }
@@ -109,17 +137,17 @@ bool parseMessagesJson(const std::string& json, std::vector<Message>& outMessage
     for (const auto& item : j) {
         if (!item.is_object()) continue;
         Message m;
-        m.id = stringToSnowflake(item.value("id", "0"));
-        m.channelId = stringToSnowflake(item.value("channel_id", "0"));
-        m.content = item.value("content", "");
-        m.timestamp = item.value("timestamp", "");
+        m.id = snowflake(item, "id");
+        m.channelId = snowflake(item, "channel_id");
+        m.content = str(item, "content");
+        m.timestamp = str(item, "timestamp");
         if (item.contains("author") && item["author"].is_object()) {
             parseUserJson(item["author"].dump(), m.author);
         }
         if (item.contains("attachments") && item["attachments"].is_array()) {
             for (const auto& a : item["attachments"]) {
                 if (a.is_object() && a.contains("url")) {
-                    m.attachmentUrls.push_back(a.value("url", ""));
+                    m.attachmentUrls.push_back(str(a, "url"));
                 }
             }
         }
@@ -261,7 +289,8 @@ bool exchangeRemoteAuthTicket(net::NetService& net, const std::string& ticket,
         return false;
     }
     const auto j = nlohmann::json::parse(res.body, nullptr, false);
-    if (j.is_discarded() || !j.is_object() || !j.contains("encrypted_token")) {
+    if (j.is_discarded() || !j.is_object() || !j.contains("encrypted_token") ||
+        !j["encrypted_token"].is_string()) {
         outError = "Invalid ticket exchange response";
         return false;
     }

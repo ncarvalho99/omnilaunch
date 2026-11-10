@@ -103,7 +103,13 @@ void DiscordService::update(home::HomeCore& core) {
     // 3. Process Gateway events
     const auto events = m_gateway.drainEvents();
     for (const auto& ev : events) {
-        processEvent(ev);
+        // A malformed or unexpected payload must cost one event, never the
+        // HOME Menu: an escaped exception here terminates the process.
+        try {
+            processEvent(ev);
+        } catch (const std::exception& e) {
+            DebugLog::log("[discord] dropped %s event: %s", ev.name.c_str(), e.what());
+        }
     }
 }
 
@@ -130,16 +136,12 @@ void DiscordService::processEvent(const DiscordGateway::Event& ev) {
     } else if (ev.name == "GUILD_CREATE") {
         const auto j = nlohmann::json::parse(ev.rawJson, nullptr, false);
         if (j.is_object() && j.contains("d") && j["d"].is_object()) {
-            const auto& d = j["d"];
-            Guild g;
-            g.id = stringToSnowflake(d.value("id", "0"));
-            g.name = d.value("name", "");
-            g.icon = d.value("icon", "");
-            g.description = d.value("description", "");
-            if (d.contains("channels") && d["channels"].is_array()) {
-                api::parseChannelsJson(d["channels"].dump(), g.channels);
-            }
-            if (g.id != 0) {
+            // Same null-safe parser as the REST and READY paths: Discord sends
+            // explicit nulls (icon, description) that json::value() rejects.
+            std::vector<Guild> parsed;
+            api::parseGuildsJson("[" + j["d"].dump() + "]", parsed);
+            if (!parsed.empty()) {
+                Guild g = std::move(parsed.front());
                 std::lock_guard<std::mutex> lk(m_mu);
                 bool found = false;
                 for (auto& existing : m_guilds) {
