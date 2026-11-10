@@ -382,6 +382,18 @@ private:
     void submitUploadBatch();
     void retireSubmittedUploads();
 
+    // C10 cold-boot queue-fault instrumentation (diagnostic only, no behavior
+    // change). Every queue submission is recorded in a small in-memory ring;
+    // the first kQueueTraceLiveFrames frames are also logged as they happen.
+    // checkQueue() runs before each flush/submit and, the first time the queue
+    // is found in error, dumps the ring so the earlier submission is on the SD
+    // card before deko3d raises.
+    void traceQueue(const char* site, int slot, uint32_t a, uint32_t b,
+                    uint32_t c, bool live);
+    void checkQueue(const char* site);
+    uint32_t m_traceFrame = 0;
+    bool m_queueErrorReported = false;
+
     dk::UniqueDevice    m_dev;
     dk::UniqueQueue     m_queue;
     dk::UniqueCmdBuf    m_cmdbuf[NUM_FB];

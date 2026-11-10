@@ -54,7 +54,63 @@ void traceAlloc(const char* what, uint32_t size, uint64_t imageUsed = 0,
     GpuDevice::debugSink()(buf);
 }
 
+// C10: intermittent cold-boot 0x367 raised by dk::Queue::flush in
+// beginUploadBatch at frame 1-3. The queue was already in error from an earlier
+// submission, so the crash site does not name the cause. Record every queue
+// operation in a ring and log the first frames live; dump the ring the first
+// time the queue is seen in error. Render thread only, like the queue itself.
+struct QueueTraceEntry {
+    uint64_t tick;
+    uint32_t frame;
+    const char* site;   // string literal
+    int slot;
+    uint32_t a, b, c;
+};
+constexpr uint32_t kQueueTraceRing = 64;
+constexpr uint32_t kQueueTraceLiveFrames = 10;
+constexpr uint32_t kQueueTraceLiveMaxLines = 256;
+QueueTraceEntry g_queueTrace[kQueueTraceRing] {};
+uint32_t g_queueTraceNext = 0;
+uint32_t g_queueTraceLiveLines = 0;
+
+void emitQueueTrace(const char* prefix, const QueueTraceEntry& e) {
+    char buf[200];
+    std::snprintf(buf, sizeof(buf), "%s f=%u t=%lluus %s slot=%d a=%u b=%u c=%u",
+                  prefix, e.frame, (unsigned long long)(armTicksToNs(e.tick) / 1000u),
+                  e.site ? e.site : "?", e.slot, e.a, e.b, e.c);
+    GpuDevice::debugSink()(buf);
+}
+
 }  // namespace
+
+void GpuDevice::traceQueue(const char* site, int slot, uint32_t a, uint32_t b,
+                           uint32_t c, bool live) {
+    QueueTraceEntry& e = g_queueTrace[g_queueTraceNext % kQueueTraceRing];
+    e = {armGetSystemTick(), m_traceFrame, site, slot, a, b, c};
+    ++g_queueTraceNext;
+    if (live && m_traceFrame <= kQueueTraceLiveFrames && debugSink() &&
+        g_queueTraceLiveLines < kQueueTraceLiveMaxLines) {
+        ++g_queueTraceLiveLines;
+        emitQueueTrace("[gpu-q]", e);
+    }
+}
+
+void GpuDevice::checkQueue(const char* site) {
+    if (m_queueErrorReported || !m_queue || !m_queue.isInErrorState())
+        return;
+    m_queueErrorReported = true;
+    if (!debugSink())
+        return;
+    char buf[160];
+    std::snprintf(buf, sizeof(buf),
+                  "[gpu-q] QUEUE IN ERROR before %s at frame %u; last %u ops follow (oldest first)",
+                  site, m_traceFrame,
+                  g_queueTraceNext < kQueueTraceRing ? g_queueTraceNext : kQueueTraceRing);
+    debugSink()(buf);
+    const uint32_t count = g_queueTraceNext < kQueueTraceRing ? g_queueTraceNext : kQueueTraceRing;
+    for (uint32_t i = g_queueTraceNext - count; i != g_queueTraceNext; ++i)
+        emitQueueTrace("[gpu-q] ring", g_queueTrace[i % kQueueTraceRing]);
+}
 
 GpuDevice::DebugSink GpuDevice::s_debugSink = nullptr;
 
@@ -70,6 +126,8 @@ bool GpuDevice::initialize() {
     m_lastFrameUploadWaitNs = 0;
     m_frameDumpArmed = false;
     m_frameDumpPending = false;
+    m_traceFrame = 0;
+    m_queueErrorReported = false;
     m_dev   = dk::DeviceMaker{}.setCbDebug(deviceDebug).create();
     if (!m_dev) {
         std::fprintf(stderr, "[GpuDevice] dk::Device creation failed\n");
@@ -313,6 +371,8 @@ void GpuDevice::createOffscreenGroup(bool overlay, GpuPool& pool) {
         cmd.clearColor(0, DkColorMask_RGBA, 0.f, 0.f, 0.f, 0.f);
     }
     cmd.barrier(DkBarrier_Full, DkInvalidateFlags_Image);
+    checkQueue("offscreen-clear");
+    traceQueue("offscreen-clear", 0, overlay ? 1u : 0u, totalOff, 0, true);
     m_queue.submitCommands(cmd.finishList());
     m_queue.waitIdle();
 }
@@ -322,6 +382,7 @@ int GpuDevice::beginFrame() {
     // that batch now so it can execute while acquireImage waits for display.
     // A second batch submission in endFrame covers glyphs created while rendering.
     // submitUploadBatch() already flushes the queue when work is submitted.
+    ++m_traceFrame;
     submitUploadBatch();
 
     // These two waits mean different things and have to be told apart.
@@ -336,7 +397,9 @@ int GpuDevice::beginFrame() {
     // something exceeded 16.67ms — not what, and not by how much. Four fixes
     // guessed from reading the render path all missed.
     const uint64_t tAcquire = armGetSystemTick();
+    checkQueue("acquire");
     m_slot = m_queue.acquireImage(m_swapchain);
+    traceQueue("acquire", m_slot, 0, 0, 0, true);
     const uint64_t tFence = armGetSystemTick();
     m_frameFences[m_slot].wait();
     const uint64_t tDone = armGetSystemTick();
@@ -389,9 +452,13 @@ void GpuDevice::endFrame() {
     m_cmdbuf[m_slot].signalFence(m_frameFences[m_slot]);
 
     auto cmdList = m_cmdbuf[m_slot].finishList();
+    checkQueue("frame-submit");
+    traceQueue("frame-submit", m_slot, m_frameUploads, m_frameUploadBatches,
+               m_frameDumpPending ? 1u : 0u, true);
     const uint64_t tSubmit = armGetSystemTick();
     m_queue.submitCommands(cmdList);
     m_queue.presentImage(m_swapchain, m_slot);
+    traceQueue("present", m_slot, 0, 0, 0, true);
     const uint64_t tPresent = armGetSystemTick();
 
     m_lastSubmitToPresentNs = armTicksToNs(tPresent - tSubmit);
@@ -465,6 +532,8 @@ void GpuDevice::beginUploadBatch() {
         // the flush threshold or present. A same-frame upload burst can wrap
         // all slots before either occurs, so kick their fence signals before
         // waiting. Without this, Theme Shop's first glyph burst deadlocks.
+        checkQueue("upload-wait-flush");
+        traceQueue("upload-wait-flush", slot, m_uploadCopyCount[slot], 0, 0, true);
         m_queue.flush();
         const uint64_t waitStart = armGetSystemTick();
         m_uploadFences[slot].wait();
@@ -498,6 +567,9 @@ void GpuDevice::submitUploadBatch() {
     // later texture sampling before signalling that this slot may be reused.
     m_uploadCmdbuf[slot].barrier(DkBarrier_Full, DkInvalidateFlags_Image);
     m_uploadCmdbuf[slot].signalFence(m_uploadFences[slot]);
+    checkQueue("upload-submit");
+    traceQueue("upload-submit", slot, m_uploadCopyCount[slot],
+               m_uploadStagingPool[slot].used, m_uploadTempStaging[slot] ? 1u : 0u, true);
     m_queue.submitCommands(m_uploadCmdbuf[slot].finishList());
     m_uploadInFlight[slot] = true;
     ++m_frameUploadBatches;
@@ -607,6 +679,8 @@ bool GpuDevice::downloadFramebufferRgba(std::vector<uint8_t>& outRgba,
     cmd.replayCmds({threedNop});
     cmd.barrier(DkBarrier_None, DkInvalidateFlags_L2Cache);
 
+    checkQueue("fb-download");
+    traceQueue("fb-download", 0, (uint32_t)outW, (uint32_t)outH, 0, true);
     m_queue.submitCommands(cmd.finishList());
     m_queue.waitIdle();
 
@@ -619,6 +693,8 @@ void GpuDevice::waitIdle() {
     if (!m_queue)
         return;
     submitUploadBatch();
+    checkQueue("waitIdle");
+    traceQueue("waitIdle", -1, 0, 0, 0, true);
     m_queue.waitIdle();
     retireSubmittedUploads();
 }
@@ -832,6 +908,12 @@ bool GpuDevice::uploadTexture(dk::Image& dst, const void* pixels, uint32_t size,
 
     ++m_uploadCopyCount[slot];
     ++m_frameUploads;
+    // c: destination pitch, bit31 = re-upload of a live image (video frame),
+    // bit30 = oversized temporary staging. Only large or live uploads are
+    // logged live; icons and glyphs stay in the ring.
+    traceQueue("upload-copy", slot, w, h,
+               dstPitch | (reuploadsLiveImage ? 0x80000000u : 0u) | (oversized ? 0x40000000u : 0u),
+               reuploadsLiveImage || oversized || uploadBytes >= kTraceMinBytes);
 
     // A large upload owns the slot's only temporary source block. Submit it
     // now; normal batches flush at capacity or immediately before endFrame.
