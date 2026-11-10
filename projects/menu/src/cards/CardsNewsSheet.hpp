@@ -101,6 +101,13 @@ private:
     float m_touchY = 0.f;
     float m_touchScroll = 0.f;
 
+    // G3a: a text line is rasterized (SDL_ttf + one GPU upload) the first time
+    // it is drawn. Opening the sheet or an article drew ~40 new lines in one
+    // frame (41-65 ms on console), so at most this many new lines are made per
+    // frame; lines already in the font cache are always drawn.
+    static constexpr int kNewLinesPerFrame = 8;
+    mutable int m_newLines = 0;
+
     std::shared_ptr<LoadState> m_loadState;
     std::future<void> m_loadFuture;
     std::vector<Decode> m_decodes;

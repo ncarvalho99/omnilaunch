@@ -33,6 +33,9 @@ public:
     // Measure text dimensions
     Vec2 measure(const std::string& text) const;
 
+    // True when draw() of this exact string needs no rasterization or upload.
+    bool cached(const std::string& text) const { return m_lruMap.count(text) != 0; }
+
     // Clear all cached glyph textures (call before GPU descriptor reset)
     void clearCache();
 

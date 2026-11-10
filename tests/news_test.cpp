@@ -71,6 +71,24 @@ int main() {
         assert(!news::parseNewsArticleFromMsgpack({0x01, 0x02, 0x03}, a));
     }
 
+    // 4b. Fixed-size buffer: msgpack map followed by zero padding (LS articles)
+    {
+        nlohmann::json j;
+        j["subject"] = "Local news";
+        j["body"] = {{"text", "Stored by the console itself."}};
+        auto bytes = nlohmann::json::to_msgpack(j);
+        bytes.resize(524288, 0x00);
+        news::NewsArticle a;
+        assert(news::parseNewsArticleFromMsgpack(bytes, a));
+        assert(a.subject == "Local news");
+        assert(a.body == "Stored by the console itself.");
+
+        // A padded non-map is still refused.
+        std::vector<std::uint8_t> scalar(4096, 0x00);
+        news::NewsArticle b;
+        assert(!news::parseNewsArticleFromMsgpack(scalar, b));
+    }
+
     // 5. Read tracking on SD path
     {
         const std::string tmpRead = "/tmp/test_news_read.txt";

@@ -397,6 +397,18 @@ void CardsNewsSheet::render(nxui::Renderer& ren, CardsChrome& chrome, float time
         return;
     }
 
+    // Lines not yet in the font cache are rationed (see header); in drawing
+    // order, so the list and the article's top fill in first.
+    m_newLines = 0;
+    auto text = [&](const std::string& s, const nxui::Vec2& at, nxui::Font& f, const nxui::Color& c) {
+        if (s.empty()) return;
+        if (!f.cached(s)) {
+            if (m_newLines >= kNewLinesPerFrame) return;
+            ++m_newLines;
+        }
+        ren.drawText(s, at, &f, c);
+    };
+
     // List.
     ren.pushClipRect({kListX - 6.f, kSheetTop - 4.f, kListW + 12.f, kVisible + 8.f});
     for (std::size_t i = 0; i < m_items.size(); ++i) {
@@ -411,8 +423,8 @@ void CardsNewsSheet::render(nxui::Renderer& ren, CardsChrome& chrome, float time
             ren.drawCircle({row.x + 14.f, row.y + 20.f}, 4.5f, CardsChrome::kGreen.withAlpha(a), 16);
         const float tx = row.x + 28.f;
         const float tw = row.right() - 14.f - tx;
-        ren.drawText(chrome.fit(chrome.labelFont(), n.title, tw), {tx, row.y + 8.f}, &chrome.labelFont(), white);
-        ren.drawText(chrome.fit(chrome.smallFont(), n.topic, tw), {tx, row.y + 36.f}, &chrome.smallFont(), muted);
+        text(chrome.fit(chrome.labelFont(), n.title, tw), {tx, row.y + 8.f}, chrome.labelFont(), white);
+        text(chrome.fit(chrome.smallFont(), n.topic, tw), {tx, row.y + 36.f}, chrome.smallFont(), muted);
     }
     ren.popClipRect();
     ren.drawRect({kListX + kListW + 16.f, kSheetTop, 1.5f, kVisible}, {1.f, 1.f, 1.f, 0.12f * a});
@@ -428,16 +440,16 @@ void CardsNewsSheet::render(nxui::Renderer& ren, CardsChrome& chrome, float time
     }
     for (const std::string& line : item.titleLines) {
         if (y > kSheetTop - kTitleLineH && y < kSheetBottom)
-            ren.drawText(line, {kArticleX, y}, &chrome.labelFont(), white);
+            text(line, {kArticleX, y}, chrome.labelFont(), white);
         y += kTitleLineH;
     }
     y += 4.f;
     if (y > kSheetTop - 24.f && y < kSheetBottom)
-        ren.drawText(item.topic, {kArticleX, y}, &chrome.smallFont(), muted);
+        text(item.topic, {kArticleX, y}, chrome.smallFont(), muted);
     y += 32.f;
     for (const std::string& line : item.bodyLines) {
         if (y > kSheetTop - kBodyLineH && y < kSheetBottom)
-            ren.drawText(line, {kArticleX, y}, &chrome.smallFont(), CardsChrome::kWhite.withAlpha(0.92f * a));
+            text(line, {kArticleX, y}, chrome.smallFont(), CardsChrome::kWhite.withAlpha(0.92f * a));
         y += kBodyLineH;
     }
     ren.popClipRect();

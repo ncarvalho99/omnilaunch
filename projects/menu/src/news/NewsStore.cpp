@@ -38,6 +38,12 @@ std::vector<std::uint8_t> binaryOf(const nlohmann::json& j, const char* key) {
 bool parseNewsArticleFromMsgpack(const std::vector<std::uint8_t>& bytes, NewsArticle& a) {
     if (bytes.empty()) return false;
     auto j = nlohmann::json::from_msgpack(bytes, true, false);
+    if (j.is_discarded()) {
+        // Locally stored articles (LS ids) come back as a fixed 512 KiB buffer:
+        // the msgpack map followed by padding, which a strict parse rejects
+        // (G3 console run 2026-11-10). Read the first value and ignore the rest.
+        j = nlohmann::json::from_msgpack(bytes, false, false);
+    }
     if (j.is_discarded() || !j.is_object()) return false;
 
     a.subject = textOf(j, "subject");
@@ -204,15 +210,18 @@ std::vector<NewsArticle> loadNewsArticles(Result& rc, int maxArticles, NewsLoadS
             return a.received_at > b.received_at;
         });
         std::size_t imageBytes = 0;
+        bool headLogged = false;
         for (u32 i = 0; i < count && (int)articles.size() < maxArticles; ++i) {
             std::vector<std::uint8_t> bytes;
             Result r = readArticle(records[i], bytes);
             NewsArticle a;
+            bool parsed = true;
             if (R_FAILED(r)) {
                 ++st.readFails;
                 st.lastReadRc = r;
             } else if (!parseNewsArticleFromMsgpack(bytes, a)) {
                 ++st.parseFails;
+                parsed = false;
                 r = MAKERESULT(Module_Libnx, LibnxError_BadInput);
             }
             if (R_SUCCEEDED(r)) {
@@ -228,6 +237,15 @@ std::vector<NewsArticle> loadNewsArticles(Result& rc, int maxArticles, NewsLoadS
                 articles.push_back(std::move(a));
             } else {
                 DebugLog::log("[news] article %.24s rc=0x%X bytes=%d", records[i].news_id, r, (int)bytes.size());
+                if (parsed == false && !headLogged && !bytes.empty()) {
+                    headLogged = true;
+                    // First parse failure only: the leading bytes tell the layout apart.
+                    char head[3 * 16 + 1] = {};
+                    const std::size_t n = std::min<std::size_t>(16, bytes.size());
+                    for (std::size_t k = 0; k < n; ++k)
+                        std::snprintf(head + k * 3, 4, "%02X ", bytes[k]);
+                    DebugLog::log("[news] unparsed head: %s", head);
+                }
             }
         }
     }
