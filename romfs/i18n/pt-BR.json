@@ -1524,6 +1524,13 @@
     "hb_offline": "Conecte-se à internet para verificar.",
     "hb_updated": "{n} homebrew atualizado(s)",
     "hb_failed": "Falha na atualização: ",
-    "hb_available": "{n} apps homebrew têm uma atualização (Menu > Atualizações)."
+    "hb_available": "{n} apps homebrew têm uma atualização (Menu > Atualizações).",
+    "nextendo_getting": "Baixando o app do Nextendo (Prelude)...",
+    "nextendo_counting": "Contando jogadores do Nextendo...",
+    "nextendo_players_count": "{n} jogadores online no Nextendo.",
+    "nextendo_players": "Jogadores do Nextendo",
+    "nextendo_needs_game": "O Nextendo roda como aplicação: é necessário ter um jogo instalado.",
+    "nextendo_offline": "Conecte-se à internet para baixar o app do Nextendo.",
+    "nextendo_download_failed": "O app do Nextendo não foi baixado. Verifique a conexão com a internet."
   }
 }

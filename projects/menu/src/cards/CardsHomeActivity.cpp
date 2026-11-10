@@ -863,6 +863,7 @@ void CardsHomeActivity::onUpdate(float dt) {
     pollNetCheck();
     pollArtJobs();
     pollHomebrewUpdates();
+    m_core.nextendo().update(m_core.net(), m_core.net().online());
     updateLock(dt);
     m_sheet.update(dt);
     m_musicSheet.update(dt, m_audio);
@@ -1092,6 +1093,11 @@ void CardsHomeActivity::updateStatus(float dt) {
         m_status.freeSpace = free;
     }
     m_status.avatar = m_avatar.get();
+    if (m_core.config().cards.showNextendo) {
+        m_status.nextendoPlayers = m_core.nextendo().totalOnline();
+    } else {
+        m_status.nextendoPlayers = -2;
+    }
 }
 
 void CardsHomeActivity::loadAvatar() {
@@ -1307,8 +1313,20 @@ void CardsHomeActivity::handleInput() {
         constexpr int kTopCount = static_cast<int>(TopButton::Count);
         const bool l = in.isDown(B::DLeft) || (in.isDown(B::LStickL) || in.isDown(B::RStickL));
         const bool r = in.isDown(B::DRight) || (in.isDown(B::LStickR) || in.isDown(B::RStickR));
-        if (l && m_topIndex > 0) { --m_topIndex; m_audio.playSfx(Sfx::Navigate); }
-        if (r && m_topIndex < kTopCount - 1) { ++m_topIndex; m_audio.playSfx(Sfx::Navigate); }
+        if (l && m_topIndex > 0) {
+            --m_topIndex;
+            if (static_cast<TopButton>(m_topIndex) == TopButton::Nextendo && !m_core.config().cards.showNextendo) {
+                if (m_topIndex > 0) --m_topIndex;
+            }
+            m_audio.playSfx(Sfx::Navigate);
+        }
+        if (r && m_topIndex < kTopCount - 1) {
+            ++m_topIndex;
+            if (static_cast<TopButton>(m_topIndex) == TopButton::Nextendo && !m_core.config().cards.showNextendo) {
+                if (m_topIndex < kTopCount - 1) ++m_topIndex;
+            }
+            m_audio.playSfx(Sfx::Navigate);
+        }
         if (in.isDown(B::DDown) || (in.isDown(B::LStickD) || in.isDown(B::RStickD)) || in.isDown(B::B)) {
             m_topZone = false;
             m_audio.playSfx(Sfx::Navigate);

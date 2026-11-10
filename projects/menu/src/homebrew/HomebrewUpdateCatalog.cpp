@@ -28,6 +28,7 @@ const std::map<std::string, std::string> kKnown = {
     {"ftpd", "mtheall/ftpd"},
     {"nxdumptool", "DarkMatterCore/nxdumptool"},
     {"nxactivitylog", "tallbl0nde/NX-Activity-Log"},
+    {"akira", "chiaki-ng/akira"},
 };
 
 std::string lower(std::string s) {

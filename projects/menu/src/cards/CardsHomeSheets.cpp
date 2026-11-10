@@ -86,6 +86,18 @@ void CardsHomeActivity::activateTop() {
     case TopButton::Menu: openDotsMenu(); return;
     case TopButton::Sort: openSortSheet(); return;
     case TopButton::User: openUsersSheet(); return;
+    case TopButton::Nextendo: {
+        const int count = m_core.nextendo().totalOnline();
+        if (count < 0) {
+            showToast(i18n.tr("cards.nextendo_counting", "Counting Nextendo players..."));
+        } else {
+            std::string msg = i18n.tr("cards.nextendo_players_count", "{n} players online in Nextendo.");
+            const auto pos = msg.find("{n}");
+            if (pos != std::string::npos) msg.replace(pos, 3, std::to_string(count));
+            showToast(msg);
+        }
+        return;
+    }
     case TopButton::Bell: openNotificationsSheet(); return;
     case TopButton::Settings: openSettingsSheet(); return;
     case TopButton::Power:
@@ -1051,6 +1063,20 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
             m_switchTarget = home::HomeStyle::Classic;
         };
         s.rows.push_back(std::move(style));
+        Row nextendo;
+        nextendo.label = i18n.tr("cards.nextendo_players", "Nextendo players");
+        nextendo.value = [this]() {
+            return m_core.config().cards.showNextendo
+                ? nxui::I18n::instance().tr("setting.on", "On")
+                : nxui::I18n::instance().tr("setting.off", "Off");
+        };
+        nextendo.onChange = [this, reopen](int) {
+            auto& c = m_core.config().cards;
+            c.showNextendo = !c.showNextendo;
+            saveConfig("cards nextendo players");
+            reopen();
+        };
+        s.rows.push_back(std::move(nextendo));
         all["home"] = std::move(s);
     }
     { // Appearance (HomeNX E8, C-SK-6/8: accent, glass, haze, motion).

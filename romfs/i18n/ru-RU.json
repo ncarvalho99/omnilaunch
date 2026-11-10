@@ -1319,6 +1319,13 @@
     "hb_offline": "Подключитесь к интернету для проверки.",
     "hb_updated": "Обновлено homebrew: {n}",
     "hb_failed": "Ошибка обновления: ",
-    "hb_available": "Для {n} приложений homebrew есть обновление (Меню > Обновления)."
+    "hb_available": "Для {n} приложений homebrew есть обновление (Меню > Обновления).",
+    "nextendo_getting": "Загрузка приложения Nextendo (Prelude)...",
+    "nextendo_counting": "Подсчёт игроков Nextendo...",
+    "nextendo_players_count": "Игроков онлайн в Nextendo: {n}.",
+    "nextendo_players": "Игроки Nextendo",
+    "nextendo_needs_game": "Nextendo работает как приложение: требуется установленная игра.",
+    "nextendo_offline": "Подключитесь к интернету, чтобы скачать приложение Nextendo.",
+    "nextendo_download_failed": "Приложение Nextendo не скачалось. Проверьте подключение к интернету."
   }
 }

@@ -62,6 +62,9 @@ HomeCore::HomeCore() {
         m_catalog.setPendingTransform({});
         m_catalog.waitIdle();
     });
+    addShutdownHook(ShutdownPhase::Services, "discord", [this] {
+        m_discord.shutdown();
+    });
     addShutdownHook(ShutdownPhase::Services, "play-time refresh", [this] {
         m_playtime.shutdown();
     });
@@ -113,6 +116,7 @@ void HomeCore::setRequestExit(std::function<void()> cb) {
 }
 
 void HomeCore::quiesceWriters() {
+    m_discord.beginShutdown();
     if (m_frontendQuiesce) {
         m_frontendQuiesce();
     }

@@ -169,9 +169,12 @@ void CardsChrome::drawTopBar(nxui::Renderer& r, const StatusSnapshot& st, TopBut
     const float wBattery = m_pill.measure(battery).x;
     const float wTemp = temp[0] ? 24.f + m_pill.measure(temp).x + 6.f + 22.f : 0.f;
     const float wFree = st.freeSpace.empty() ? 0.f : 26.f + m_pill.measure(st.freeSpace).x;
+    const std::string players = st.nextendoPlayers == -1 ? "?" : (st.nextendoPlayers >= 0 ? std::to_string(st.nextendoPlayers) : "");
+    const float wPlayers = (st.nextendoPlayers >= -1) ? (24.f + 6.f + m_pill.measure(players).x) : 0.f;
     const float bolt = st.charging ? 18.f : 0.f;
     const float width = 9.f + face + 14.f + wClock + gap + bolt + wBattery +
-                        (wTemp > 0.f ? gap + wTemp : 0.f) + (wFree > 0.f ? gap + wFree : 0.f) + 18.f;
+                        (wTemp > 0.f ? gap + wTemp : 0.f) + (wFree > 0.f ? gap + wFree : 0.f) +
+                        (wPlayers > 0.f ? gap + wPlayers : 0.f) + 18.f;
     const nxui::Rect pill{kPillRight - width, y - 26.f, width, 52.f};
     r.drawRoundedRect(pill, glassTint(1.f), 26.f);
     r.drawRoundedRectOutline(pill, kGlassEdge, 26.f, 1.5f);
@@ -219,6 +222,18 @@ void CardsChrome::drawTopBar(nxui::Renderer& r, const StatusSnapshot& st, TopBut
         r.drawRoundedRectOutline({x + 2.f, y - 10.f, 14.f, 20.f}, kWhite, 3.f, 2.f);
         x += 26.f;
         textMid(r, m_pill, st.freeSpace, x, y, kWhite);
+        x += m_pill.measure(st.freeSpace).x;
+    }
+    if (wPlayers > 0.f) {
+        x += gap;
+        const nxui::Rect playersHit{x - 4.f, y - 20.f, wPlayers + 8.f, 40.f};
+        icon(r, "nextendo", x + 12.f, y, 22.f, kWhite);
+        textMid(r, m_pill, players, x + 24.f + 6.f, y, kWhite);
+        if (on(TopButton::Nextendo)) {
+            const float pulse = 0.8f + 0.2f * std::sin(time * 5.f);
+            r.drawRoundedRectOutline(playersHit, accent(pulse), 20.f, 2.5f);
+        }
+        x += wPlayers;
     }
 
     // Bell (smaller, no circle), music, power, settings.

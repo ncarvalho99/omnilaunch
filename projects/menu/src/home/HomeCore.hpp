@@ -22,6 +22,8 @@
 #include "launcher/AppListLoader.hpp"
 #include "steamgriddb/SteamGridDbManager.hpp"
 #include "launcher/AppletLauncher.hpp"
+#include "nextendo/NextendoService.hpp"
+#include "discord/DiscordService.hpp"
 #include "core/Config.hpp"
 #include <nxui/core/ThreadPool.hpp>
 #include <cstddef>
@@ -69,6 +71,10 @@ public:
     nxui::ThreadPool& threadPool() { return m_threadPool; }
     AppletLauncher& launcher() { return m_launcher; }
     net::NetService& net() { return m_net; }
+    nextendo::NextendoService& nextendo() { return m_nextendo; }
+    const nextendo::NextendoService& nextendo() const { return m_nextendo; }
+    discord::DiscordService& discord() { return m_discord; }
+    const discord::DiscordService& discord() const { return m_discord; }
 
     void setRequestExit(std::function<void()> cb);
     void setFrontendQuiesce(std::function<void()> quiesce) { m_frontendQuiesce = std::move(quiesce); }
@@ -144,6 +150,8 @@ private:
     nxui::ThreadPool m_threadPool{2};
     AppletLauncher m_launcher;
     net::NetService m_net;
+    nextendo::NextendoService m_nextendo;
+    discord::DiscordService m_discord;
     std::function<void()> m_requestExit;
     std::function<void()> m_frontendQuiesce;
     bool m_frontendSwitch = false;

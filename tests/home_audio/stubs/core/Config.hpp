@@ -8,6 +8,7 @@ struct AppConfig {
  themeMusicEnabled=true, musicEnabled=true;
  int accessibilitySpeechRate=175;
  std::string soundPreset="wiiu", audioSourcePreference="theme_only";
+ std::string nextendoPath="sdmc:/switch/prelude.nro";
  bool safeMode() const { return true; } // No host writes to sdmc:/ paths.
  std::map<std::uint64_t,std::uint64_t> playtime;
  std::uint64_t playtimeCheckedSequence=0;

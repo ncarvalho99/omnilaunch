@@ -25,9 +25,10 @@ struct StatusSnapshot {
     float socCelsius = -1.f;  // -1 unknown
     std::string freeSpace;    // "13.3 GB", empty = hidden
     const nxui::Texture* avatar = nullptr;
+    int nextendoPlayers = -2; // -2 disabled/hidden, -1 counting, >=0 online players
 };
 
-enum class TopButton { Menu, Discord, Sort, User, Bell, Music, Power, Settings, Count };
+enum class TopButton { Menu, Discord, Sort, User, Nextendo, Bell, Music, Power, Settings, Count };
 
 class CardsChrome {
 public:

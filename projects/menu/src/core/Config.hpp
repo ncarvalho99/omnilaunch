@@ -76,6 +76,8 @@ struct AppConfig {
         // Picture preferences (HomeNX G2, C-NET-4).
         bool boxArt = true;   // prefer box covers over eShop banners
         bool titlePics = true;// enable title logos (SteamGridDB)
+        // Nextendo (HomeNX H3, C-NET-3).
+        bool showNextendo = true; // show Nextendo online count in top status pill
 
         bool pageHidden(int page) const {
             for (int h : hiddenPages)
@@ -94,6 +96,7 @@ struct AppConfig {
     // Day number of the last update check, so the console asks GitHub once a
     // day rather than on every return from a game.
     int   lastUpdateCheckDay = 0;
+    std::string nextendoPath = "sdmc:/switch/prelude.nro";
     bool  clockUse12Hour = false;
     bool  accessibilityEnabled = true;
     bool  accessibilitySpeakHints = true;

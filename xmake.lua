@@ -315,7 +315,7 @@ target("SwitchU")
         add_packages("deko3d", {links = is_mode("debug") and "deko3dd" or "deko3d"})
         add_linkorders(is_mode("debug") and "deko3dd" or "deko3d", "nx")
     end
-    add_syslinks("nx")
+    add_syslinks("nx", "mbedtls", "mbedcrypto")
 
     if is_mode("release") then
         add_cxflags("-O3", "-flto=auto", "-ffast-math", {force = true})

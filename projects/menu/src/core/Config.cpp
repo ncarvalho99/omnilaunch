@@ -166,9 +166,11 @@ bool AppConfig::load() {
         readIds("panelTitle", panel);
         cards.panelTitleId = panel.empty() ? 0 : panel.front();
         readJsonOpt(c, "panelButtonEnabled", cards.panelButtonEnabled);
+        readJsonOpt(c, "showNextendo", cards.showNextendo);
     }
     cards.normalize();
     readJsonOpt(j, "lastUpdateCheckDay", lastUpdateCheckDay);
+    readJsonOpt(j, "nextendoPath", nextendoPath);
     readJsonOpt(j, "clockUse12Hour", clockUse12Hour);
     readJsonOpt(j, "backgroundBlur", backgroundBlur);
     readJsonOpt(j, "glassSharpness", glassSharpness);
@@ -389,6 +391,7 @@ bool AppConfig::save() const {
         c["panelTitle"] = ids(cards.panelTitleId ? std::vector<std::uint64_t>{cards.panelTitleId}
                                                : std::vector<std::uint64_t>{});
         c["panelButtonEnabled"] = cards.panelButtonEnabled;
+        c["showNextendo"] = cards.showNextendo;
         c["settingsOrder"] = cards.settingsOrder;
         c["tutorialDone"] = cards.tutorialDone;
         c["accent"] = cards.accent;
@@ -401,6 +404,7 @@ bool AppConfig::save() const {
         j["cards"] = std::move(c);
     }
     j["lastUpdateCheckDay"] = lastUpdateCheckDay;
+    j["nextendoPath"] = nextendoPath;
     j["clockUse12Hour"] = clockUse12Hour;
     j["backgroundBlur"] = backgroundBlur;
     j["glassSharpness"] = glassSharpness;

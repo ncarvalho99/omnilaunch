@@ -22,6 +22,7 @@ int main() {
 
     assert(squash("Hekate Toolbox") == "hekatetoolbox");
     assert(knownRepo("JKSV") == "J-D-K/JKSV");
+    assert(knownRepo("Akira") == "chiaki-ng/akira");
     assert(knownRepo("Nope").empty());
 
     // Store parsing keeps only safe packages with an .nro binary.

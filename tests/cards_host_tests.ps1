@@ -26,6 +26,10 @@ g++ -std=c++20 -Wall -Wextra -Iprojects/menu/src -Iprojects/common/include -I"${
 /tmp/news_test
 g++ -std=c++20 -Wall -Wextra -Iprojects/menu/src -I"${J%/nlohmann/json.hpp}" tests/homebrew_update_test.cpp projects/menu/src/homebrew/HomebrewUpdateCatalog.cpp -o /tmp/homebrew_update_test
 /tmp/homebrew_update_test
+g++ -std=c++20 -Wall -Wextra -Iprojects/menu/src -I"${J%/nlohmann/json.hpp}" tests/nextendo_test.cpp projects/menu/src/nextendo/NextendoCatalog.cpp -o /tmp/nextendo_test
+/tmp/nextendo_test
+g++ -std=c++20 -Wall -Wextra -Iprojects/menu/src -Iprojects/common/include -I"${J%/nlohmann/json.hpp}" tests/discord_core_test.cpp projects/menu/src/discord/DiscordAccounts.cpp projects/menu/src/discord/DiscordApi.cpp -o /tmp/discord_core_test
+/tmp/discord_core_test
 '@
 & docker run --rm --network none -v "${repo}:/src:ro" -v switchu-xmake:/root/.xmake:ro -w /src --entrypoint sh switchu-build:latest -c $script
 if ($LASTEXITCODE -ne 0) { throw "Cards host regressions failed (exit $LASTEXITCODE)." }
