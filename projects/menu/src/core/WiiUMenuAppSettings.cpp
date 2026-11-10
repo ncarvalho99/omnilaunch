@@ -911,7 +911,7 @@ void WiiUMenuApp::ensureDiscordPanel() {
         m_discordPanel = std::make_shared<discord::DiscordPanel>();
         m_discordPanel->setFont(&m_fontNormal);
         m_discordPanel->setSmallFont(&m_fontSmall);
-        m_discordPanel->setService(&m_homeCore.discord(), &m_homeCore.net());
+        m_discordPanel->setService(&m_homeCore.discord(), &m_homeCore);
         discord::DiscordPanel::Callbacks cb;
         cb.onClosed = [this]() {
             focusGridSelection();
@@ -921,13 +921,13 @@ void WiiUMenuApp::ensureDiscordPanel() {
         cb.onReply = [this](discord::Snowflake chanId, const std::string& name) {
             requestTextEntry("Discord: " + name, "Type your message", "", 200, false,
                 [this, chanId](const std::string& text) {
-                    m_homeCore.discord().sendMessage(m_homeCore.net(), chanId, text);
+                    m_homeCore.discord().sendMessage(m_homeCore, chanId, text);
                 });
         };
         cb.onUserTokenLogin = [this]() {
             requestTextEntry("Discord Token", "Enter Discord account token", "", 120, true,
                 [this](const std::string& tok) {
-                    m_homeCore.discord().signInWithToken(m_homeCore.net(), tok);
+                    m_homeCore.discord().signInWithToken(m_homeCore, tok);
                 });
         };
         m_discordPanel->setCallbacks(std::move(cb));

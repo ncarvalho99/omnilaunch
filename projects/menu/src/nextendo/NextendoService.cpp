@@ -18,24 +18,29 @@ NextendoService::NextendoService() = default;
 
 NextendoService::~NextendoService() = default;
 
-void NextendoService::update(net::NetService& net, bool netUp) {
+void NextendoService::update(home::HomeCore& core, bool netUp) {
     if (!netUp) return;
     const auto now = std::chrono::steady_clock::now();
     const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
     if (m_lastFetchTick == 0 || (nowMs - m_lastFetchTick >= 60000)) {
-        refresh(net);
+        refresh(core);
     }
 }
 
-void NextendoService::refresh(net::NetService& net) {
+void NextendoService::refresh(home::HomeCore& core) {
     if (m_fetching.exchange(true)) return;
     const auto now = std::chrono::steady_clock::now();
     m_lastFetchTick = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
 
-    std::thread([this, &net]() {
-        fetchCounts(net);
+    if (!core.threadPool().acceptingTasks()) {
         m_fetching.store(false);
-    }).detach();
+        return;
+    }
+
+    core.threadPool().submit([this, &core]() {
+        fetchCounts(core.net());
+        m_fetching.store(false);
+    });
 }
 
 void NextendoService::fetchCounts(net::NetService& net) {
@@ -150,7 +155,13 @@ int NextendoService::openNextendoApp(home::HomeCore& core, std::string& outMsg) 
     m_downloading.store(true);
     outMsg = "nextendo_getting";
 
-    std::thread([this, &core]() {
+    if (!core.threadPool().acceptingTasks()) {
+        m_downloading.store(false);
+        outMsg = "nextendo_download_failed";
+        return -1;
+    }
+
+    core.threadPool().submit([this, &core]() {
         net::Download dl;
         dl.url = kNextendoDownloadUrl;
         dl.path = kNextendoNroDefault;
@@ -162,7 +173,7 @@ int NextendoService::openNextendoApp(home::HomeCore& core, std::string& outMsg) 
         } else {
             DebugLog::log("[nextendo] Prelude download failed: %s (status %ld)", res.error.c_str(), res.status);
         }
-    }).detach();
+    });
 
     return 1;
 }

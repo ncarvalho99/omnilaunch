@@ -147,7 +147,7 @@ void CardsHomeActivity::ensureDiscordPanel() {
         m_discordPanel = std::make_shared<discord::DiscordPanel>();
         m_discordPanel->setFont(&m_chrome.titleFont());
         m_discordPanel->setSmallFont(&m_chrome.labelFont());
-        m_discordPanel->setService(&m_core.discord(), &m_core.net());
+        m_discordPanel->setService(&m_core.discord(), &m_core);
         discord::DiscordPanel::Callbacks cb;
         cb.onClosed = [this]() {
             focusManager().setFocus(nullptr);
@@ -156,12 +156,12 @@ void CardsHomeActivity::ensureDiscordPanel() {
         cb.onActivate = [this]() { m_audio.playSfx(Sfx::Activate); };
         cb.onReply = [this](discord::Snowflake chanId, const std::string& name) {
             requestText("Discord: " + name, "Type your message", "", [this, chanId](const std::string& text) {
-                m_core.discord().sendMessage(m_core.net(), chanId, text);
+                m_core.discord().sendMessage(m_core, chanId, text);
             });
         };
         cb.onUserTokenLogin = [this]() {
             requestText("Discord Token", "Enter Discord account token", "", [this](const std::string& tok) {
-                m_core.discord().signInWithToken(m_core.net(), tok);
+                m_core.discord().signInWithToken(m_core, tok);
             });
         };
         m_discordPanel->setCallbacks(std::move(cb));

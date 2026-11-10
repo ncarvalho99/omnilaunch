@@ -1,5 +1,6 @@
 #include "discord/DiscordPanel.hpp"
 #include "discord/DiscordApi.hpp"
+#include "home/HomeCore.hpp"
 
 #include <nxui/core/Animation.hpp>
 #include <nxui/core/GpuDevice.hpp>
@@ -74,8 +75,8 @@ void DiscordPanel::show() {
     m_scroll = 0.f;
     setVisible(true);
     setFocusable(true);
-    if (m_service && m_net) {
-        m_service->activate(*m_net);
+    if (m_service && m_core) {
+        m_service->activate(*m_core);
     }
     rebuildRows();
     bindInput();
@@ -95,10 +96,10 @@ void DiscordPanel::openChat(Snowflake channelId, Snowflake guildId, const std::s
     m_chatGuildId = guildId;
     m_chatName = name;
     m_chatScroll = 0.f;
-    if (m_service && m_net) {
+    if (m_service && m_core) {
         // Trigger fetch of messages
         std::vector<Message> msgs;
-        api::fetchMessages(*m_net, m_service->accounts().current().token, channelId, msgs);
+        api::fetchMessages(m_core->net(), m_service->accounts().current().token, channelId, msgs);
     }
 }
 
@@ -211,8 +212,8 @@ void DiscordPanel::activateRow() {
     if (m_cb.onActivate) m_cb.onActivate();
 
     if (r.kind == Row::Button) {
-        if (r.action == 1 && m_service && m_net) { // QR login
-            m_service->startQrLogin(*m_net);
+        if (r.action == 1 && m_service && m_core) { // QR login
+            m_service->startQrLogin(*m_core);
         } else if (r.action == 2) { // Token login
             if (m_cb.onUserTokenLogin) m_cb.onUserTokenLogin();
         } else if (r.action == 3 && m_service) { // Sign out
@@ -222,8 +223,8 @@ void DiscordPanel::activateRow() {
         }
     } else if (r.kind == Row::Dm || r.kind == Row::Channel) {
         openChat(r.id, (m_railSel > 0 && m_service) ? m_service->guilds()[m_railSel - 1].id : 0, r.text);
-    } else if (r.kind == Row::Account && m_service && m_net) {
-        m_service->switchAccount(*m_net, snowflakeToString(r.id));
+    } else if (r.kind == Row::Account && m_service && m_core) {
+        m_service->switchAccount(*m_core, snowflakeToString(r.id));
         m_view = View::Home;
         rebuildRows();
     }
@@ -322,7 +323,7 @@ void DiscordPanel::onUpdate(float dt) {
         }
     }
 
-    if (m_service && m_net && m_active) {
+    if (m_service && m_core && m_active) {
         const auto st = m_service->state();
         if (st == DiscordService::State::QrLogin) {
             // Keep checking

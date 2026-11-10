@@ -16,6 +16,7 @@
 #include <vector>
 
 namespace net { class NetService; }
+namespace home { class HomeCore; }
 
 namespace discord {
 
@@ -36,10 +37,10 @@ public:
     DiscordService& operator=(const DiscordService&) = delete;
 
     /// First call loads saved accounts and connects if one exists.
-    void activate(net::NetService& net);
+    void activate(home::HomeCore& core);
 
     /// Main-thread update per frame: polls gateway events, handles QR auth transitions.
-    void update(net::NetService& net);
+    void update(home::HomeCore& core);
 
     /// Begins graceful background teardown when launching a game.
     void beginShutdown();
@@ -64,18 +65,18 @@ public:
     const std::vector<Guild>& guilds() const { return m_guilds; }
 
     std::vector<Message> messages(Snowflake channelId) const;
-    void sendMessage(net::NetService& net, Snowflake channelId, const std::string& text);
+    void sendMessage(home::HomeCore& core, Snowflake channelId, const std::string& text);
 
-    void startQrLogin(net::NetService& net);
+    void startQrLogin(home::HomeCore& core);
     void cancelQrLogin();
-    void signInWithToken(net::NetService& net, const std::string& token);
-    void switchAccount(net::NetService& net, const std::string& id);
+    void signInWithToken(home::HomeCore& core, const std::string& token);
+    void switchAccount(home::HomeCore& core, const std::string& id);
     void signOut();
 
     bool takeAlert(Alert& out);
 
 private:
-    void connectAccount(net::NetService& net, const Account& acc);
+    void connectAccount(home::HomeCore& core, const Account& acc);
     void processEvent(const DiscordGateway::Event& ev);
 
     DiscordAccounts m_accounts;

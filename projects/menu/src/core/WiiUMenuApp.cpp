@@ -7903,7 +7903,7 @@ void WiiUMenuApp::onUpdate(float dt) {
     if (m_switchFadeIn > 0.f)
         m_switchFadeIn = std::max(0.f, m_switchFadeIn - dt / 0.25f);
     logControllerState(dt);
-    m_homeCore.discord().update(m_homeCore.net());
+    m_homeCore.discord().update(m_homeCore);
     m_animalesePlayer.update(dt);
     m_audio.update();
 

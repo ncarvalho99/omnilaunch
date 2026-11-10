@@ -28,10 +28,10 @@ public:
 
     /// Update loop called on main thread. Periodically refreshes counts (every 60s)
     /// when network is up.
-    void update(net::NetService& net, bool netUp);
+    void update(home::HomeCore& core, bool netUp);
 
     /// Force immediate background refresh of online counts.
-    void refresh(net::NetService& net);
+    void refresh(home::HomeCore& core);
 
     /// Total players online across all reported titles (-1 = counting/no data).
     int totalOnline() const;

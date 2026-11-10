@@ -863,8 +863,8 @@ void CardsHomeActivity::onUpdate(float dt) {
     pollNetCheck();
     pollArtJobs();
     pollHomebrewUpdates();
-    m_core.nextendo().update(m_core.net(), m_core.net().online());
-    m_core.discord().update(m_core.net());
+    m_core.nextendo().update(m_core, m_core.net().online());
+    m_core.discord().update(m_core);
     discord::Alert discordAlert;
     if (m_core.discord().takeAlert(discordAlert)) {
         showToast(discordAlert.title + ": " + discordAlert.text);

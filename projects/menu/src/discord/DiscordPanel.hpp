@@ -18,7 +18,7 @@
 #include <vector>
 
 namespace nxui { class GpuDevice; class Input; }
-namespace net { class NetService; }
+namespace home { class HomeCore; }
 
 namespace discord {
 
@@ -37,7 +37,7 @@ public:
 
     void setFont(nxui::Font* f) { m_font = f; }
     void setSmallFont(nxui::Font* f) { m_smallFont = f; }
-    void setService(DiscordService* s, net::NetService* net) { m_service = s; m_net = net; }
+    void setService(DiscordService* s, home::HomeCore* core) { m_service = s; m_core = core; }
     void setCallbacks(Callbacks cb) { m_cb = std::move(cb); }
 
     void show();
@@ -84,7 +84,7 @@ private:
     void drawQrView(nxui::Renderer& ren, const nxui::Rect& area, float a);
 
     DiscordService* m_service = nullptr;
-    net::NetService* m_net = nullptr;
+    home::HomeCore* m_core = nullptr;
     nxui::Font* m_font = nullptr;
     nxui::Font* m_smallFont = nullptr;
     Callbacks m_cb;
