@@ -1,0 +1,117 @@
+#pragma once
+// Discord slide-out panel for Cards and Classic (HomeNX H2, H4, C-UI-12).
+// Slides in from the left (460x688) with dark Discord styling.
+// Supports QR login view, direct messages, servers/channels list, chat view,
+// and account switcher.
+// New OmniLaunch implementation written from scratch.
+
+#include "discord/DiscordService.hpp"
+#include "discord/DiscordTypes.hpp"
+
+#include <nxui/core/Font.hpp>
+#include <nxui/core/Renderer.hpp>
+#include <nxui/widgets/Widget.hpp>
+
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
+
+namespace nxui { class GpuDevice; class Input; }
+namespace net { class NetService; }
+
+namespace discord {
+
+class DiscordPanel : public nxui::Widget {
+public:
+    struct Callbacks {
+        std::function<void()> onClosed;
+        std::function<void(Snowflake channelId, const std::string& name)> onReply;
+        std::function<void()> onNavigate;
+        std::function<void()> onActivate;
+        std::function<void()> onUserTokenLogin;
+    };
+
+    DiscordPanel();
+    ~DiscordPanel() override;
+
+    void setFont(nxui::Font* f) { m_font = f; }
+    void setSmallFont(nxui::Font* f) { m_smallFont = f; }
+    void setService(DiscordService* s, net::NetService* net) { m_service = s; m_net = net; }
+    void setCallbacks(Callbacks cb) { m_cb = std::move(cb); }
+
+    void show();
+    void hide();
+    bool isActive() const { return m_active || m_anim > 0.001f; }
+    bool isOpen() const { return m_active; }
+
+    void openChat(Snowflake channelId, Snowflake guildId, const std::string& name);
+    void handleTouch(const nxui::Input& in);
+
+protected:
+    void onUpdate(float dt) override;
+    void onRender(nxui::Renderer& ren) override;
+
+private:
+    enum class View { Home, Chat, Accounts };
+
+    struct Row {
+        enum Kind { Dm, Channel, Account, Button, Info } kind = Info;
+        std::string text;
+        std::string detail;
+        Snowflake id = 0;
+        int action = 0;
+        bool selected = false;
+        bool unread = false;
+    };
+
+    void bindInput();
+    void rebuildRows();
+    void move(int dir);
+    void moveRail(int dir);
+    void activateRow();
+    void back();
+    void openAccounts();
+
+    bool railShown() const;
+    bool listFocused() const { return !railShown() || m_column == 1; }
+    nxui::Rect panelRect() const;
+
+    void drawRail(nxui::Renderer& ren, const nxui::Rect& area, float a);
+    void drawRows(nxui::Renderer& ren, const nxui::Rect& area, float a);
+    void drawChat(nxui::Renderer& ren, const nxui::Rect& area, float a);
+    void drawMe(nxui::Renderer& ren, const nxui::Rect& area, float a);
+    void drawQrView(nxui::Renderer& ren, const nxui::Rect& area, float a);
+
+    DiscordService* m_service = nullptr;
+    net::NetService* m_net = nullptr;
+    nxui::Font* m_font = nullptr;
+    nxui::Font* m_smallFont = nullptr;
+    Callbacks m_cb;
+
+    bool m_active = false;
+    float m_anim = 0.f;
+    View m_view = View::Home;
+
+    std::vector<Row> m_rows;
+    int m_sel = -1;
+    float m_scroll = 0.f;
+
+    // Rail (left server column): 0 = DMs, i = guilds[i-1]
+    int m_railSel = 0;
+    int m_column = 1; // 0 = rail, 1 = list
+    float m_railScroll = 0.f;
+    std::vector<std::pair<int, nxui::Rect>> m_railHits;
+
+    // Chat view
+    Snowflake m_chatId = 0;
+    Snowflake m_chatGuildId = 0;
+    std::string m_chatName;
+    float m_chatScroll = 0.f;
+
+    std::vector<std::pair<int, nxui::Rect>> m_hits;
+    nxui::Rect m_backHit{};
+    nxui::Rect m_replyHit{};
+};
+
+} // namespace discord

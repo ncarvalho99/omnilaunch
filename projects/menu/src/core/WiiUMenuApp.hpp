@@ -21,6 +21,7 @@
 #include "widgets/OverlayDialog.hpp"
 #include "widgets/QuickSettingsOverlay.hpp"
 #include "widgets/ContextMenu.hpp"
+#include "discord/DiscordPanel.hpp"
 #include "widgets/ProgressDialog.hpp"
 #include "widgets/LockScreen.hpp"
 #include "widgets/AppletButton.hpp"
@@ -447,6 +448,8 @@ private:
     std::shared_ptr<GlossyIcon> makeIcon(const AppEntry& entry);
     nxui::Texture* folderCoverTexture(std::uint64_t titleId);
     void applyFolderCoversToIcons();
+    void openDiscordPanel();
+    void ensureDiscordPanel();
     void wireFocusCallback();
     void wireGlobalActions();
     void toggleAccessibilitySpeech();
@@ -630,6 +633,7 @@ private:
     std::shared_ptr<OverlayDialog>     m_userSelect;
     std::shared_ptr<OverlayDialog>     m_dialog;
     std::shared_ptr<QuickSettingsOverlay> m_quickSettings;
+    std::shared_ptr<discord::DiscordPanel> m_discordPanel;
     std::shared_ptr<ContextMenu>       m_contextMenu;
     std::shared_ptr<ProgressDialog>    m_progressDialog;
     std::shared_ptr<SettingsScreen>    m_settings;

@@ -66,7 +66,7 @@ std::string onOff(bool v) {
 bool CardsHomeActivity::overlayActive() const {
     return (m_userSelect && m_userSelect->isActive()) || (m_text && m_text->isActive()) ||
            (m_quick && m_quick->isActive()) || (m_deleteProgress && m_deleteProgress->isActive()) ||
-           (m_picker && m_picker->isActive());
+           (m_picker && m_picker->isActive()) || (m_discordPanel && m_discordPanel->isActive());
 }
 
 void CardsHomeActivity::saveConfig(const char* why) {
@@ -134,12 +134,45 @@ void CardsHomeActivity::activateTop() {
     case TopButton::Music:
         openMusicSheet();
         return;
+    case TopButton::Discord:
+        openDiscord();
+        return;
     default:
         break;
     }
-    // Discord (Part H) comes later.
-    m_audio.playSfx(Sfx::Activate);
-    showToast(i18n.tr("cards.coming_soon", "Coming in a later update"));
+}
+
+void CardsHomeActivity::ensureDiscordPanel() {
+    if (!m_discordPanel) {
+        m_discordPanel = std::make_shared<discord::DiscordPanel>();
+        m_discordPanel->setFont(&m_chrome.titleFont());
+        m_discordPanel->setSmallFont(&m_chrome.labelFont());
+        m_discordPanel->setService(&m_core.discord(), &m_core.net());
+        discord::DiscordPanel::Callbacks cb;
+        cb.onClosed = [this]() {
+            focusManager().setFocus(nullptr);
+        };
+        cb.onNavigate = [this]() { m_audio.playSfx(Sfx::Navigate); };
+        cb.onActivate = [this]() { m_audio.playSfx(Sfx::Activate); };
+        cb.onReply = [this](discord::Snowflake chanId, const std::string& name) {
+            requestText("Discord: " + name, "Type your message", "", [this, chanId](const std::string& text) {
+                m_core.discord().sendMessage(m_core.net(), chanId, text);
+            });
+        };
+        cb.onUserTokenLogin = [this]() {
+            requestText("Discord Token", "Enter Discord account token", "", [this](const std::string& tok) {
+                m_core.discord().signInWithToken(m_core.net(), tok);
+            });
+        };
+        m_discordPanel->setCallbacks(std::move(cb));
+    }
+}
+
+void CardsHomeActivity::openDiscord() {
+    m_audio.playSfx(Sfx::ModalShow);
+    ensureDiscordPanel();
+    m_discordPanel->show();
+    focusManager().setFocus(m_discordPanel.get());
 }
 
 void CardsHomeActivity::openMusicSheet() {
@@ -823,6 +856,19 @@ void CardsHomeActivity::openNotificationsSheet() {
         }
     }
 #endif
+    if (m_core.discord().state() == discord::DiscordService::State::Ready) {
+        for (const auto& d : m_core.discord().dms()) {
+            CardsSheet::Row r;
+            r.label = d.name.empty() ? "Discord DM" : "Discord: " + d.name;
+            r.detail = d.topic;
+            r.onA = [this, chanId = d.id, name = d.name]() {
+                m_sheet.close();
+                openDiscord();
+                if (m_discordPanel) m_discordPanel->openChat(chanId, 0, name);
+            };
+            rows.push_back(std::move(r));
+        }
+    }
     if (rows.empty()) {
         CardsSheet::Row r;
         r.label = i18n.tr("cards.notify_empty", "All caught up");

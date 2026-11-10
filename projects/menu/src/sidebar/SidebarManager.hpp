@@ -20,6 +20,7 @@ public:
         std::function<void()> onSleep;
         std::function<void()> onSettings;
         std::function<void()> onMiiverse;
+        std::function<void()> onDiscord;
     };
 
     void build(nxui::GpuDevice& gpu, nxui::Renderer& ren,
@@ -79,4 +80,5 @@ private:
     std::string m_loadedAssetsBase;
     std::string m_loadedCustomIconsBase;
     bool m_assetsLoaded = false;
+    bool m_hasDiscord = false;
 };

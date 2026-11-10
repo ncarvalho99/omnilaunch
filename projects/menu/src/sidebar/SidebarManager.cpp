@@ -50,6 +50,7 @@ void SidebarManager::build(nxui::GpuDevice& gpu, nxui::Renderer& ren,
     m_settingsButton = nullptr;
     m_themeShopButton = nullptr;
     m_albumButton    = nullptr;
+    m_hasDiscord     = (bool)actions.onDiscord;
     m_anims.clear();
     m_icons.clear();
     m_icons.resize(kSidebarIconCount);
@@ -74,9 +75,11 @@ void SidebarManager::build(nxui::GpuDevice& gpu, nxui::Renderer& ren,
         album->setRect({leftX, startY + 0.f * (btnSize + gap), btnSize, btnSize});
         m_leftButtons.push_back(std::move(album));
 
-        auto miiEditor = makeBtn(&m_icons[1], "sidebar.mii_editor", "Mii Editor", actions.onMiiEditor);
-        miiEditor->setRect({leftX, startY + 1.f * (btnSize + gap), btnSize, btnSize});
-        m_leftButtons.push_back(std::move(miiEditor));
+        auto middleBtn = actions.onDiscord
+            ? makeBtn(&m_icons[1], "sidebar.discord", "Discord", actions.onDiscord)
+            : makeBtn(&m_icons[1], "sidebar.mii_editor", "Mii Editor", actions.onMiiEditor);
+        middleBtn->setRect({leftX, startY + 1.f * (btnSize + gap), btnSize, btnSize});
+        m_leftButtons.push_back(std::move(middleBtn));
 
         auto settings = makeBtn(&m_icons[5], "sidebar.settings", "Settings", actions.onSettings);
         m_settingsButton = settings.get();
@@ -287,8 +290,8 @@ void SidebarManager::loadAssets(nxui::GpuDevice& gpu, nxui::Renderer& ren,
         }
     };
 
-    static const char* iconFiles[] = {
-        "album.png", "mii_editor.png", "controller.png", "power.png", "themes.png", "settings.png",
+    const char* iconFiles[] = {
+        "album.png", m_hasDiscord ? "discord.png" : "mii_editor.png", "controller.png", "power.png", "themes.png", "settings.png",
     };
     if ((int)m_icons.size() != kSidebarIconCount)
         m_icons.resize(kSidebarIconCount);

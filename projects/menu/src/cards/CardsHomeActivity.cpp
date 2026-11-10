@@ -864,6 +864,14 @@ void CardsHomeActivity::onUpdate(float dt) {
     pollArtJobs();
     pollHomebrewUpdates();
     m_core.nextendo().update(m_core.net(), m_core.net().online());
+    m_core.discord().update(m_core.net());
+    discord::Alert discordAlert;
+    if (m_core.discord().takeAlert(discordAlert)) {
+        showToast(discordAlert.title + ": " + discordAlert.text);
+    }
+    if (m_discordPanel && m_discordPanel->isActive()) {
+        m_discordPanel->update(dt);
+    }
     updateLock(dt);
     m_sheet.update(dt);
     m_musicSheet.update(dt, m_audio);
@@ -888,6 +896,8 @@ void CardsHomeActivity::onUpdate(float dt) {
             m_text->handleTouch(app().input());
         } else if (m_picker && m_picker->isActive()) {
             m_picker->handleTouch(app().input());
+        } else if (m_discordPanel && m_discordPanel->isActive()) {
+            m_discordPanel->handleTouch(app().input());
         }
 #ifdef SWITCHU_MENU
         if (m_closeConfirmQueued && !(m_userSelect && m_userSelect->isActive())) {
@@ -1307,6 +1317,7 @@ void CardsHomeActivity::handleInput() {
         return;
     }
     if (in.isDown(B::R)) { openQuickSettings(); return; }
+    if (in.isDown(B::L)) { openDiscord(); return; }
     if (in.isDown(B::Y)) { openSortSheet(); return; }
     if (in.isDown(B::Plus)) { openCardOptions(); return; }
     if (m_topZone) {
@@ -2048,6 +2059,8 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
     m_sheet.render(ren, m_chrome);
     m_musicSheet.render(ren, m_chrome, m_audio);
     m_newsSheet.render(ren, m_chrome, m_time);
+    if (m_discordPanel && m_discordPanel->isVisible())
+        m_discordPanel->render(ren);
     drawTutorial(ren);
     if (m_quick && m_quick->isActive())
         m_quick->render(ren);

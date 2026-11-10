@@ -767,6 +767,8 @@ void WiiUMenuApp::closeActiveOverlays(bool preserveDialog) {
         m_userSelect->hide();
     if (m_quickSettings && m_quickSettings->isActive())
         m_quickSettings->hide();
+    if (m_discordPanel && m_discordPanel->isActive())
+        m_discordPanel->hide();
     if (!preserveDialog && m_dialog && m_dialog->isActive())
         m_dialog->hide();
     if (m_settings && m_settings->isActive())
@@ -1300,6 +1302,10 @@ void WiiUMenuApp::wireGlobalActions() {
             jumpList(-1);
             return;
         }
+        if (m_navigator.route() == switchu::navigation::Route::Home) {
+            openDiscordPanel();
+            return;
+        }
         m_accessibility.repeatLastAnnouncement();
     });
 
@@ -1591,11 +1597,15 @@ void WiiUMenuApp::wireGlobalActions() {
 
 #if 0 // Replaced by the folder/page-arrow-aware 1.2 implementation.
 void WiiUMenuApp::handleTouch() {
+    auto& input = app().input();
+    if (m_discordPanel && m_discordPanel->isActive()) {
+        m_discordPanel->handleTouch(input);
+        return;
+    }
+
     constexpr float kSwipeThreshold = 80.f;
     constexpr float kLongPressThreshold = 0.55f;
     constexpr float kLongPressMoveThreshold = 18.f;
-
-    auto& input = app().input();
 
     auto hitAvatar = [this](float x, float y) -> UserAvatarButton* {
         for (auto& avatar : m_userAvatarButtons) {

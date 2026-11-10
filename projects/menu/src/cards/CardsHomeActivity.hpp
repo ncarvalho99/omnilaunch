@@ -14,6 +14,7 @@
 #include "cards/CardsMusicSheet.hpp"
 #include "cards/CardsNewsSheet.hpp"
 #include "cards/CardsSheet.hpp"
+#include "discord/DiscordPanel.hpp"
 #include "core/AudioManager.hpp"
 #include "core/LeaveFrameCache.hpp"
 #include "core/SystemMessages.hpp"
@@ -130,6 +131,8 @@ private:
     void closeQuickSettings();
     void openMusicSheet();
     void openNewsSheet();
+    void openDiscord();
+    void ensureDiscordPanel();
     void requestText(const std::string& title, const std::string& guide, const std::string& initial,
                      std::function<void(const std::string&)> onAccept);
     void renameSelected();
@@ -214,6 +217,7 @@ private:
     CardsSheet m_sheet;
     CardsMusicSheet m_musicSheet;
     CardsNewsSheet m_newsSheet;
+    std::shared_ptr<discord::DiscordPanel> m_discordPanel;
     std::shared_ptr<QuickSettingsOverlay> m_quick;
     std::shared_ptr<TextEntryScreen> m_text;
     std::shared_ptr<SteamGridDbPickerScreen> m_picker;

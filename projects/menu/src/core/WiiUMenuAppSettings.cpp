@@ -906,6 +906,43 @@ void WiiUMenuApp::createActivityLog() {
     });
 }
 
+void WiiUMenuApp::ensureDiscordPanel() {
+    if (!m_discordPanel) {
+        m_discordPanel = std::make_shared<discord::DiscordPanel>();
+        m_discordPanel->setFont(&m_fontNormal);
+        m_discordPanel->setSmallFont(&m_fontSmall);
+        m_discordPanel->setService(&m_homeCore.discord(), &m_homeCore.net());
+        discord::DiscordPanel::Callbacks cb;
+        cb.onClosed = [this]() {
+            focusGridSelection();
+        };
+        cb.onNavigate = [this]() { m_audio.playSfx(Sfx::Navigate); };
+        cb.onActivate = [this]() { m_audio.playSfx(Sfx::Activate); };
+        cb.onReply = [this](discord::Snowflake chanId, const std::string& name) {
+            requestTextEntry("Discord: " + name, "Type your message", "", 200, false,
+                [this, chanId](const std::string& text) {
+                    m_homeCore.discord().sendMessage(m_homeCore.net(), chanId, text);
+                });
+        };
+        cb.onUserTokenLogin = [this]() {
+            requestTextEntry("Discord Token", "Enter Discord account token", "", 120, true,
+                [this](const std::string& tok) {
+                    m_homeCore.discord().signInWithToken(m_homeCore.net(), tok);
+                });
+        };
+        m_discordPanel->setCallbacks(std::move(cb));
+        raiseOverlay(m_discordPanel);
+    }
+}
+
+void WiiUMenuApp::openDiscordPanel() {
+    m_audio.playSfx(Sfx::ModalShow);
+    closeActiveOverlays();
+    ensureDiscordPanel();
+    m_discordPanel->show();
+    focusManager().setFocus(m_discordPanel.get());
+}
+
 void WiiUMenuApp::openActivityLog(std::uint64_t initialTitleId) {
     if (m_editMode) return;
     if (m_dialog && m_dialog->isActive()) return;

@@ -6857,6 +6857,7 @@ void WiiUMenuApp::buildGrid() {
     sidebarActions.onMiiEditor   = [this]() { m_audio.playSfx(Sfx::Activate); };
     sidebarActions.onControllers = [this]() { m_audio.playSfx(Sfx::Activate); };
 #endif
+    sidebarActions.onDiscord     = [this]() { openDiscordPanel(); };
     sidebarActions.onSettings = [this]() {
         m_audio.playSfx(Sfx::ModalShow);
         createSettings();
@@ -7902,6 +7903,7 @@ void WiiUMenuApp::onUpdate(float dt) {
     if (m_switchFadeIn > 0.f)
         m_switchFadeIn = std::max(0.f, m_switchFadeIn - dt / 0.25f);
     logControllerState(dt);
+    m_homeCore.discord().update(m_homeCore.net());
     m_animalesePlayer.update(dt);
     m_audio.update();
 
