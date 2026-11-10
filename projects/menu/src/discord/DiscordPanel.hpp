@@ -48,6 +48,8 @@ public:
     void openChat(Snowflake channelId, Snowflake guildId, const std::string& name);
     void handleTouch(const nxui::Input& in);
 
+    nxui::Rect focusRect() const override { return {0.f, 0.f, 0.f, 0.f}; }
+
 protected:
     void onUpdate(float dt) override;
     void onRender(nxui::Renderer& ren) override;
@@ -56,13 +58,15 @@ private:
     enum class View { Home, Chat, Accounts };
 
     struct Row {
-        enum Kind { Dm, Channel, Account, Button, Info } kind = Info;
+        enum Kind { Dm, Channel, Category, Account, Button, Info, Error } kind = Info;
         std::string text;
         std::string detail;
         Snowflake id = 0;
         int action = 0;
         bool selected = false;
         bool unread = false;
+        bool primary = false;
+        bool danger = false;
     };
 
     void bindInput();
@@ -112,6 +116,11 @@ private:
     std::vector<std::pair<int, nxui::Rect>> m_hits;
     nxui::Rect m_backHit{};
     nxui::Rect m_replyHit{};
+
+    DiscordService::State m_lastState = DiscordService::State::SignedOut;
+    std::uint64_t m_lastVersion = 0;
+    View m_lastView = View::Home;
+    int m_lastRailSel = 0;
 };
 
 } // namespace discord

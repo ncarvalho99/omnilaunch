@@ -50,6 +50,7 @@ public:
 
     State state() const { return m_state; }
     std::string error() const { return m_error; }
+    std::uint64_t version() const { return m_version; }
 
     DiscordAccounts& accounts() { return m_accounts; }
     const DiscordAccounts& accounts() const { return m_accounts; }
@@ -66,6 +67,8 @@ public:
 
     std::vector<Message> messages(Snowflake channelId) const;
     void sendMessage(home::HomeCore& core, Snowflake channelId, const std::string& text);
+    void fetchGuildChannelsAsync(home::HomeCore& core, Snowflake guildId);
+    void fetchMessagesAsync(home::HomeCore& core, Snowflake channelId);
 
     void startQrLogin(home::HomeCore& core);
     void cancelQrLogin();
@@ -86,6 +89,7 @@ private:
     State m_state = State::SignedOut;
     std::string m_error;
     bool m_activated = false;
+    std::uint64_t m_version = 0;
 
     mutable std::mutex m_mu;
     User m_currentUser;

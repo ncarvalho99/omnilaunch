@@ -825,6 +825,7 @@ nxui::Widget* WiiUMenuApp::focusRoot() {
     if (m_contextMenu && m_contextMenu->isActive()) return m_contextMenu.get();
     if (m_platformPicker && m_platformPicker->isActive()) return m_platformPicker.get();
     if (m_dialog && m_dialog->isActive()) return m_dialog.get();
+    if (m_discordPanel && m_discordPanel->isActive()) return m_discordPanel.get();
     if (m_steamGridDbPicker && m_steamGridDbPicker->isActive()) return m_steamGridDbPicker.get();
     if (m_mediaCenterScreen && m_mediaCenterScreen->isActive()) return m_mediaCenterScreen.get();
     if (m_controllerTest && m_controllerTest->isActive()) return m_controllerTest.get();

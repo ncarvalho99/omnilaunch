@@ -94,12 +94,15 @@ int main() {
     assert(channels[0].name == "Best Friend");
     assert(channels[0].type == ChannelType::DM);
 
-    // Guilds
+    // Guilds with channels
     const std::string guildsJson = R"([
         {
             "id": "55667788",
             "name": "OmniServer",
-            "icon": "icon_hash"
+            "icon": "icon_hash",
+            "channels": [
+                {"id": "111222", "name": "general", "type": 0}
+            ]
         }
     ])";
     std::vector<Guild> guilds;
@@ -107,6 +110,8 @@ int main() {
     assert(guilds.size() == 1);
     assert(guilds[0].id == 55667788ULL);
     assert(guilds[0].name == "OmniServer");
+    assert(guilds[0].channels.size() == 1);
+    assert(guilds[0].channels[0].name == "general");
 
     // Messages
     const std::string messagesJson = R"([

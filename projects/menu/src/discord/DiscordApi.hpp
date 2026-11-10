@@ -24,6 +24,10 @@ bool fetchDms(net::NetService& net, const std::string& token, std::vector<Channe
 /// Fetch current user's guilds/servers (GET /users/@me/guilds).
 bool fetchGuilds(net::NetService& net, const std::string& token, std::vector<Guild>& outGuilds, std::string& outError);
 
+/// Fetch channels for a specific guild (GET /guilds/{id}/channels).
+bool fetchGuildChannels(net::NetService& net, const std::string& token, Snowflake guildId,
+                        std::vector<Channel>& outChannels, std::string& outError);
+
 /// Fetch recent messages from a channel (GET /channels/{id}/messages).
 bool fetchMessages(net::NetService& net, const std::string& token, Snowflake channelId,
                    std::vector<Message>& outMessages, Snowflake before = 0, int limit = 30,

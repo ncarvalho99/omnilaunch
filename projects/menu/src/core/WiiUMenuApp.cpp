@@ -7904,6 +7904,13 @@ void WiiUMenuApp::onUpdate(float dt) {
         m_switchFadeIn = std::max(0.f, m_switchFadeIn - dt / 0.25f);
     logControllerState(dt);
     m_homeCore.discord().update(m_homeCore);
+    discord::Alert discordAlert;
+    if (m_homeCore.discord().takeAlert(discordAlert)) {
+        if (m_titlePill) {
+            m_titlePill->setText(discordAlert.title + ": " + discordAlert.text);
+            m_titlePill->setVisible(true);
+        }
+    }
     m_animalesePlayer.update(dt);
     m_audio.update();
 

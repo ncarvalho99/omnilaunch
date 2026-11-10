@@ -145,8 +145,8 @@ void CardsHomeActivity::activateTop() {
 void CardsHomeActivity::ensureDiscordPanel() {
     if (!m_discordPanel) {
         m_discordPanel = std::make_shared<discord::DiscordPanel>();
-        m_discordPanel->setFont(&m_chrome.titleFont());
-        m_discordPanel->setSmallFont(&m_chrome.labelFont());
+        m_discordPanel->setFont(&m_chrome.labelFont());
+        m_discordPanel->setSmallFont(&m_chrome.smallFont());
         m_discordPanel->setService(&m_core.discord(), &m_core);
         discord::DiscordPanel::Callbacks cb;
         cb.onClosed = [this]() {

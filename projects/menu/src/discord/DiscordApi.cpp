@@ -65,7 +65,15 @@ bool parseChannelsJson(const std::string& json, std::vector<Channel>& outChannel
                 if (r.is_object()) {
                     c.recipientIds.push_back(stringToSnowflake(r.value("id", "0")));
                     if (c.name.empty()) {
-                        c.name = r.value("global_name", r.value("username", ""));
+                        std::string gName;
+                        if (r.contains("global_name") && r["global_name"].is_string()) {
+                            gName = r["global_name"].get<std::string>();
+                        }
+                        std::string uName;
+                        if (r.contains("username") && r["username"].is_string()) {
+                            uName = r["username"].get<std::string>();
+                        }
+                        c.name = !gName.empty() ? gName : uName;
                     }
                 }
             }
@@ -86,6 +94,9 @@ bool parseGuildsJson(const std::string& json, std::vector<Guild>& outGuilds) {
         g.name = item.value("name", "");
         g.icon = item.value("icon", "");
         g.description = item.value("description", "");
+        if (item.contains("channels") && item["channels"].is_array()) {
+            parseChannelsJson(item["channels"].dump(), g.channels);
+        }
         if (g.id != 0) outGuilds.push_back(std::move(g));
     }
     return true;
@@ -163,6 +174,24 @@ bool fetchGuilds(net::NetService& net, const std::string& token, std::vector<Gui
     }
     if (!parseGuildsJson(res.body, outGuilds)) {
         outError = "Failed to parse guilds";
+        return false;
+    }
+    return true;
+}
+
+bool fetchGuildChannels(net::NetService& net, const std::string& token, Snowflake guildId,
+                        std::vector<Channel>& outChannels, std::string& outError) {
+    net::Request req;
+    req.url = std::string(kBaseUrl) + "/guilds/" + snowflakeToString(guildId) + "/channels";
+    req.headers = authHeaders(token);
+    req.timeoutMs = 15000;
+    const net::Response res = net.request(req);
+    if (!res.ok()) {
+        outError = formatError(res);
+        return false;
+    }
+    if (!parseChannelsJson(res.body, outChannels)) {
+        outError = "Failed to parse guild channels";
         return false;
     }
     return true;

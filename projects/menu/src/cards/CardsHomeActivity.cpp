@@ -684,6 +684,8 @@ nxui::Widget* CardsHomeActivity::focusRoot() {
         return m_picker.get();
     if (m_quick && m_quick->isActive())
         return m_quick.get();
+    if (m_discordPanel && m_discordPanel->isActive())
+        return m_discordPanel.get();
     // The row and the sheets handle their own input.
     return nullptr;
 }
