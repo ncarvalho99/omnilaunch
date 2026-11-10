@@ -167,7 +167,13 @@ bool AppConfig::load() {
         cards.panelTitleId = panel.empty() ? 0 : panel.front();
         readJsonOpt(c, "panelButtonEnabled", cards.panelButtonEnabled);
         readJsonOpt(c, "showNextendo", cards.showNextendo);
-    }
+        readJsonOpt(c, "showFree", cards.showFree);
+        readJsonOpt(c, "showTemp", cards.showTemp);
+        readJsonOpt(c, "lockScreen", cards.lockScreen);
+        readJsonOpt(c, "lockMusic", cards.lockMusic);
+        readJsonOpt(c, "shuffle", cards.shuffle);
+        readJsonOpt(c, "sounds", cards.sounds);
+        readJsonOpt(c, "perfLog", cards.perfLog);    }
     cards.normalize();
     readJsonOpt(j, "lastUpdateCheckDay", lastUpdateCheckDay);
     readJsonOpt(j, "nextendoPath", nextendoPath);
@@ -392,7 +398,13 @@ bool AppConfig::save() const {
                                                : std::vector<std::uint64_t>{});
         c["panelButtonEnabled"] = cards.panelButtonEnabled;
         c["showNextendo"] = cards.showNextendo;
-        c["settingsOrder"] = cards.settingsOrder;
+        c["showFree"] = cards.showFree;
+        c["showTemp"] = cards.showTemp;
+        c["lockScreen"] = cards.lockScreen;
+        c["lockMusic"] = cards.lockMusic;
+        c["shuffle"] = cards.shuffle;
+        c["sounds"] = cards.sounds;
+        c["perfLog"] = cards.perfLog;        c["settingsOrder"] = cards.settingsOrder;
         c["tutorialDone"] = cards.tutorialDone;
         c["accent"] = cards.accent;
         c["glass"] = cards.glass;

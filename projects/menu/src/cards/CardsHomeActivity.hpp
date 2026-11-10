@@ -89,6 +89,7 @@ private:
     void loadAvatar();
     void activateTop();
     void openCardOptions();
+    void openHomebrewOptions();
     void openSortSheet();
     void openSettingsSheet();
     void applySort(int mode);

@@ -21,6 +21,8 @@ std::string key(std::uint64_t titleId, const char* id) {
     return buf;
 }
 
+std::string overallKey(const char* id) { return std::string("all ") + id; }
+
 LoadStatus readStream(std::istream& in, Earned& out) {
     Earned pending;
     std::string line;
@@ -29,11 +31,16 @@ LoadStatus readStream(std::istream& in, Earned& out) {
         std::istringstream words(line);
         std::string a, b, trailing;
         long long c = 0;
-        if (!(words >> a >> b >> c) || (words >> trailing) || a.size() != 16 ||
-            a.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos)
+        if (!(words >> a >> b >> c) || (words >> trailing))
             return LoadStatus::Error;
         bool known = false;
-        for (const auto& m : kPerGame) if (b == m.id) known = true;
+        if (a == "all") {
+            for (const auto& m : kOverall) if (b == m.id) known = true;
+        } else {
+            if (a.size() != 16 || a.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos)
+                return LoadStatus::Error;
+            for (const auto& m : kPerGame) if (b == m.id) known = true;
+        }
         if (!known) return LoadStatus::Error;
         pending.when[a + " " + b] = c;
     }
@@ -102,10 +109,53 @@ bool save(const std::string& path, const Earned& e) {
     return true;
 }
 
+namespace {
+std::mutex& storeMutex() {
+    static std::mutex mutex;
+    return mutex;
+}
+
+// load -> record -> save under the store lock; `rec` adds the new milestones.
+template <typename Rec>
+std::vector<const Milestone*> transact(const std::string& path, bool& ok, Rec rec) {
+    std::lock_guard<std::mutex> lock(storeMutex());
+    ok = true;
+    Earned e;
+    const auto status = loadChecked(path, e);
+    if (status == LoadStatus::Error) { ok = false; return {}; }
+    if (status == LoadStatus::Missing) {
+        const auto backup = loadChecked(path + ".bak", e);
+        if (backup == LoadStatus::Error) { ok = false; return {}; }
+    }
+    auto fresh = rec(e);
+    if (!fresh.empty())
+        ok = save(path, e);
+    return fresh;
+}
+} // namespace
+
+std::vector<const Milestone*> recordOverallAndSave(const std::string& path, const Play& total, std::int64_t now,
+                                                   bool& ok) {
+    return transact(path, ok, [&](Earned& e) { return recordOverall(e, total, now); });
+}
+
+std::vector<const Milestone*> recordOverall(Earned& e, const Play& total, std::int64_t now) {
+    std::vector<const Milestone*> fresh;
+    for (const auto& m : kOverall) {
+        if (progress(m, total) < 1.f)
+            continue;
+        const std::string k = overallKey(m.id);
+        if (e.when.count(k))
+            continue;
+        e.when[k] = now;
+        fresh.push_back(&m);
+    }
+    return fresh;
+}
+
 std::vector<const Milestone*> recordAndSave(const std::string& path, std::uint64_t titleId, const Play& play,
                                             std::int64_t now, bool& ok) {
-    static std::mutex mutex;
-    std::lock_guard<std::mutex> lock(mutex);
+    std::lock_guard<std::mutex> lock(storeMutex());
     ok = true;
     Earned e;
     const auto status = loadChecked(path, e);

@@ -241,6 +241,8 @@ float CardsHomeActivity::sinceStartMs() const {
 }
 
 void CardsHomeActivity::perfLine(const std::string& line) {
+    if (!m_core.config().cards.perfLog)
+        return; // Settings > About > Performance log (C-PF-6 toggle)
     char head[32];
     std::snprintf(head, sizeof(head), "[%8.1f s] ", sinceStartMs() / 1000.f);
     std::lock_guard<std::mutex> lk(m_perfMutex);
@@ -491,10 +493,12 @@ bool CardsHomeActivity::onCreate() {
         m_switchFade = -1.f;
         m_topZone = false;
         m_panelZone = false;
-        m_audio.stopAll();
+        // Settings > Lock screen > Music on the lock screen (HomeNX lockMusic).
+        if (!m_core.config().cards.lockMusic)
+            m_audio.stopAll();
     });
     m_lock.onUnlocked([this]() {
-        if (m_core.config().musicEnabled && m_audioStarted)
+        if (m_core.config().musicEnabled && m_audioStarted && !m_audio.isPlaying())
             m_audio.play();
         m_audio.playSfx(Sfx::ModalHide);
     });
@@ -716,7 +720,8 @@ void CardsHomeActivity::finishAudioLoad() {
     audio.waitForLoad();
     const auto& config = m_core.config();
     m_audio.setVolume(config.musicVolume);
-    m_audio.setSfxVolume(config.sfxVolume);
+    m_audio.setSfxVolume(config.cards.sounds ? config.sfxVolume : 0.f);
+    m_audio.setShuffle(config.cards.shuffle);
     if (config.musicEnabled && !m_lock.isLocked())
         m_audio.play();
     m_audioStarted = true;
@@ -1095,10 +1100,11 @@ void CardsHomeActivity::updateStatus(float dt) {
     // Battery figures come from the daemon's BatteryStatusChanged notification
     // (pollDaemonNotifications): psm gives nothing inside the menu applet.
     const auto thermals = switchu::getThermalReading();
-    m_status.socCelsius = thermals.hasSoc ? thermals.soc : -1.f;
+    m_status.socCelsius = (thermals.hasSoc && m_core.config().cards.showTemp) ? thermals.soc : -1.f;
 #endif
     struct statvfs st{};
-    if (statvfs("sdmc:/", &st) == 0) {
+    m_status.freeSpace.clear();
+    if (m_core.config().cards.showFree && statvfs("sdmc:/", &st) == 0) {
         const double gb = static_cast<double>(st.f_bavail) * static_cast<double>(st.f_frsize) / 1e9;
         char free[24];
         std::snprintf(free, sizeof(free), "%.1f GB", gb);
@@ -1658,14 +1664,19 @@ void CardsHomeActivity::pollDaemonNotifications() {
             break;
         case switchu::smi::MenuMessage::SleepSequence:
             // Lock on the way under; WakeUp locks too in case Horizon
-            // suspended the applet first (as Classic).
-            ensureClockFont();
-            m_lock.lockNow();
+            // suspended the applet first (as Classic). Settings > Lock screen
+            // can turn this off, unless a password is set (it always locks).
+            if (m_core.config().cards.lockScreen || m_lock.passwordActive()) {
+                ensureClockFont();
+                m_lock.lockNow();
+            }
             break;
         case switchu::smi::MenuMessage::WakeUp:
-            ensureClockFont();
-            m_lock.lockNow();
-            m_lock.showAfterSystemWake();
+            if (m_core.config().cards.lockScreen || m_lock.passwordActive()) {
+                ensureClockFont();
+                m_lock.lockNow();
+                m_lock.showAfterSystemWake();
+            }
             m_lock.resetSleepCountdown();
             m_lockLowPowerPrimed = false;
             app().setRenderEnabled(true);

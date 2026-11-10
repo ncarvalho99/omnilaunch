@@ -185,22 +185,12 @@ void QuickSettingsOverlay::setupNavigationActions() {
     // Up / Down navigation across items
     addDirectionAction(nxui::FocusDirection::UP, [this]() {
         if (!m_active) return;
-        int next = static_cast<int>(m_selectedItem) - 1;
-        if (next < 0)
-            next = static_cast<int>(ItemIndex::Count) - 1;
-        m_selectedItem = static_cast<ItemIndex>(next);
-        updateCursorTarget();
-        if (m_callbacks.onNavigateSfx) m_callbacks.onNavigateSfx();
+        stepItem(-1);
     });
 
     addDirectionAction(nxui::FocusDirection::DOWN, [this]() {
         if (!m_active) return;
-        int next = static_cast<int>(m_selectedItem) + 1;
-        if (next >= static_cast<int>(ItemIndex::Count))
-            next = 0;
-        m_selectedItem = static_cast<ItemIndex>(next);
-        updateCursorTarget();
-        if (m_callbacks.onNavigateSfx) m_callbacks.onNavigateSfx();
+        stepItem(+1);
     });
 
     // Left / Right navigation / slider adjustment
@@ -222,9 +212,16 @@ void QuickSettingsOverlay::setupNavigationActions() {
             case ItemIndex::Wifi:
                 toggleItem(ItemIndex::Wifi);
                 break;
+            case ItemIndex::Bluetooth:
+                toggleItem(ItemIndex::Bluetooth);
+                break;
+            case ItemIndex::MiniPlayer:
+                if (m_callbacks.onMusicSkip) m_callbacks.onMusicSkip(-1);
+                if (m_callbacks.onNavigateSfx) m_callbacks.onNavigateSfx();
+                break;
             case ItemIndex::PowerActions: {
                 int p = static_cast<int>(m_selectedPower) - 1;
-                if (p < 0) p = static_cast<int>(PowerAction::Count) - 1;
+                if (p < 0) p = powerCount() - 1;
                 m_selectedPower = static_cast<PowerAction>(p);
                 updateCursorTarget();
                 if (m_callbacks.onNavigateSfx) m_callbacks.onNavigateSfx();
@@ -253,9 +250,16 @@ void QuickSettingsOverlay::setupNavigationActions() {
             case ItemIndex::Wifi:
                 toggleItem(ItemIndex::Wifi);
                 break;
+            case ItemIndex::Bluetooth:
+                toggleItem(ItemIndex::Bluetooth);
+                break;
+            case ItemIndex::MiniPlayer:
+                if (m_callbacks.onMusicSkip) m_callbacks.onMusicSkip(+1);
+                if (m_callbacks.onNavigateSfx) m_callbacks.onNavigateSfx();
+                break;
             case ItemIndex::PowerActions: {
                 int p = static_cast<int>(m_selectedPower) + 1;
-                if (p >= static_cast<int>(PowerAction::Count)) p = 0;
+                if (p >= powerCount()) p = 0;
                 m_selectedPower = static_cast<PowerAction>(p);
                 updateCursorTarget();
                 if (m_callbacks.onNavigateSfx) m_callbacks.onNavigateSfx();
@@ -279,6 +283,13 @@ void QuickSettingsOverlay::setupNavigationActions() {
             case ItemIndex::ActivityLog:
                 if (m_callbacks.onActivateSfx) m_callbacks.onActivateSfx();
                 if (m_callbacks.onActivityLogRequested) m_callbacks.onActivityLogRequested();
+                break;
+            case ItemIndex::Bluetooth:
+                toggleItem(ItemIndex::Bluetooth);
+                break;
+            case ItemIndex::MiniPlayer:
+                if (m_callbacks.onMusicToggle) m_callbacks.onMusicToggle();
+                if (m_callbacks.onActivateSfx) m_callbacks.onActivateSfx();
                 break;
             case ItemIndex::PowerActions:
                 triggerPowerAction(m_selectedPower);
@@ -308,6 +319,39 @@ void QuickSettingsOverlay::setupNavigationActions() {
     });
 }
 
+bool QuickSettingsOverlay::itemShown(ItemIndex item) const {
+    switch (item) {
+        case ItemIndex::ActivityLog: return !m_extended;
+        case ItemIndex::Bluetooth:
+        case ItemIndex::MiniPlayer: return m_extended;
+        case ItemIndex::Count: return false;
+        default: return true;
+    }
+}
+
+// Visual order differs from the enum in extended mode: the mini player sits
+// above the sliders, Bluetooth below Wi-Fi.
+void QuickSettingsOverlay::stepItem(int dir) {
+    static const ItemIndex kClassic[] = {ItemIndex::Brightness, ItemIndex::BgmVolume, ItemIndex::SfxVolume,
+                                         ItemIndex::AirplaneMode, ItemIndex::Wifi, ItemIndex::ActivityLog,
+                                         ItemIndex::PowerActions};
+    static const ItemIndex kExtended[] = {ItemIndex::MiniPlayer, ItemIndex::Brightness, ItemIndex::BgmVolume,
+                                          ItemIndex::SfxVolume, ItemIndex::AirplaneMode, ItemIndex::Wifi,
+                                          ItemIndex::Bluetooth, ItemIndex::PowerActions};
+    const ItemIndex* order = m_extended ? kExtended : kClassic;
+    const int n = m_extended ? 8 : 7;
+    int at = 0;
+    for (int i = 0; i < n; ++i)
+        if (order[i] == m_selectedItem) at = i;
+    m_selectedItem = order[(at + (dir > 0 ? 1 : n - 1)) % n];
+    updateCursorTarget();
+    if (m_callbacks.onNavigateSfx) m_callbacks.onNavigateSfx();
+}
+
+int QuickSettingsOverlay::powerCount() const {
+    return m_extended ? static_cast<int>(PowerAction::Count) : static_cast<int>(PowerAction::Hekate);
+}
+
 void QuickSettingsOverlay::setInitialValues(float brightness, float bgmVolume, float sfxVolume,
                                             bool airplaneMode, bool wifiEnabled) {
     m_brightness = std::clamp(brightness, 0.05f, 1.0f);
@@ -329,7 +373,7 @@ void QuickSettingsOverlay::show() {
     m_backdropCacheValid = false;
     setVisible(true);
     setFocusable(true);
-    m_selectedItem = ItemIndex::Brightness;
+    m_selectedItem = m_extended ? ItemIndex::MiniPlayer : ItemIndex::Brightness;
     m_selectedPower = PowerAction::Sleep;
     m_statusPollTimer = 0.f;
 
@@ -367,6 +411,9 @@ void QuickSettingsOverlay::refreshHardwareStatus() {
     if (R_SUCCEEDED(setsysGetWirelessLanEnableFlag(&wf))) {
         m_wifiEnabled = wf;
     }
+
+    if (m_extended && m_callbacks.bluetoothEnabled)
+        m_bluetoothEnabled = m_callbacks.bluetoothEnabled();
 
     // Query battery if needed
     if (m_batteryPercent < 0) {
@@ -451,6 +498,15 @@ void QuickSettingsOverlay::toggleItem(ItemIndex item) {
         } else {
             if (m_callbacks.onToggleOffSfx) m_callbacks.onToggleOffSfx();
         }
+    } else if (item == ItemIndex::Bluetooth) {
+        m_bluetoothEnabled = !m_bluetoothEnabled;
+        if (m_callbacks.onBluetoothToggled)
+            m_callbacks.onBluetoothToggled(m_bluetoothEnabled);
+        if (m_bluetoothEnabled) {
+            if (m_callbacks.onActivateSfx) m_callbacks.onActivateSfx();
+        } else {
+            if (m_callbacks.onToggleOffSfx) m_callbacks.onToggleOffSfx();
+        }
     } else if (item == ItemIndex::Wifi) {
         m_wifiEnabled = !m_wifiEnabled;
 #ifdef __SWITCH__
@@ -485,6 +541,9 @@ void QuickSettingsOverlay::triggerPowerAction(PowerAction action) {
         case PowerAction::Shutdown:
             if (m_callbacks.onShutdownRequested) m_callbacks.onShutdownRequested();
             break;
+        case PowerAction::Hekate:
+            if (m_callbacks.onHekateRequested) m_callbacks.onHekateRequested();
+            break;
         default:
             break;
     }
@@ -502,20 +561,25 @@ nxui::Rect QuickSettingsOverlay::computeItemRect(ItemIndex item) const {
     nxui::Rect panel = computePanelRect();
     float cx = panel.x + 22.f;
     float cw = panel.width - 44.f;
+    // Extended mode puts the mini player first and shifts the rest down.
+    const float o = m_extended ? 62.f : 0.f;
 
     switch (item) {
-        case ItemIndex::Brightness:
+        case ItemIndex::MiniPlayer:
             return {cx - 4.f, panel.y + 142.f, cw + 8.f, 54.f};
+        case ItemIndex::Brightness:
+            return {cx - 4.f, panel.y + 142.f + o, cw + 8.f, 54.f};
         case ItemIndex::BgmVolume:
-            return {cx - 4.f, panel.y + 204.f, cw + 8.f, 54.f};
+            return {cx - 4.f, panel.y + 204.f + o, cw + 8.f, 54.f};
         case ItemIndex::SfxVolume:
-            return {cx - 4.f, panel.y + 266.f, cw + 8.f, 54.f};
+            return {cx - 4.f, panel.y + 266.f + o, cw + 8.f, 54.f};
         case ItemIndex::AirplaneMode:
-            return {cx - 4.f, panel.y + 328.f, cw + 8.f, 42.f};
+            return {cx - 4.f, panel.y + 328.f + o, cw + 8.f, 42.f};
         case ItemIndex::Wifi:
-            return {cx - 4.f, panel.y + 378.f, cw + 8.f, 42.f};
+            return {cx - 4.f, panel.y + 378.f + o, cw + 8.f, 42.f};
         case ItemIndex::ActivityLog:
-            return {cx - 4.f, panel.y + 428.f, cw + 8.f, 42.f};
+        case ItemIndex::Bluetooth:
+            return {cx - 4.f, panel.y + 428.f + o, cw + 8.f, 42.f};
         case ItemIndex::PowerActions:
             return computePowerButtonRect(m_selectedPower);
         default:
@@ -526,8 +590,9 @@ nxui::Rect QuickSettingsOverlay::computeItemRect(ItemIndex item) const {
 nxui::Rect QuickSettingsOverlay::computePowerButtonRect(PowerAction action) const {
     nxui::Rect panel = computePanelRect();
     float cx = panel.x + 22.f;
-    float btnW = (panel.width - 44.f - 20.f) / 3.f; // ~125px
-    float by = panel.y + 514.f;
+    const int n = powerCount();
+    float btnW = (panel.width - 44.f - 10.f * static_cast<float>(n - 1)) / static_cast<float>(n);
+    float by = panel.y + 514.f + (m_extended ? 52.f : 0.f);
 
     int idx = static_cast<int>(action);
     float bx = cx + idx * (btnW + 10.f);
@@ -539,13 +604,14 @@ nxui::Rect QuickSettingsOverlay::computeSliderTrackRect(ItemIndex item) const {
     float cx = panel.x + 26.f;
     float cw = panel.width - 52.f;
 
+    const float o = m_extended ? 62.f : 0.f;
     switch (item) {
         case ItemIndex::Brightness:
-            return {cx, panel.y + 172.f, cw, 12.f};
+            return {cx, panel.y + 172.f + o, cw, 12.f};
         case ItemIndex::BgmVolume:
-            return {cx, panel.y + 234.f, cw, 12.f};
+            return {cx, panel.y + 234.f + o, cw, 12.f};
         case ItemIndex::SfxVolume:
-            return {cx, panel.y + 296.f, cw, 12.f};
+            return {cx, panel.y + 296.f + o, cw, 12.f};
         default:
             return {};
     }
@@ -647,9 +713,34 @@ void QuickSettingsOverlay::handleTouch(nxui::Input& input) {
             return;
         }
 
+        if (m_extended) {
+            nxui::Rect btRect = computeItemRect(ItemIndex::Bluetooth);
+            if (btRect.contains(tx, ty)) {
+                m_selectedItem = ItemIndex::Bluetooth;
+                toggleItem(ItemIndex::Bluetooth);
+                updateCursorTarget();
+                return;
+            }
+            nxui::Rect mpRect = computeItemRect(ItemIndex::MiniPlayer);
+            if (mpRect.contains(tx, ty)) {
+                m_selectedItem = ItemIndex::MiniPlayer;
+                updateCursorTarget();
+                const float third = mpRect.width / 3.f;
+                if (tx < mpRect.x + third) {
+                    if (m_callbacks.onMusicSkip) m_callbacks.onMusicSkip(-1);
+                } else if (tx > mpRect.right() - third) {
+                    if (m_callbacks.onMusicSkip) m_callbacks.onMusicSkip(+1);
+                } else if (m_callbacks.onMusicToggle) {
+                    m_callbacks.onMusicToggle();
+                }
+                if (m_callbacks.onActivateSfx) m_callbacks.onActivateSfx();
+                return;
+            }
+        }
+
         // Check Activity Log button
         nxui::Rect actRect = computeItemRect(ItemIndex::ActivityLog);
-        if (actRect.contains(tx, ty)) {
+        if (!m_extended && actRect.contains(tx, ty)) {
             m_selectedItem = ItemIndex::ActivityLog;
             updateCursorTarget();
             if (m_callbacks.onActivateSfx) m_callbacks.onActivateSfx();
@@ -658,7 +749,8 @@ void QuickSettingsOverlay::handleTouch(nxui::Input& input) {
         }
 
         // Check Power Buttons
-        for (auto pa : {PowerAction::Sleep, PowerAction::Reboot, PowerAction::Shutdown}) {
+        for (int pi = 0; pi < powerCount(); ++pi) {
+            const auto pa = static_cast<PowerAction>(pi);
             nxui::Rect btnRect = computePowerButtonRect(pa);
             if (btnRect.contains(tx, ty)) {
                 m_selectedItem = ItemIndex::PowerActions;
@@ -917,7 +1009,52 @@ void QuickSettingsOverlay::render(nxui::Renderer& ren) {
     drawToggle(ItemIndex::Wifi, i18n.tr("quicksettings.wifi", "Wi-Fi"),
                m_wifiEnabled);
 
+    if (m_extended) {
+        drawToggle(ItemIndex::Bluetooth, "Bluetooth", m_bluetoothEnabled);
+
+        // Mini player (C-UI-8): track title, previous / play-pause / next.
+        nxui::Rect mp = computeItemRect(ItemIndex::MiniPlayer);
+        ren.drawRoundedRect(mp, nxui::Color(0.12f, 0.18f, 0.26f, 0.45f * alpha), 12.f);
+        ren.drawRoundedRectOutline(mp, nxui::Color(1.f, 1.f, 1.f, 0.08f * alpha), 12.f, 1.f);
+        if (m_smallFont) {
+            std::string title = m_callbacks.musicTitle ? m_callbacks.musicTitle() : std::string();
+            if (title.empty())
+                title = i18n.tr("quicksettings.no_music", "No music playing");
+            const float maxW = mp.width - 150.f;
+            const float scale = 0.82f;
+            while (title.size() > 4 && m_smallFont->measure(title).x * scale > maxW) {
+                std::size_t cut = title.size() - 1;
+                while (cut > 0 && (static_cast<unsigned char>(title[cut]) & 0xC0) == 0x80) --cut;
+                title.erase(cut);
+            }
+            const float ty = mp.y + (mp.height - m_smallFont->measure("Ag").y * scale) * 0.5f;
+            ren.drawText(title, {mp.x + 14.f, ty}, m_smallFont, nxui::Color(0.95f, 0.95f, 0.98f, alpha), scale);
+            const bool playing = m_callbacks.musicPlaying && m_callbacks.musicPlaying();
+            // Drawn shapes, not glyphs: the UI font has no media symbols.
+
+            const float cyM = mp.y + mp.height * 0.5f;
+            const float bx = mp.right() - 120.f;
+            const nxui::Color ic(1.f, 1.f, 1.f, alpha);
+            // previous: bar + triangle
+            ren.drawRect({bx, cyM - 7.f, 3.f, 14.f}, ic);
+            ren.drawTriangle({bx + 3.f, cyM}, {bx + 15.f, cyM - 7.f}, {bx + 15.f, cyM + 7.f}, ic);
+            // play / pause
+            const float px = bx + 44.f;
+            if (playing) {
+                ren.drawRect({px, cyM - 8.f, 4.f, 16.f}, ic);
+                ren.drawRect({px + 9.f, cyM - 8.f, 4.f, 16.f}, ic);
+            } else {
+                ren.drawTriangle({px, cyM - 8.f}, {px, cyM + 8.f}, {px + 14.f, cyM}, ic);
+            }
+            // next: triangle + bar
+            const float nx = bx + 86.f;
+            ren.drawTriangle({nx, cyM - 7.f}, {nx, cyM + 7.f}, {nx + 12.f, cyM}, ic);
+            ren.drawRect({nx + 12.f, cyM - 7.f, 3.f, 14.f}, ic);
+        }
+    }
+
     // 5. Activity Log Button
+    if (!m_extended) {
     nxui::Rect actCard = computeItemRect(ItemIndex::ActivityLog);
     bool isActSelected = (m_selectedItem == ItemIndex::ActivityLog);
     ren.drawRoundedRect(actCard,
@@ -936,11 +1073,12 @@ void QuickSettingsOverlay::render(nxui::Renderer& ren) {
         ren.drawText(">", {actCard.right() - 28.f, ty}, m_smallFont,
                      nxui::Color(0.40f, 0.80f, 1.00f, alpha), 0.82f);
     }
+    }
 
     // 6. Power Options Section
     if (m_smallFont) {
         ren.drawText(i18n.tr("quicksettings.power_options", "OPÇÕES DE ENERGIA"),
-                     {cx, panel.y + 490.f}, m_smallFont,
+                     {cx, panel.y + 490.f + (m_extended ? 52.f : 0.f)}, m_smallFont,
                      nxui::Color(0.65f, 0.72f, 0.82f, alpha), 0.72f);
     }
 
@@ -974,7 +1112,11 @@ void QuickSettingsOverlay::render(nxui::Renderer& ren) {
                 ? nxui::Color(1.f, 1.f, 1.f, alpha)
                 : nxui::Color(0.92f, 0.94f, 0.98f, 0.88f * alpha);
 
-            if (pa == PowerAction::Sleep) {
+            if (pa == PowerAction::Hekate) {
+                float ty = btn.y + (btn.height - lsz.y * textScale) * 0.5f;
+                ren.drawText(label, {btn.x + (btn.width - lsz.x * textScale) * 0.5f, ty}, m_smallFont,
+                             textColor, textScale);
+            } else if (pa == PowerAction::Sleep) {
                 float iconW = 14.f;
                 float totalW = iconW + 6.f + lsz.x * textScale;
                 float curX = btn.x + (btn.width - totalW) * 0.5f;
@@ -1007,4 +1149,7 @@ void QuickSettingsOverlay::render(nxui::Renderer& ren) {
 
     drawPowerBtn(PowerAction::Shutdown, i18n.tr("quicksettings.power_off", "Desligar"),
                  nxui::Color(0.95f, 0.28f, 0.35f, 1.f));
+
+    if (m_extended)
+        drawPowerBtn(PowerAction::Hekate, "Hekate", nxui::Color(0.55f, 0.40f, 0.95f, 1.f));
 }

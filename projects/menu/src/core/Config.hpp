@@ -78,6 +78,14 @@ struct AppConfig {
         bool titlePics = true;// enable title logos (SteamGridDB)
         // Nextendo (HomeNX H3, C-NET-3).
         bool showNextendo = true; // show Nextendo online count in top status pill
+        // HomeNX E7 rows (C-ST): status pill items, lock screen, sound, perf log.
+        bool showFree = true;     // free SD space in the status pill
+        bool showTemp = true;     // SoC temperature in the status pill
+        bool lockScreen = true;   // lock on sleep/wake (a set password always locks)
+        bool lockMusic = false;   // HOME music keeps playing on the lock screen
+        bool shuffle = false;     // HOME music in random order
+        bool sounds = true;       // interface sound effects
+        bool perfLog = true;      // sdmc:/config/OmniLaunch/perf.log
 
         bool pageHidden(int page) const {
             for (int h : hiddenPages)

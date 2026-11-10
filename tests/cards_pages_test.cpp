@@ -251,6 +251,23 @@ static void achievementsTest() {
     CHECK(ach::recordAndSave(path, 0x0100000000050000ULL, p, 7000, ok).empty() && !ok);
     CHECK(std::filesystem::is_directory(path));
     std::filesystem::remove(path);
+
+    // Overall set (E11): games played and total hours, kept as "all <id>",
+    // read back alongside per-title lines.
+    ach::Play total;
+    total.launches = 6;          // different games
+    total.seconds = 3600 * 120;  // 120 h
+    CHECK(ach::recordOverallAndSave(path, total, 8000, ok).size() == 2 && ok); // games5 + total100
+    CHECK(ach::recordOverallAndSave(path, total, 9000, ok).empty() && ok);
+    CHECK(ach::recordAndSave(path, 0x0100000000060000ULL, p, 9500, ok).size() == 4 && ok);
+    const auto mixed = ach::load(path);
+    CHECK(mixed.when.size() == 6);
+    CHECK(mixed.when.at(ach::overallKey("games5")) == 8000);
+    std::istringstream unknownAll("all bogus 1\n");
+    ach::Earned rejected;
+    CHECK(ach::readStream(unknownAll, rejected) == ach::LoadStatus::Error);
+    std::filesystem::remove(path);
+    std::filesystem::remove(path + ".bak");
 }
 
 int main() {

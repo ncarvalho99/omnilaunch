@@ -16,6 +16,7 @@
 #include "launcher/HekateReboot.hpp"
 #include "widgets/LockPassword.hpp"
 #include "net/NetService.hpp"
+#include "usb/Mtp.hpp"
 #include "themeshop/ThemeHttp.hpp"
 #ifdef SWITCHU_MENU
 #include "core/NsService.hpp"
@@ -33,6 +34,9 @@
 #include <cmath>
 #include <cstdio>
 #include <ctime>
+#include <sys/statvfs.h>
+#include <cstring>
+#include <filesystem>
 #include <switch.h>
 
 namespace cards {
@@ -212,7 +216,15 @@ void CardsHomeActivity::openDotsMenu() {
         m_sheet.close();
         openNewsSheet();
     });
+    add("Discord", [this]() {
+        m_sheet.close();
+        openDiscord();
+    });
     add(i18n.tr("cards.menu_users", "Users"), [this]() { openUsersSheet(); });
+    add(i18n.tr("cards.menu_music", "Music"), [this]() {
+        m_sheet.close();
+        openMusicSheet();
+    });
     add(i18n.tr("cards.menu_quick", "Quick settings"), [this]() {
         m_sheet.close();
         openQuickSettings();
@@ -514,6 +526,10 @@ void CardsHomeActivity::openCardOptions() {
     }
     const std::uint64_t titleId = card.app.titleId;
     const std::string title = card.app.title;
+    if (card.isHomebrew) {
+        openHomebrewOptions();
+        return;
+    }
     m_audio.playSfx(Sfx::ModalShow);
     std::vector<CardsSheet::Row> rows;
     auto add = [&rows](std::string label, std::function<void()> fn, std::string detail = {}) {
@@ -573,6 +589,10 @@ void CardsHomeActivity::openCardOptions() {
             showToast(nxui::I18n::instance().tr("cards.panel_unpinned_toast", "Removed from panel button (News restored)"));
         });
     }
+    add(i18n.tr("cards.opt_new_pictures", "Download new pictures"), [this, titleId, title]() {
+        m_sheet.close();
+        downloadSingleTitleArt(titleId, title);
+    });
     add(i18n.tr("cards.art_choices", "Images"), [this, titleId]() { openArtSheet(titleId); });
     add(i18n.tr("cards.menu_achievements", "Achievements"), [this, titleId]() { openAchievementsSheet(titleId); });
     char id[24];
@@ -602,6 +622,93 @@ void CardsHomeActivity::openCardOptions() {
                 m_deleteConfirmId = titleId;
             },
             i18n.tr("game.delete_software_desc", "Deletes the software from the console. Save data is not deleted."));
+    }
+#endif
+    m_sheet.open(title, {{std::string(), std::move(rows)}});
+}
+
+// ── Homebrew card options (E4 homebrew part, C-UI-3) ────────────────────────
+// Play/Resume, the update when one is known (G5), panel shortcut is not
+// offered (it opens Games/Media titles only), and delete of the .nro from the
+// SD card with confirmation. A homebrew that is open cannot be deleted.
+void CardsHomeActivity::openHomebrewOptions() {
+    if (m_selected < 0 || m_selected >= m_catalog.count())
+        return;
+    auto& i18n = nxui::I18n::instance();
+    const CardEntry& card = m_catalog.at(m_selected);
+    const std::string path = card.homebrewPath;
+    const std::string title = card.app.title;
+    const std::uint64_t id = card.app.titleId;
+#ifdef SWITCHU_MENU
+    const bool running = isRunningCard(id);
+#else
+    const bool running = false;
+#endif
+    m_audio.playSfx(Sfx::ModalShow);
+    std::vector<CardsSheet::Row> rows;
+    auto add = [&rows](std::string label, std::function<void()> fn, std::string detail = {}) {
+        CardsSheet::Row r;
+        r.label = std::move(label);
+        r.onA = std::move(fn);
+        r.detail = std::move(detail);
+        rows.push_back(std::move(r));
+    };
+    add(running ? i18n.tr("cards.resume", "Resume") : i18n.tr("cards.open", "Open"), [this]() {
+        m_sheet.close();
+        activateSelected();
+    });
+    if (homebrewHasUpdate(path, card.version)) {
+        add(i18n.tr("cards.hb_update_one", "Update"), [this, path]() {
+            m_sheet.close();
+            installHomebrewUpdates({path});
+        });
+    }
+    CardsSheet::Row info;
+    info.label = card.author.empty() ? title : title + " - " + card.author;
+    info.value = [v = card.version]() { return v; };
+    info.detail = path;
+    info.enabled = false;
+    rows.push_back(std::move(info));
+#ifdef SWITCHU_MENU
+    if (running) {
+        add(i18n.tr("cards.close_software", "Close software"), [this]() {
+            m_sheet.close();
+            m_closeConfirmQueued = true;
+        });
+        add(i18n.tr("cards.hb_delete", "Delete from the SD card"), {},
+            i18n.tr("cards.delete_close_first", "Close the software before deleting it."));
+        rows.back().enabled = false;
+    } else {
+        add(i18n.tr("cards.hb_delete", "Delete from the SD card"), [this, path, title, id]() {
+            m_sheet.close();
+            if (!m_userSelect)
+                return;
+            auto& t = nxui::I18n::instance();
+            m_audio.playSfx(Sfx::ModalShow);
+            m_userSelect->show(
+                t.tr("cards.hb_delete_title", "Delete homebrew?"),
+                title + "\n" + path,
+                {{t.tr("button.cancel", "Cancel"), []() {}, true},
+                 {t.tr("cards.hb_delete_confirm", "Delete"), [this, path, title, id]() {
+                      std::error_code ec;
+                      const bool ok = std::filesystem::remove(path, ec) && !ec;
+                      switchu::commitSdCard("cards homebrew delete");
+                      DebugLog::log("[cards] homebrew delete %s: %s", path.c_str(), ok ? "ok" : "failed");
+                      auto& tt = nxui::I18n::instance();
+                      if (!ok) {
+                          showToast(tt.tr("cards.hb_delete_failed", "The homebrew could not be deleted"));
+                          return;
+                      }
+                      if (m_core.config().cards.panelTitleId == id)
+                          m_core.config().cards.panelTitleId = 0;
+                      m_catalog.setPage(m_page, m_core.config());
+                      m_selected = std::clamp(m_selected, 0, std::max(0, m_catalog.count() - 1));
+                      m_scroll = static_cast<float>(m_selected);
+                      showToast(tt.tr("cards.hb_deleted", "Deleted") + ": " + title);
+                  }, true}},
+                0, {});
+            focusManager().setFocus(m_userSelect.get());
+        }, i18n.tr("cards.hb_delete_desc", "Removes the .nro file. Its saves and settings stay."));
     }
 #endif
     m_sheet.open(title, {{std::string(), std::move(rows)}});
@@ -881,11 +988,6 @@ void CardsHomeActivity::openNotificationsSheet() {
 // ── Achievements (E11, C-UI-5) ──────────────────────────────────────────────
 void CardsHomeActivity::openAchievementsSheet(std::uint64_t titleId) {
     auto& i18n = nxui::I18n::instance();
-    if (titleId == 0) {
-        m_sheet.close();
-        showToast(i18n.tr("cards.ach_pick", "Choose a game first"));
-        return;
-    }
     namespace ach = achievements;
     m_audio.playSfx(Sfx::ModalShow);
     // Play time: the cached pdm figure (ns). Launch count: one pdm query on
@@ -898,7 +1000,8 @@ void CardsHomeActivity::openAchievementsSheet(std::uint64_t titleId) {
     };
     auto st = std::make_shared<State>();
     st->play.seconds = m_core.config().playtimeOf(titleId) / 1000000000ULL;
-    try {
+    // No game chosen (menu on the Nintendo page): only the overall set.
+    if (titleId != 0) try {
         // Launch count, then load -> record -> save as one serialized
         // transaction (CardsAchievements recordAndSave), all off the UI thread.
         m_core.threadPool().submit([st, titleId]() {
@@ -923,7 +1026,7 @@ void CardsHomeActivity::openAchievementsSheet(std::uint64_t titleId) {
         st->ready.store(true);
     }
     std::vector<CardsSheet::Row> rows;
-    for (const auto& m : ach::kPerGame) {
+    if (titleId != 0) for (const auto& m : ach::kPerGame) {
         const ach::Milestone* mp = &m;
         CardsSheet::Row r;
         r.label = i18n.tr(m.key, m.name);
@@ -937,13 +1040,60 @@ void CardsHomeActivity::openAchievementsSheet(std::uint64_t titleId) {
             const float f = ach::progress(*mp, st->play);
             if (f >= 1.f)
                 return nxui::I18n::instance().tr("cards.ach_done", "Earned");
-            return std::to_string(static_cast<int>(f * 100.f)) + "%";
+            // As build 185: "0.4 / 10 h", "6 / 10".
+            char buf[48];
+            if (mp->hours)
+                std::snprintf(buf, sizeof(buf), "%.1f / %u h", static_cast<double>(st->play.seconds) / 3600.0, mp->goal);
+            else
+                std::snprintf(buf, sizeof(buf), "%u / %u", st->play.launches, mp->goal);
+            return buf;
         };
         rows.push_back(std::move(r));
     }    const int idx = m_catalog.indexOf(titleId);
     const std::string title = idx >= 0 ? m_catalog.at(idx).app.title : std::string();
-    m_sheet.open(i18n.tr("cards.menu_achievements", "Achievements") + (title.empty() ? "" : " - " + title),
-                 {{std::string(), std::move(rows)}});
+
+    // Overall milestones (build 185): different games played and all play
+    // time together, from the play time cache; recorded on the pool.
+    auto overall = std::make_shared<ach::Play>();
+    for (const auto& [id, ns] : m_core.config().playtime) {
+        if (ns == 0 || pages::isSystemId(id) || pages::isHomebrewId(id))
+            continue;
+        overall->launches += 1;
+        overall->seconds += ns / 1000000000ULL;
+    }
+    try {
+        m_core.threadPool().submit([overall]() {
+            bool ok = true;
+            try { ach::recordOverallAndSave(ach::kPath, *overall, static_cast<std::int64_t>(std::time(nullptr)), ok); }
+            catch (...) { ok = false; }
+            if (!ok) DebugLog::log("[cards] overall achievements save failed");
+        });
+    } catch (...) {
+    }
+    std::vector<CardsSheet::Row> allRows;
+    for (const auto& m : ach::kOverall) {
+        const ach::Milestone* mp = &m;
+        CardsSheet::Row r;
+        r.label = i18n.tr(m.key, m.name);
+        r.detail = m.about;
+        r.progress = [overall, mp]() { return ach::progress(*mp, *overall); };
+        r.value = [overall, mp]() -> std::string {
+            const float f = ach::progress(*mp, *overall);
+            if (f >= 1.f) return nxui::I18n::instance().tr("cards.ach_done", "Earned");
+            char buf[48];
+            if (mp->hours)
+                std::snprintf(buf, sizeof(buf), "%.1f / %u h", static_cast<double>(overall->seconds) / 3600.0, mp->goal);
+            else
+                std::snprintf(buf, sizeof(buf), "%u / %u", overall->launches, mp->goal);
+            return buf;
+        };
+        allRows.push_back(std::move(r));
+    }
+    std::vector<CardsSheet::Section> sections;
+    if (titleId != 0)
+        sections.push_back({title.empty() ? i18n.tr("cards.ach_this_game", "This game") : title, std::move(rows)});
+    sections.push_back({i18n.tr("cards.ach_overall", "All games"), std::move(allRows)});
+    m_sheet.open(i18n.tr("cards.menu_achievements", "Achievements"), std::move(sections));
 }
 
 // ── Quick settings (E6, C-UI-8) ─────────────────────────────────────────────
@@ -961,8 +1111,8 @@ void CardsHomeActivity::openQuickSettings() {
             m_core.config().musicVolume = v;
         };
         cbs.onSfxVolumeChanged = [this](float v) {
-            m_audio.setSfxVolume(v);
             m_core.config().sfxVolume = v;
+            m_audio.setSfxVolume(m_core.config().cards.sounds ? v : 0.f);
         };
         cbs.onSleepRequested = [this]() {
             closeQuickSettings();
@@ -983,14 +1133,42 @@ void CardsHomeActivity::openQuickSettings() {
             showToast(nxui::I18n::instance().tr("cards.coming_soon", "Coming in a later update"));
         };
         cbs.onClose = [this]() { closeQuickSettings(); };
+        // E6 (C-UI-8): mini player, Bluetooth toggle and the Hekate tile.
+        cbs.bluetoothEnabled = []() { return bluetooth::IsAvailable() && bluetooth::IsRadioEnabled(); };
+        cbs.onBluetoothToggled = [this](bool on) {
+            m_core.startBluetooth();
+            if (R_FAILED(bluetooth::SetRadioEnabled(on)))
+                showToast(nxui::I18n::instance().tr("cards.bluetooth_failed", "Bluetooth change failed"));
+        };
+        cbs.musicTitle = [this]() {
+            return m_audio.isPlaying() ? m_audio.currentTrackTitle() : std::string();
+        };
+        cbs.musicPlaying = [this]() { return m_audio.isPlaying() && !m_audio.isPaused(); };
+        cbs.onMusicToggle = [this]() {
+            if (!m_audio.isPlaying()) {
+                m_core.config().musicEnabled = true;
+                m_audio.play();
+            } else {
+                m_audio.togglePlayPause();
+            }
+        };
+        cbs.onMusicSkip = [this](int dir) {
+            if (dir < 0) m_audio.previousTrack();
+            else m_audio.nextTrack();
+        };
+        cbs.onHekateRequested = [this]() {
+            closeQuickSettings();
+            m_hekateQueued = true;
+        };
         cbs.onNavigateSfx = [this]() { m_audio.playSfx(Sfx::Navigate); };
         cbs.onActivateSfx = [this]() { m_audio.playSfx(Sfx::Activate); };
         cbs.onToggleOffSfx = [this]() { m_audio.playSfx(Sfx::ToggleOff); };
         m_quick->setCallbacks(cbs);
+        m_quick->setExtended(true);
     }
     if (m_quick->isActive())
         return;
-    m_quick->setInitialValues(0.5f, m_audio.volume(), m_audio.sfxVolume(), false, true);
+    m_quick->setInitialValues(0.5f, m_audio.volume(), m_core.config().sfxVolume, false, true);
     m_quick->setBatteryStatus(m_status.batteryPercent, m_status.charging);
     m_quick->show();
     m_overlayLatch = true;
@@ -1123,6 +1301,29 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
             reopen();
         };
         s.rows.push_back(std::move(nextendo));
+        Row scan;
+        scan.label = i18n.tr("cards.set_scan", "Look for new software");
+        scan.detail = i18n.tr("cards.set_scan_desc", "Reads the installed list and the Homebrew folder again");
+        scan.onA = [this]() {
+            m_sheet.close();
+            refreshCatalogue();
+            m_catalog.setPage(m_page, m_core.config());
+            showToast(nxui::I18n::instance().tr("cards.set_scan_done", "Looking for new software..."));
+        };
+        s.rows.push_back(std::move(scan));
+        Row reset;
+        reset.label = i18n.tr("cards.set_reset_order", "Reset my order");
+        reset.enabled = !m_core.config().cards.gamesOrder.empty();
+        reset.onA = [this, reopen]() {
+            auto& c = m_core.config();
+            c.cards.gamesOrder.clear();
+            if (c.cardsSort == 3) c.cardsSort = 0;
+            saveConfig("cards reset order");
+            if (m_page == AppConfig::CardsPrefs::kGames) applySort(c.cardsSort);
+            showToast(nxui::I18n::instance().tr("cards.set_reset_order_done", "Order reset"));
+            reopen();
+        };
+        s.rows.push_back(std::move(reset));
         all["home"] = std::move(s);
     }
     { // Appearance (HomeNX E8, C-SK-6/8: accent, glass, haze, motion).
@@ -1216,6 +1417,26 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
             saveConfig("cards clock");
         };
         s.rows.push_back(std::move(clock));
+        Row freeRow;
+        freeRow.label = i18n.tr("cards.set_show_free", "Free space in the bar");
+        freeRow.value = [this]() { return onOff(m_core.config().cards.showFree); };
+        freeRow.onChange = [this](int) {
+            auto& c = m_core.config().cards;
+            c.showFree = !c.showFree;
+            m_statusTimer = 0.f;
+            saveConfig("cards show free");
+        };
+        s.rows.push_back(std::move(freeRow));
+        Row tempRow;
+        tempRow.label = i18n.tr("cards.set_show_temp", "Temperature in the bar");
+        tempRow.value = [this]() { return onOff(m_core.config().cards.showTemp); };
+        tempRow.onChange = [this](int) {
+            auto& c = m_core.config().cards;
+            c.showTemp = !c.showTemp;
+            m_statusTimer = 0.f;
+            saveConfig("cards show temp");
+        };
+        s.rows.push_back(std::move(tempRow));
         all["look"] = std::move(s);
     }
     { // Sound: shared with Classic, stored once at the top level.
@@ -1246,13 +1467,34 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
                 float& v = sfx ? c.sfxVolume : c.musicVolume;
                 v = std::clamp(v + 0.05f * static_cast<float>(d), 0.f, 1.f);
                 if (sfx)
-                    m_audio.setSfxVolume(v);
+                    m_audio.setSfxVolume(c.cards.sounds ? v : 0.f);
                 else
                     m_audio.setVolume(v);
                 saveConfig("cards volume");
             };
             s.rows.push_back(std::move(r));
         }
+        Row shuffle;
+        shuffle.label = i18n.tr("cards.set_shuffle", "Shuffle");
+        shuffle.value = [this]() { return onOff(m_core.config().cards.shuffle); };
+        shuffle.onChange = [this](int) {
+            auto& c = m_core.config().cards;
+            c.shuffle = !c.shuffle;
+            m_audio.setShuffle(c.shuffle);
+            saveConfig("cards shuffle");
+        };
+        s.rows.push_back(std::move(shuffle));
+        Row sounds;
+        sounds.label = i18n.tr("cards.set_sounds", "Sounds");
+        sounds.detail = i18n.tr("cards.set_sounds_desc", "Interface sound effects");
+        sounds.value = [this]() { return onOff(m_core.config().cards.sounds); };
+        sounds.onChange = [this](int) {
+            auto& c = m_core.config();
+            c.cards.sounds = !c.cards.sounds;
+            m_audio.setSfxVolume(c.cards.sounds ? c.sfxVolume : 0.f);
+            saveConfig("cards sounds");
+        };
+        s.rows.push_back(std::move(sounds));
         all["sound"] = std::move(s);
     }
     { // Console: the system pages that own network and controllers.
@@ -1279,6 +1521,26 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
             m_tutorialIn = 0.f;
         };
         s.rows.push_back(std::move(tut));
+        Row mtp;
+        mtp.label = i18n.tr("cards.set_mtp", "Connect to a computer");
+        mtp.detail = i18n.tr("cards.set_mtp_desc", "Plug in a USB cable: the SD card shows up as a drive (MTP)");
+        mtp.value = []() {
+#ifdef SWITCHU_MENU
+            auto& t = nxui::I18n::instance();
+            return switchu::usb::mtpConnected() ? t.tr("cards.set_mtp_on", "Connected")
+                                                : t.tr("cards.set_mtp_ready", "Ready");
+#else
+            return std::string();
+#endif
+        };
+        mtp.enabled = false;
+        s.rows.push_back(std::move(mtp));
+        Row lang;
+        lang.label = i18n.tr("cards.set_language", "Language");
+        lang.detail = i18n.tr("cards.set_language_desc", "Change it in Classic HOME settings");
+        lang.value = []() { return nxui::I18n::instance().activeLanguageTag(); };
+        lang.enabled = false;
+        s.rows.push_back(std::move(lang));
         all["console"] = std::move(s);
     }
     { // About, with the section order (C-UI-14).
@@ -1293,11 +1555,82 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         games.value = [this]() { return std::to_string(m_catalog.installedCount()); };
         games.enabled = false;
         s.rows.push_back(std::move(games));
+#ifdef SWITCHU_MENU
+        std::string fwText = "-", amsText = "-";
+        {
+            SetSysFirmwareVersion fw{};
+            if (R_SUCCEEDED(setsysGetFirmwareVersion(&fw)))
+                fwText = fw.display_version;
+            u64 cfg = 0;
+            if (R_SUCCEEDED(splGetConfig(static_cast<SplConfigItem>(65000), &cfg))) {
+                char buf[32];
+                std::snprintf(buf, sizeof(buf), "%u.%u.%u", static_cast<unsigned>((cfg >> 56) & 0xFF),
+                              static_cast<unsigned>((cfg >> 48) & 0xFF), static_cast<unsigned>((cfg >> 40) & 0xFF));
+                amsText = buf;
+            }
+        }
+        Row fwRow;
+        fwRow.label = i18n.tr("cards.set_system_version", "System version");
+        fwRow.value = [fwText]() { return fwText; };
+        fwRow.enabled = false;
+        s.rows.push_back(std::move(fwRow));
+        Row amsRow;
+        amsRow.label = "Atmosphere";
+        amsRow.value = [amsText]() { return amsText; };
+        amsRow.enabled = false;
+        s.rows.push_back(std::move(amsRow));
+#endif
+        Row freeSd;
+        freeSd.label = i18n.tr("cards.set_free_sd", "Free on the SD card");
+        freeSd.value = [this]() {
+            struct statvfs st{};
+            if (statvfs("sdmc:/", &st) != 0) return std::string("-");
+            char buf[24];
+            std::snprintf(buf, sizeof(buf), "%.1f GB",
+                          static_cast<double>(st.f_bavail) * static_cast<double>(st.f_frsize) / 1e9);
+            return std::string(buf);
+        };
+        freeSd.enabled = false;
+        s.rows.push_back(std::move(freeSd));
+        Row order;
+        order.label = i18n.tr("cards.set_tab_order", "Settings tab order");
+        order.detail = i18n.tr("cards.set_tab_order_desc", "X / Y move the section you are on");
+        order.enabled = false;
+        s.rows.push_back(std::move(order));
+        Row perf;
+        perf.label = i18n.tr("cards.set_perf_log", "Performance log");
+        perf.detail = i18n.tr("cards.set_perf_log_desc", "Start-up times and slow frames in config/OmniLaunch/perf.log");
+        perf.value = [this]() { return onOff(m_core.config().cards.perfLog); };
+        perf.onChange = [this](int) {
+            auto& c = m_core.config().cards;
+            c.perfLog = !c.perfLog;
+            saveConfig("cards perf log");
+        };
+        s.rows.push_back(std::move(perf));
         all["about"] = std::move(s);
     }
 
     {
         CardsSheet::Section s{i18n.tr("cards.set_lock", "Lock screen"), {}};
+        Row enabled;
+        enabled.label = i18n.tr("cards.set_lock", "Lock screen");
+        enabled.detail = i18n.tr("cards.set_lock_desc", "After sleep. A password always locks.");
+        enabled.value = [this]() { return onOff(m_core.config().cards.lockScreen); };
+        enabled.onChange = [this](int) {
+            auto& c = m_core.config().cards;
+            c.lockScreen = !c.lockScreen;
+            saveConfig("cards lock screen");
+        };
+        s.rows.push_back(std::move(enabled));
+        Row lockMusic;
+        lockMusic.label = i18n.tr("cards.set_lock_music", "Music on the lock screen");
+        lockMusic.value = [this]() { return onOff(m_core.config().cards.lockMusic); };
+        lockMusic.onChange = [this](int) {
+            auto& c = m_core.config().cards;
+            c.lockMusic = !c.lockMusic;
+            saveConfig("cards lock music");
+        };
+        s.rows.push_back(std::move(lockMusic));
         Row r;
         r.label = i18n.tr("cards.lock_now", "Lock now");
         r.onA = [this]() { m_sheet.close(); ensureClockFont(); m_lock.lockNow(); };
@@ -1344,6 +1677,40 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
     }
     {
         CardsSheet::Section s{i18n.tr("cards.tile_internet", "Internet"), {}};
+#ifdef SWITCHU_MENU
+        std::string ssid, ipText;
+        if (R_SUCCEEDED(nifmInitialize(NifmServiceType_User))) {
+            u32 ip = 0;
+            if (R_SUCCEEDED(nifmGetCurrentIpAddress(&ip)) && ip != 0) {
+                char buf[24];
+                std::snprintf(buf, sizeof(buf), "%u.%u.%u.%u", ip & 0xFF, (ip >> 8) & 0xFF, (ip >> 16) & 0xFF,
+                              (ip >> 24) & 0xFF);
+                ipText = buf;
+            }
+            NifmNetworkProfileData prof{};
+            if (R_SUCCEEDED(nifmGetCurrentNetworkProfile(&prof))) {
+                char s32[33]{};
+                std::memcpy(s32, prof.wireless_setting_data.ssid, 32);
+                ssid = s32;
+            }
+            nifmExit();
+        }
+        Row network;
+        network.label = i18n.tr("cards.net_network", "Network");
+        network.value = [ssid]() {
+            return ssid.empty() ? nxui::I18n::instance().tr("cards.net_none", "None") : ssid;
+        };
+        network.detail = i18n.tr("cards.net_network_desc", "Change it in the console network settings");
+        network.onA = [this]() { m_sheet.close(); openSystemTile(pages::systemId(pages::SystemTile::Internet)); };
+        s.rows.push_back(std::move(network));
+        Row ipRow;
+        ipRow.label = i18n.tr("cards.net_ip", "IP address");
+        ipRow.value = [ipText]() {
+            return ipText.empty() ? nxui::I18n::instance().tr("cards.net_none", "None") : ipText;
+        };
+        ipRow.enabled = false;
+        s.rows.push_back(std::move(ipRow));
+#endif
         Row r;
         r.label = i18n.tr("cards.internet_settings", "Open console network settings");
         r.onA = [this]() { m_sheet.close(); openSystemTile(pages::systemId(pages::SystemTile::Internet)); };
@@ -1375,6 +1742,16 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         controllers.label = i18n.tr("cards.tile_controllers", "Controllers");
         controllers.onA = [this]() { m_sheet.close(); openSystemTile(pages::systemId(pages::SystemTile::Controllers)); };
         s.rows.push_back(std::move(controllers));
+#ifdef SWITCHU_MENU
+        Row grip;
+        grip.label = i18n.tr("cards.bt_grip", "Change grip/order");
+        grip.onA = [this]() { m_sheet.close(); m_core.launcher().launchControllerPairing(); };
+        s.rows.push_back(std::move(grip));
+        Row remap;
+        remap.label = i18n.tr("cards.bt_remap", "Button mapping");
+        remap.onA = [this]() { m_sheet.close(); m_core.launcher().launchControllerRemapping(); };
+        s.rows.push_back(std::move(remap));
+#endif
         all["bluetooth"] = std::move(s);
     }
     {

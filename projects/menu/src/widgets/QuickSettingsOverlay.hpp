@@ -25,6 +25,8 @@ public:
         AirplaneMode,
         Wifi,
         ActivityLog,
+        Bluetooth,   // extended mode only (Cards, C-UI-8)
+        MiniPlayer,  // extended mode only
         PowerActions,
         Count
     };
@@ -33,6 +35,7 @@ public:
         Sleep = 0,
         Reboot,
         Shutdown,
+        Hekate,      // extended mode only
         Count
     };
 
@@ -50,6 +53,14 @@ public:
         std::function<void()>      onNavigateSfx;
         std::function<void()>      onActivateSfx;
         std::function<void()>      onToggleOffSfx;
+        // Extended mode (Cards quick settings, HomeNX E6 / C-UI-8).
+        std::function<bool()>        bluetoothEnabled;
+        std::function<void(bool)>    onBluetoothToggled;
+        std::function<std::string()> musicTitle;   ///< empty: nothing playing
+        std::function<bool()>        musicPlaying;
+        std::function<void()>        onMusicToggle;
+        std::function<void(int)>     onMusicSkip;  ///< -1 previous, +1 next
+        std::function<void()>        onHekateRequested;
     };
 
     QuickSettingsOverlay();
@@ -61,6 +72,9 @@ public:
     void setTheme(const nxui::Theme* t);
     void setInput(nxui::Input* input) { m_input = input; }
     void setCallbacks(const Callbacks& cb) { m_callbacks = cb; }
+    /// Cards layout: mini player and Bluetooth instead of the activity log,
+    /// and a fourth power tile (Hekate). Classic keeps the default layout.
+    void setExtended(bool extended) { m_extended = extended; }
 
     void show();
     void hide();
@@ -85,6 +99,9 @@ private:
     void toggleItem(ItemIndex item);
     void triggerPowerAction(PowerAction action);
     void updateCursorTarget();
+    bool itemShown(ItemIndex item) const;
+    void stepItem(int dir);
+    int powerCount() const;
 
     nxui::Rect computePanelRect() const;
     nxui::Rect computeItemRect(ItemIndex item) const;
@@ -116,6 +133,8 @@ private:
     float m_sfxVolume = 0.5f;
     bool  m_airplaneMode = false;
     bool  m_wifiEnabled = true;
+    bool  m_extended = false;
+    bool  m_bluetoothEnabled = false;
 
     // Real-time battery & thermal status
     int   m_batteryPercent = -1;

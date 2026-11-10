@@ -35,6 +35,15 @@ inline constexpr Milestone kPerGame[] = {
     {"l50", "cards.ach_l50", "Old friend", "Start it 50 times", false, 50},
 };
 
+// Across every game (HomeNX build 185 "overall" set): Play.launches counts
+// the different games played, Play.seconds all the play time together.
+inline constexpr Milestone kOverall[] = {
+    {"games5", "cards.ach_games5", "Explorer", "Play 5 different games", false, 5},
+    {"games15", "cards.ach_games15", "Globetrotter", "Play 15 different games", false, 15},
+    {"total100", "cards.ach_total100", "Marathon", "Play for 100 hours in all", true, 100},
+    {"total500", "cards.ach_total500", "Lifer", "Play for 500 hours in all", true, 500},
+};
+
 struct Play {
     std::uint64_t seconds = 0;
     std::uint32_t launches = 0;
@@ -49,6 +58,8 @@ struct Earned {
 };
 
 std::string key(std::uint64_t titleId, const char* id);
+/// File key of an overall milestone: "all <id>".
+std::string overallKey(const char* id);
 enum class LoadStatus { Missing, Complete, Error };
 // Parsing never publishes a partial snapshot on failure.
 LoadStatus readStream(std::istream& in, Earned& out);
@@ -60,11 +71,17 @@ bool save(const std::string& path, const Earned& e);
 /// yet, stamped `now`. Returns the newly earned ones.
 std::vector<const Milestone*> record(Earned& e, std::uint64_t titleId, const Play& play, std::int64_t now);
 
+/// Records every overall milestone `total` reaches that is not in `e` yet.
+std::vector<const Milestone*> recordOverall(Earned& e, const Play& total, std::int64_t now);
+
 /// One transaction under a process-wide lock: load `path`, record `play` for
 /// `titleId`, save when something is new. Returns the new milestones, and
 /// sets `ok` false when the save failed (the previous file is kept).
 std::vector<const Milestone*> recordAndSave(const std::string& path, std::uint64_t titleId, const Play& play,
                                             std::int64_t now, bool& ok);
+/// Same transaction for the overall set (titleId-independent).
+std::vector<const Milestone*> recordOverallAndSave(const std::string& path, const Play& total, std::int64_t now,
+                                                   bool& ok);
 
 inline constexpr const char* kPath = "sdmc:/config/OmniLaunch/achievements.txt";
 
