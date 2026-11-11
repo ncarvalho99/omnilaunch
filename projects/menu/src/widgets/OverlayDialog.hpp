@@ -180,6 +180,7 @@ private:
     std::vector<ButtonDef>   m_buttons;
     std::vector<UserEntry>   m_users;
     int  m_selected     = 0;
+    bool m_stackButtons = false;
     bool m_active       = false;
     bool m_animatingOut = false;
     DialogMode m_mode = DialogMode::Buttons;

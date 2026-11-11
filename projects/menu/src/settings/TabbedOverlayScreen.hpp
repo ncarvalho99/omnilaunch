@@ -26,11 +26,13 @@ class SleepTab;
 class ThemeShopInstalledTab;
 class ThemeShopCommunityTab;
 class AboutTab;
+class HomeNXTab;
 }
 
 class TabbedOverlayScreen : public nxui::GlassWidget {
 public:
     friend class settings::tabs::SystemTab;
+    friend class settings::tabs::HomeNXTab;
 
     enum class ScreenMode {
         Settings,
@@ -70,6 +72,7 @@ public:
     void refreshCurrentTabWidgets();
     void handleTouch(nxui::Input& input);
     void warmup();
+    nxui::Rect focusRect() const override { return {0.f, 0.f, 0.f, 0.f}; }
 
     struct DialogButtonDef {
         std::string label;

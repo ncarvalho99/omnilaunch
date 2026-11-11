@@ -413,11 +413,25 @@ CardsArtSources::SingleTitleResult CardsArtSources::downloadTitleArt(
         result.cover = true;
     }
 
-    // 2. Hero Background
+    // 2. Hero Background (prefer 16:9 widescreen 1280x720 / 1920x1080)
     if (force || !hasHero(titleId)) {
         std::vector<std::uint8_t> bytes = fetchNlibBanner(net, titleId, 1280, 720, cancel);
-        if (bytes.empty()) {
-            bytes = fetchGametdbCover(net, title, cancel);
+        if (bytes.empty() && titleId != 0) {
+            const std::string hid = hexId(titleId);
+            for (int s = 1; s <= 4; ++s) {
+                if (cancel && cancel->load(std::memory_order_acquire))
+                    break;
+                net::Request req;
+                req.url = "https://api.nlib.cc/nx/" + hid + "/screen/" + std::to_string(s);
+                req.timeoutMs = 12000;
+                req.attempts = 1;
+                req.cancel = cancel;
+                auto res = net.request(req);
+                if (res.ok() && isPictureData(res.body)) {
+                    bytes = std::vector<std::uint8_t>(res.body.begin(), res.body.end());
+                    break;
+                }
+            }
         }
         if (!bytes.empty()) {
             result.hero = saveHero(titleId, bytes);

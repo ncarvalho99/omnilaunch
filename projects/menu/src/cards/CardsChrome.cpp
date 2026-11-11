@@ -60,7 +60,8 @@ bool CardsChrome::load(nxui::GpuDevice& gpu, nxui::Renderer& ren, const std::str
     m_iconRoot = assetsRoot + "/icons/cards/";
     const std::string font = assetsRoot + "/fonts/DejaVuSans.ttf";
     const bool ok = m_pill.load(gpu, ren, font, 20) && m_title.load(gpu, ren, font, 30) &&
-                    m_label.load(gpu, ren, font, 22) && m_small.load(gpu, ren, font, 17);
+                    m_label.load(gpu, ren, font, 22) && m_small.load(gpu, ren, font, 17) &&
+                    m_glyphs.load(gpu, ren, assetsRoot + "/fonts/switch_icons.ttf", 24);
     if (!ok)
         DebugLog::log("[cards] chrome font load failed: %s", font.c_str());
     return ok;

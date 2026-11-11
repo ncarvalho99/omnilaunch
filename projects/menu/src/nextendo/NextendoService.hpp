@@ -47,6 +47,9 @@ public:
     int openNextendoApp(home::HomeCore& core, std::string& outMsg);
 
     bool isDownloading() const { return m_downloading.load(); }
+    float downloadProgress() const { return m_downloadProgress.load(); }
+    int downloadState() const { return m_downloadState.load(); } // 0 idle, 1 downloading, 2 completed, -1 error
+    std::string downloadError() const;
 
 private:
     void fetchCounts(net::NetService& net);
@@ -58,6 +61,9 @@ private:
     std::uint64_t m_lastFetchTick = 0;
     std::atomic<bool> m_fetching{false};
     std::atomic<bool> m_downloading{false};
+    std::atomic<float> m_downloadProgress{0.f};
+    std::atomic<int> m_downloadState{0};
+    std::string m_downloadError;
 };
 
 } // namespace nextendo

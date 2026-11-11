@@ -6876,8 +6876,14 @@ void WiiUMenuApp::buildGrid() {
     sidebarActions.onNextendo    = [this]() {
         std::string outMsg;
         const int res = m_homeCore.nextendo().openNextendoApp(m_homeCore, outMsg);
-        if (res != 0 && m_dialog) {
-            auto& i18n = nxui::I18n::instance();
+        auto& i18n = nxui::I18n::instance();
+        if (res == 1 && m_progressDialog) {
+            m_nextendoDownloadingActive = true;
+            m_progressDialog->setTheme(&m_theme);
+            raiseOverlay(m_progressDialog);
+            m_progressDialog->show("Nextendo", i18n.tr("cards.nextendo_getting", "Baixando o app do Nextendo (Prelude)..."), 0.f);
+            focusManager().setFocus(m_progressDialog.get());
+        } else if (res < 0 && m_dialog) {
             m_audio.playSfx(Sfx::ModalShow);
             m_dialog->show("Nextendo", i18n.tr(("cards." + outMsg).c_str(), outMsg.c_str()),
                            {{i18n.tr("button.ok", "OK"), [] {}, true}}, 0, {});
@@ -6965,7 +6971,8 @@ void WiiUMenuApp::buildGrid() {
         focusManager().setFocus(m_themeShop.get());
     };
 
-    m_sidebar.build(app().gpu(), app().renderer(), SD_ASSETS, sidebarActions);
+    m_sidebarActions = sidebarActions;
+    m_sidebar.build(app().gpu(), app().renderer(), SD_ASSETS, m_sidebarActions, m_config.sidebarOrder);
     if (!returningFromSuspendedApp) {
         m_sidebar.reloadAssets(app().gpu(), app().renderer(), SD_ASSETS,
                                resolveThemeAssetPath(m_effectivePreset, m_effectivePreset.icons.basePath));
@@ -7368,6 +7375,19 @@ void WiiUMenuApp::buildGrid() {
 
     if (m_layoutDirty)
         saveMenuLayout();
+}
+
+void WiiUMenuApp::rebuildSidebar() {
+    if (!m_leftSidebar || !m_rightSidebar) return;
+    app().gpu().waitIdle();
+    m_leftSidebar->clearChildren();
+    m_rightSidebar->clearChildren();
+    m_sidebar.build(app().gpu(), app().renderer(), SD_ASSETS, m_sidebarActions, m_config.sidebarOrder);
+    m_sidebar.reloadAssets(app().gpu(), app().renderer(), SD_ASSETS,
+                           resolveThemeAssetPath(m_effectivePreset, m_effectivePreset.icons.basePath));
+    for (auto& btn : m_sidebar.leftButtons()) m_leftSidebar->addChild(btn);
+    for (auto& btn : m_sidebar.rightButtons()) m_rightSidebar->addChild(btn);
+    m_sidebar.applyTheme(m_theme);
 }
 
 std::string WiiUMenuApp::resolveSoundPresetId(const std::string& preset) const {
@@ -7942,6 +7962,32 @@ void WiiUMenuApp::onUpdate(float dt) {
     }
     m_animalesePlayer.update(dt);
     m_audio.update();
+
+    if (m_nextendoDownloadingActive) {
+        auto& nextendo = m_homeCore.nextendo();
+        if (nextendo.isDownloading()) {
+            const float p = nextendo.downloadProgress();
+            char pctBuf[32];
+            std::snprintf(pctBuf, sizeof(pctBuf), " (%d%%)", static_cast<int>(p * 100.f));
+            std::string msg = nxui::I18n::instance().tr("cards.nextendo_getting", "Baixando o app do Nextendo (Prelude)...") + pctBuf;
+            if (m_progressDialog && m_progressDialog->isActive())
+                m_progressDialog->updateState(msg, p);
+        } else {
+            m_nextendoDownloadingActive = false;
+            if (m_progressDialog && m_progressDialog->isActive())
+                m_progressDialog->hide();
+            if (nextendo.downloadState() == 2) {
+                std::string msg;
+                nextendo.openNextendoApp(m_homeCore, msg);
+            } else if (nextendo.downloadState() == -1 && m_dialog) {
+                auto& i18n = nxui::I18n::instance();
+                m_audio.playSfx(Sfx::ModalShow);
+                m_dialog->show("Nextendo", i18n.tr("cards.nextendo_download_failed", "Falha ao baixar o app do Nextendo."),
+                               {{i18n.tr("button.ok", "OK"), [] {}, true}}, 0, {});
+                focusManager().setFocus(m_dialog.get());
+            }
+        }
+    }
 
     const bool isAudioPlaying = m_audio.isPlaying() && !m_audio.isPaused();
     if (m_mediaCenterButton && m_mediaCenterButton->isPlaying() != isAudioPlaying) {

@@ -1,5 +1,6 @@
 #include "ProfileCarouselScreen.hpp"
 #include "ProfileDrawing.hpp"
+#include "core/ButtonGlyph.hpp"
 
 #include <nxui/core/I18n.hpp>
 #include <nxui/core/Renderer.hpp>
@@ -288,6 +289,19 @@ void ProfileCarouselScreen::render(nxui::Renderer& ren) {
 
     drawBubble(ren, alpha);
     drawDetails(ren, alpha);
+
+    if (!m_iconFont.valid()) {
+        m_iconFont.load(ren.gpu(), ren, "romfs:/fonts/switch_icons.ttf", 22);
+    }
+    if (m_font) {
+        auto& i18n = nxui::I18n::instance();
+        nxui::Font* small = m_smallFont ? m_smallFont : m_font;
+        std::vector<ui::glyph::ActionHint> hints;
+        hints.push_back({ui::glyph::dpad(), i18n.tr("hint.navigate", "Navigate")});
+        hints.push_back({ui::glyph::button(nxui::Button::A), i18n.tr("profile.view_profile", "View profile")});
+        hints.push_back({ui::glyph::button(nxui::Button::B), i18n.tr("hint.back", "Back")});
+        ui::glyph::drawHintBar(ren, m_iconFont.valid() ? m_iconFont : *small, *small, hints, kScreenW - 24.f, kScreenH - 14.f, alpha);
+    }
 }
 
 void ProfileCarouselScreen::drawAvatar(nxui::Renderer& ren, int index, const nxui::Rect& r,

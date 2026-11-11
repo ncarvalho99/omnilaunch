@@ -372,7 +372,6 @@ void CardsNewsSheet::render(nxui::Renderer& ren, CardsChrome& chrome, float time
     const float a = m_in;
     const nxui::Color white = CardsChrome::kWhite.withAlpha(a);
     const nxui::Color muted{0.8f, 0.82f, 0.88f, 0.85f * a};
-    ren.drawRect({0.f, 0.f, 1280.f, 720.f}, {0.f, 0.f, 0.f, 0.52f * a});
 
     bool drawnGlass = false;
 #ifdef SWITCHU_MENU
@@ -383,12 +382,16 @@ void CardsNewsSheet::render(nxui::Renderer& ren, CardsChrome& chrome, float time
             ren.copyOffscreen(nxui::GpuDevice::OFF_SHARP_A, nxui::GpuDevice::OFF_DIALOG);
             m_backdropCacheValid = true;
         }
+        ren.drawRect({0.f, 0.f, 1280.f, 720.f}, {0.f, 0.f, 0.f, 0.52f * a});
         ren.drawLiquidGlass(nxui::GpuDevice::OFF_DIALOG, kCard, 34.f, CardsChrome::glassTint(1.f), a, 0.35f);
         drawnGlass = true;
     }
 #endif
     if (!drawnGlass) {
-        ren.drawRoundedRect(kCard, CardsChrome::glassTint(a), 34.f);
+        ren.drawRect({0.f, 0.f, 1280.f, 720.f}, {0.f, 0.f, 0.f, 0.52f * a});
+        ren.drawRoundedRect(kCard, {0.08f, 0.09f, 0.13f, 0.86f * a}, 34.f);
+    } else {
+        ren.drawRoundedRect(kCard, {0.04f, 0.05f, 0.08f, 0.52f * a}, 34.f);
     }
     ren.drawRoundedRectOutline(kCard, {1.f, 1.f, 1.f, 0.16f * a}, 34.f, 1.5f);
 

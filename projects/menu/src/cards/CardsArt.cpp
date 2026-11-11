@@ -100,9 +100,8 @@ void CardsArt::request(nxui::ThreadPool& pool, std::uint64_t titleId, int kind) 
             if (cancelled->load())
                 return;
             std::string path = kind == 2 ? SteamGridDbManager::logoPath(titleId)
-                             : kind == 1 && !coverBg ? heroPath(titleId) : std::string();
-            if (path.empty() && kind != 2)
-                path = coverPath(titleId);
+                             : kind == 1 ? (coverBg ? coverPath(titleId) : heroPath(titleId))
+                             : coverPath(titleId);
             if (path.empty() || cancelled->load())
                 return;
             *image = nxui::Texture::decodeFile(path, kind == 1 ? kBackgroundMaxSide : kCoverMaxSide);

@@ -50,6 +50,10 @@ ListDetailScreen::ListDetailScreen()
     : TabbedOverlayScreen(ScreenMode::GameOptions) {
     constexpr float width = 1160.f;
     setRect({(1280.f - width) * 0.5f, 32.f, width, 656.f});
+    addAction(static_cast<uint64_t>(nxui::Button::ZL), [this]() { scrollBy(-kScrollStep); });
+    addAction(static_cast<uint64_t>(nxui::Button::ZR), [this]() { scrollBy(kScrollStep); });
+    addAction(static_cast<uint64_t>(nxui::Button::RStickU), [this]() { scrollBy(-kScrollStep * 0.6f); });
+    addAction(static_cast<uint64_t>(nxui::Button::RStickD), [this]() { scrollBy(kScrollStep * 0.6f); });
 }
 
 void ListDetailScreen::setEntries(std::vector<Entry> entries, std::string emptyTitle,

@@ -127,6 +127,10 @@ private:
     void openDotsMenu();
     bool handleDotsInput(nxui::Input& in);
     void drawDots(nxui::Renderer& ren);
+    void openPowerMenu();
+    void closePowerMenu();
+    bool handlePowerInput(nxui::Input& in);
+    void drawPower(nxui::Renderer& ren);
     void openUsersSheet();
     void openNotificationsSheet();
     void openAchievementsSheet(std::uint64_t titleId);
@@ -249,6 +253,9 @@ private:
     float m_dotsIn = 0.f;
     int m_dotsRow = 1;
     int m_dotsCol = 0;
+    bool m_powerOpen = false;
+    float m_powerIn = 0.f;
+    int m_powerSel = 0;
     // This activation was a fast return: no automatic welcome tour.
     bool m_tutorialBlocked = false;
 

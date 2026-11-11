@@ -28,7 +28,8 @@ public:
     };
 
     void build(nxui::GpuDevice& gpu, nxui::Renderer& ren,
-               const std::string& assetsBase, const Actions& actions);
+               const std::string& assetsBase, const Actions& actions,
+               const std::vector<int>& order = {});
 
     void reloadAssets(nxui::GpuDevice& gpu, nxui::Renderer& ren,
                       const std::string& assetsBase,

@@ -1645,8 +1645,28 @@
     "apply": "Apply",
     "back": "Back",
     "music_source": "HOME Music",
+    "music_hints": "A Choose   B Back",
+    "power_hints": "A Choose   B Back",
+    "power_sleep_desc": "Pick up later",
+    "power_reboot_desc": "Off and on again",
+    "power_shutdown_desc": "Turn the console off",
+    "power_hekate_desc": "Hekate's menu",
     "sgdb_no_artwork": "No artwork found for this title.",
     "sgdb_empty_help": "Press X to change the resolution or Y to change the search name."
+  },
+  "settings": {
+    "homenx": {
+      "order": "Sidebar buttons",
+      "order_desc": "Choose the button for this spot; it swaps with the spot it was in.",
+      "left": "Left",
+      "right": "Right",
+      "hb_app": "Sphaira as an application",
+      "hb_app_desc": "On: Sphaira and homebrew get full memory by borrowing one of your games. Off: they open over Album with less memory.",
+      "ask_user": "Ask who's playing",
+      "ask_user_desc": "Starting a game shows the users first, each time, as Nintendo's HOME does.",
+      "lock": "Lock screen",
+      "lock_desc": "The time and date when the console starts or wakes. A opens HOME."
+    }
   },
   "news": {
     "empty_title": "No news",

@@ -55,6 +55,18 @@ inline nxui::Color blurple(float a = 1.f)     { return rgb(88, 101, 242, a); }
 inline nxui::Color green(float a = 1.f)       { return rgb(35, 165, 90, a); }
 inline nxui::Color red(float a = 1.f)         { return rgb(242, 63, 67, a); }
 
+static std::string formatDiscordTimestamp(const std::string& ts) {
+    if (ts.empty()) return {};
+    if (ts.size() >= 16 && ts[4] == '-' && ts[7] == '-' && ts[10] == 'T') {
+        std::string year = ts.substr(0, 4);
+        std::string month = ts.substr(5, 2);
+        std::string day = ts.substr(8, 2);
+        std::string time = ts.substr(11, 5);
+        return day + "/" + month + "/" + year + " " + time;
+    }
+    return ts;
+}
+
 std::string cleanText(const std::string& s) {
     std::string out;
     out.reserve(s.size());
@@ -542,7 +554,7 @@ void DiscordPanel::onRender(nxui::Renderer& ren) {
     const float a = m_anim;
 
     // Dimmed background
-    ren.drawRect({0.f, 0.f, 1280.f, 720.f}, {0.f, 0.f, 0.f, 0.45f * a});
+    ren.drawRect({0.f, 0.f, 1280.f, 720.f}, {0.f, 0.f, 0.f, 0.65f * a});
 
     const nxui::Rect p = panelRect();
     ren.drawRoundedRect(p, bgSecondary(a), 18.f);
@@ -802,12 +814,20 @@ void DiscordPanel::drawQrView(nxui::Renderer& ren, const nxui::Rect& p, float a)
 
 void DiscordPanel::drawChat(nxui::Renderer& ren, const nxui::Rect& p, float a) {
     // Top bar
-    m_backHit = {p.x + 12.f, p.y + 12.f, 96.f, 36.f};
-    ren.drawRoundedRect(m_backHit, bgSelected(a), 6.f);
+    m_backHit = {p.x + 12.f, p.y + 12.f, 36.f, 36.f};
+    ren.drawRoundedRect(m_backHit, bgSelected(a), 18.f);
     if (m_smallFont) {
-        drawLabel(ren, m_smallFont, m_backHit.x + 8.f, m_backHit.y + 10.f, T("discord_ui.back", "< Voltar (B)"), textNormal(a));
+        drawLabel(ren, m_smallFont, m_backHit.x + 12.f, m_backHit.y + 8.f, "<", textNormal(a));
     }
-    drawLabel(ren, m_font, p.x + 120.f, p.y + 16.f, m_chatName, textNormal(a));
+    drawLabel(ren, m_font, p.x + 58.f, p.y + 16.f, m_chatName, textNormal(a));
+
+    const std::string replyHint = T("discord_ui.reply_hint", "X Responder");
+    if (m_smallFont) {
+        const float rw = m_smallFont->measure(replyHint).x;
+        const nxui::Rect replyBox{p.right() - rw - 28.f, p.y + 14.f, rw + 16.f, 30.f};
+        ren.drawRoundedRect(replyBox, bgSelected(a), 15.f);
+        drawLabel(ren, m_smallFont, replyBox.x + 8.f, replyBox.y + 6.f, replyHint, textMuted(a));
+    }
     ren.drawRect({p.x, p.y + kTopH - 1.f, p.width, 1.f}, {1.f, 1.f, 1.f, 0.08f * a});
 
     // Message list area
@@ -871,7 +891,8 @@ void DiscordPanel::drawChat(nxui::Renderer& ren, const nxui::Rect& p, float a) {
                 drawLabel(ren, m_font, chatArea.x + 50.f, y + 2.f, m.author.displayName(), blurple(a));
                 if (m_smallFont && !m.timestamp.empty()) {
                     float nw = m_font ? m_font->measure(m.author.displayName()).x : 80.f;
-                    drawLabel(ren, m_smallFont, chatArea.x + 50.f + nw + 10.f, y + 6.f, m.timestamp, textMuted(a));
+                    std::string fts = formatDiscordTimestamp(m.timestamp);
+                    drawLabel(ren, m_smallFont, chatArea.x + 50.f + nw + 10.f, y + 6.f, fts, textMuted(a));
                 }
 
                 // Content lines

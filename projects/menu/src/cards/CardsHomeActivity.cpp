@@ -986,6 +986,8 @@ void CardsHomeActivity::onUpdate(float dt) {
                     m_core.config().cards.tutorialDone = true;
                     saveConfig("cards tutorial");
                 }
+            } else if (m_powerOpen) {
+                handlePowerInput(app().input());
             } else if (m_dotsOpen) {
                 handleDotsInput(app().input());
             } else if (m_sheet.isOpen()) {
@@ -2141,15 +2143,15 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
         auto& sf = m_chrome.smallFont();
         const std::string zl = ui::glyph::button(nxui::Button::ZL);
         const std::string zr = ui::glyph::button(nxui::Button::ZR);
-        const float zw = m_fontIcons.measure(zl).x * 0.68f;
+        const float zw = m_fontIcons.measure(zl).x * 0.65f;
         const float lw = sf.measure(pageLabel).x;
-        const nxui::Rect cap{16.f, 92.f, zw * 2.f + lw + 40.f, 26.f};
-        ren.drawRoundedRect(cap, {0.12f, 0.14f, 0.20f, 0.55f}, 13.f);
-        ren.drawRoundedRectOutline(cap, {1.f, 1.f, 1.f, 0.18f}, 13.f, 1.f);
-        const float iy = cap.y + (cap.height - m_fontIcons.measure(zl).y * 0.68f) * 0.5f;
-        ren.drawText(zl, {cap.x + 10.f, iy}, &m_fontIcons, CardsChrome::kWhite, 0.68f);
-        m_chrome.textMid(ren, sf, pageLabel, cap.x + 16.f + zw, cap.y + 13.f, {1.f, 1.f, 1.f, 0.9f});
-        ren.drawText(zr, {cap.x + 22.f + zw + lw, iy}, &m_fontIcons, CardsChrome::kWhite, 0.68f);
+        const nxui::Rect cap{16.f, 78.f, zw * 2.f + lw + 36.f, 24.f};
+        ren.drawRoundedRect(cap, {0.12f, 0.14f, 0.20f, 0.55f}, 12.f);
+        ren.drawRoundedRectOutline(cap, {1.f, 1.f, 1.f, 0.18f}, 12.f, 1.f);
+        const float iy = cap.y + (cap.height - m_fontIcons.measure(zl).y * 0.65f) * 0.5f;
+        ren.drawText(zl, {cap.x + 8.f, iy}, &m_fontIcons, CardsChrome::kWhite, 0.65f);
+        m_chrome.textMid(ren, sf, pageLabel, cap.x + 14.f + zw, cap.y + 12.f, {1.f, 1.f, 1.f, 0.9f});
+        ren.drawText(zr, {cap.x + 20.f + zw + lw, iy}, &m_fontIcons, CardsChrome::kWhite, 0.65f);
     }
 
     // Neighbours first, focused card last so its outline sits on top.
@@ -2196,6 +2198,7 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
     }
     drawMoveHint(ren);
     drawDots(ren);
+    drawPower(ren);
     m_sheet.render(ren, m_chrome);
     m_musicSheet.render(ren, m_chrome, m_audio);
     m_newsSheet.render(ren, m_chrome, m_time);

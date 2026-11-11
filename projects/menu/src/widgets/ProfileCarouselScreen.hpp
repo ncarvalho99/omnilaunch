@@ -97,6 +97,7 @@ private:
     void drawBubble(nxui::Renderer& ren, float alpha);
     void drawDetails(nxui::Renderer& ren, float alpha);
 
+    nxui::Font m_iconFont;
     nxui::Font* m_font = nullptr;
     nxui::Font* m_smallFont = nullptr;
     const nxui::Theme* m_theme = nullptr;

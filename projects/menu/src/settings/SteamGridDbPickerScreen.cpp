@@ -29,7 +29,7 @@ constexpr int kColumns = 4;
 constexpr int kRows = 3;
 constexpr int kPerPage = kColumns * kRows;
 
-constexpr const char* kHeroDims[] = {"1280x720", "1920x1080", "1920x620", "3840x1240", "1600x650"};
+constexpr const char* kHeroDims[] = {"1920x1080", "1280x720", "1920x620", "3840x1240", "1600x650"};
 constexpr int kHeroDimCount = sizeof(kHeroDims) / sizeof(kHeroDims[0]);
 
 constexpr const char* kCoverDims[] = {"600x900", "342x482", "660x930", "512x512", "1024x1024"};
@@ -56,6 +56,7 @@ SteamGridDbPickerScreen::SteamGridDbPickerScreen(nxui::GpuDevice& gpu,
                                                  nxui::Renderer& renderer,
                                                  nxui::ThreadPool& threadPool)
     : m_gpu(gpu), m_renderer(renderer), m_threadPool(threadPool) {
+    m_iconFont.load(gpu, renderer, "romfs:/fonts/switch_icons.ttf", 24);
     setRect({0.f, 0.f, 1280.f, 720.f});
     setVisible(false);
     setFocusable(true);
@@ -428,7 +429,7 @@ void SteamGridDbPickerScreen::onRender(nxui::Renderer& renderer) {
             const int pages = (count + kPerPage - 1) / kPerPage;
             hints.push_back({"", std::to_string(page + 1) + "/" + std::to_string(pages)});
         }
-        ui::glyph::drawHintBar(renderer, *m_font, *m_smallFont, hints, panel.right() - 24.f, panel.bottom() - 14.f, 1.f);
+        ui::glyph::drawHintBar(renderer, m_iconFont, *m_smallFont, hints, panel.right() - 24.f, panel.bottom() - 14.f, 1.f);
     }
 }
 

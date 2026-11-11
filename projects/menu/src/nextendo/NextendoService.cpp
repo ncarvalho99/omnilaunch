@@ -115,6 +115,11 @@ bool NextendoService::hasData() const {
     return m_hasData;
 }
 
+std::string NextendoService::downloadError() const {
+    std::lock_guard<std::mutex> lk(m_mu);
+    return m_downloadError;
+}
+
 int NextendoService::openNextendoApp(home::HomeCore& core, std::string& outMsg) {
     std::string candidatePaths[] = {
         core.config().nextendoPath,
@@ -153,10 +158,13 @@ int NextendoService::openNextendoApp(home::HomeCore& core, std::string& outMsg) 
     }
 
     m_downloading.store(true);
+    m_downloadProgress.store(0.f);
+    m_downloadState.store(1);
     outMsg = "nextendo_getting";
 
     if (!core.threadPool().acceptingTasks()) {
         m_downloading.store(false);
+        m_downloadState.store(-1);
         outMsg = "nextendo_download_failed";
         return -1;
     }
@@ -165,12 +173,24 @@ int NextendoService::openNextendoApp(home::HomeCore& core, std::string& outMsg) 
         net::Download dl;
         dl.url = kNextendoDownloadUrl;
         dl.path = kNextendoNroDefault;
+        dl.progress = [this](std::uint64_t done, std::uint64_t total) {
+            if (total > 0) {
+                m_downloadProgress.store(std::clamp(static_cast<float>(done) / static_cast<float>(total), 0.f, 1.f));
+            }
+        };
         DebugLog::log("[nextendo] downloading Prelude from %s to %s", dl.url.c_str(), dl.path.c_str());
         const net::Response res = core.net().download(dl);
         m_downloading.store(false);
         if (res.ok()) {
+            m_downloadProgress.store(1.f);
+            m_downloadState.store(2);
             DebugLog::log("[nextendo] Prelude download complete: %s", dl.path.c_str());
         } else {
+            m_downloadState.store(-1);
+            {
+                std::lock_guard<std::mutex> lk(m_mu);
+                m_downloadError = res.error;
+            }
             DebugLog::log("[nextendo] Prelude download failed: %s (status %ld)", res.error.c_str(), res.status);
         }
     });

@@ -651,6 +651,7 @@ private:
     void openFriends(AccountUid forUser = {});
     std::shared_ptr<ContextMenu>       m_contextMenu;
     std::shared_ptr<ProgressDialog>    m_progressDialog;
+    bool                               m_nextendoDownloadingActive = false;
     std::shared_ptr<SettingsScreen>    m_settings;
     std::shared_ptr<ThemeShopScreen>   m_themeShop;
     std::shared_ptr<GameGalleryScreen> m_gameGallery;
@@ -785,6 +786,8 @@ private:
 
     nxui::ThreadPool& m_threadPool;
     SidebarManager   m_sidebar;
+    SidebarManager::Actions m_sidebarActions;
+    void rebuildSidebar();
     AppletLauncher&  m_launcher;
     AppListLoader&  m_appLoader; // HomeCore-owned catalogue loader (C5c)
     IconStreamer    m_iconStreamer;

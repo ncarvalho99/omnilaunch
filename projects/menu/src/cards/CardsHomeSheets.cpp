@@ -70,7 +70,7 @@ std::string onOff(bool v) {
 } // namespace
 
 bool CardsHomeActivity::overlayActive() const {
-    return (m_userSelect && m_userSelect->isActive()) || (m_text && m_text->isActive()) ||
+    return m_powerOpen || m_dotsOpen || (m_userSelect && m_userSelect->isActive()) || (m_text && m_text->isActive()) ||
            (m_quick && m_quick->isActive()) || (m_deleteProgress && m_deleteProgress->isActive()) ||
            (m_picker && m_picker->isActive()) || (m_discordPanel && m_discordPanel->isActive());
 }
@@ -83,6 +83,129 @@ void CardsHomeActivity::saveConfig(const char* why) {
 #ifdef SWITCHU_MENU
     switchu::commitSdCard(why);
 #endif
+}
+
+void CardsHomeActivity::openPowerMenu() {
+    m_powerOpen = true;
+    m_powerIn = 0.f;
+    m_powerSel = 0;
+    m_audio.playSfx(Sfx::ModalShow);
+}
+
+void CardsHomeActivity::closePowerMenu() {
+    m_powerOpen = false;
+    m_audio.playSfx(Sfx::ModalHide);
+}
+
+bool CardsHomeActivity::handlePowerInput(nxui::Input& in) {
+    using B = nxui::Button;
+    if (in.isDown(B::B) || in.isDown(B::Plus)) {
+        closePowerMenu();
+        return true;
+    }
+    const bool left = in.isDown(B::DLeft) || in.isDown(B::LStickL);
+    const bool right = in.isDown(B::DRight) || in.isDown(B::LStickR);
+    if (left && m_powerSel > 0) {
+        --m_powerSel;
+        m_audio.playSfx(Sfx::Navigate);
+        return true;
+    }
+    if (right && m_powerSel < 3) {
+        ++m_powerSel;
+        m_audio.playSfx(Sfx::Navigate);
+        return true;
+    }
+    if (in.isDown(B::A)) {
+        const int sel = m_powerSel;
+        closePowerMenu();
+        m_audio.playSfx(Sfx::ConfirmPositive);
+        if (sel == 0) {
+#ifdef SWITCHU_MENU
+            m_core.launcher().enterSleep();
+#endif
+        } else if (sel == 1) {
+#ifdef SWITCHU_MENU
+            m_core.launcher().reboot();
+#endif
+        } else if (sel == 2) {
+#ifdef SWITCHU_MENU
+            m_core.launcher().shutdown();
+#endif
+        } else if (sel == 3) {
+            m_hekateQueued = true;
+        }
+        return true;
+    }
+    return true;
+}
+
+void CardsHomeActivity::drawPower(nxui::Renderer& ren) {
+    if (!m_powerOpen)
+        return;
+    m_powerIn = std::min(1.f, m_powerIn + 1.f / 10.f);
+    const float a = 1.f - (1.f - m_powerIn) * (1.f - m_powerIn);
+    ren.drawRect({0.f, 0.f, 1280.f, 720.f}, {0.f, 0.f, 0.f, 0.65f * a});
+
+    const nxui::Rect card{180.f, 190.f, 920.f, 340.f};
+    ren.drawRoundedRect({card.x - 4.f, card.y + 12.f, card.width + 8.f, card.height + 6.f}, {0.f, 0.f, 0.f, 0.35f * a}, 36.f);
+    ren.drawRoundedRect(card, {0.09f, 0.11f, 0.15f, 0.94f * a}, 32.f);
+    ren.drawRoundedRectOutline(card, {1.f, 1.f, 1.f, 0.15f * a}, 32.f, 1.5f);
+
+    auto& tf = m_chrome.titleFont();
+    auto& lf = m_chrome.labelFont();
+    auto& sf = m_chrome.smallFont();
+    auto& i18n = nxui::I18n::instance();
+
+    m_chrome.icon(ren, "power", card.x + 44.f, card.y + 44.f, 26.f, CardsChrome::kWhite.withAlpha(a));
+    m_chrome.textMid(ren, tf, i18n.tr("power.title", "Power"), card.x + 68.f, card.y + 44.f, CardsChrome::kWhite.withAlpha(a));
+
+    const std::string hints = i18n.tr("cards.power_hints", "A Escolher   B Voltar");
+    m_chrome.textMid(ren, sf, hints, card.right() - sf.measure(hints).x - 40.f, card.y + 44.f, CardsChrome::kWhite.withAlpha(0.85f * a));
+
+    struct PowerTileDef {
+        std::string name;
+        std::string about;
+        const char* icon;
+        nxui::Color color;
+    };
+    const PowerTileDef defs[4] = {
+        {i18n.tr("power.sleep", "Suspender"), i18n.tr("cards.power_sleep_desc", "Continuar depois"), "moon", nxui::Color(0.38f, 0.56f, 1.f, 1.f)},
+        {i18n.tr("power.reboot", "Reiniciar"), i18n.tr("cards.power_reboot_desc", "Desligar e ligar"), "restart", nxui::Color(0.25f, 0.82f, 0.68f, 1.f)},
+        {i18n.tr("power.shutdown", "Desligar"), i18n.tr("cards.power_shutdown_desc", "Desligar o console"), "power", nxui::Color(1.f, 0.36f, 0.36f, 1.f)},
+        {i18n.tr("power.hekate", "Hekate"), i18n.tr("cards.power_hekate_desc", "Menu do Hekate"), "hekate", nxui::Color(0.70f, 0.50f, 1.f, 1.f)},
+    };
+
+    const float tileW = 196.f;
+    const float tileH = 210.f;
+    const float startX = card.x + 40.f;
+    const float startY = card.y + 88.f;
+    const float gap = (card.width - 80.f - tileW * 4.f) / 3.f;
+
+    for (int i = 0; i < 4; ++i) {
+        const bool selected = (i == m_powerSel);
+        const float dy = selected ? -6.f : 0.f;
+        const nxui::Rect r{startX + static_cast<float>(i) * (tileW + gap), startY + dy, tileW, tileH};
+
+        ren.drawRoundedRect({r.x, r.y + 6.f, r.width, r.height}, {0.f, 0.f, 0.f, (selected ? 0.25f : 0.12f) * a}, 22.f);
+        ren.drawRoundedRect(r, {0.13f, 0.15f, 0.20f, (selected ? 0.80f : 0.55f) * a}, 20.f);
+
+        if (selected) {
+            ren.drawRoundedRectOutline(r, CardsChrome::accent(0.95f * a), 20.f, 2.5f);
+        } else {
+            ren.drawRoundedRectOutline(r, {1.f, 1.f, 1.f, 0.10f * a}, 20.f, 1.f);
+        }
+
+        const nxui::Vec2 ic{r.x + r.width * 0.5f, r.y + 62.f};
+        ren.drawCircle(ic, selected ? 38.f : 34.f, defs[i].color.withAlpha((selected ? 0.35f : 0.20f) * a), 36);
+        ren.drawCircle(ic, 28.f, defs[i].color.withAlpha(0.90f * a), 36);
+        m_chrome.icon(ren, defs[i].icon, ic.x, ic.y, 24.f, CardsChrome::kWhite.withAlpha(a));
+
+        const std::string name = defs[i].name;
+        m_chrome.textMid(ren, lf, name, r.x + (r.width - lf.measure(name).x) * 0.5f, r.y + 128.f, CardsChrome::kWhite.withAlpha(a));
+
+        const std::string about = defs[i].about;
+        m_chrome.textMid(ren, sf, about, r.x + (r.width - sf.measure(about).x) * 0.5f, r.y + 162.f, {0.78f, 0.80f, 0.88f, 0.80f * a});
+    }
 }
 
 // ── Top bar (E3/E5) ─────────────────────────────────────────────────────────
@@ -107,35 +230,7 @@ void CardsHomeActivity::activateTop() {
     case TopButton::Bell: openNotificationsSheet(); return;
     case TopButton::Settings: openSettingsSheet(); return;
     case TopButton::Power:
-        if (!m_userSelect)
-            return;
-        // Classic's power actions plus Restart to Hekate (E5; see
-        // launcher/HekateReboot.hpp for the authorized exception).
-        m_audio.playSfx(Sfx::ModalShow);
-        m_userSelect->show(
-            i18n.tr("power.title", "Power"),
-            i18n.tr("power.choose_action", "Choose a power action."),
-            {
-                {i18n.tr("button.cancel", "Cancel"), []() {}, true},
-                {i18n.tr("power.sleep", "Sleep"), [this]() {
-#ifdef SWITCHU_MENU
-                    m_core.launcher().enterSleep();
-#endif
-                }, true},
-                {i18n.tr("power.reboot", "Restart"), [this]() {
-#ifdef SWITCHU_MENU
-                    m_core.launcher().reboot();
-#endif
-                }, true},
-                {i18n.tr("power.shutdown", "Turn Off"), [this]() {
-#ifdef SWITCHU_MENU
-                    m_core.launcher().shutdown();
-#endif
-                }, true},
-                {i18n.tr("power.hekate", "Hekate"), [this]() { m_hekateQueued = true; }, true},
-            },
-            0, {});
-        focusManager().setFocus(m_userSelect.get());
+        openPowerMenu();
         return;
     case TopButton::Music:
         openMusicSheet();
@@ -211,8 +306,7 @@ void CardsHomeActivity::openDotsMenu() {
          "arrows", nxui::Color(0.25f, 0.8f, 0.5f, 1.f), [this]() { openHomebrewUpdates(); });
     tile(i18n.tr("sidebar.settings", "Settings"), "gear", nxui::Color(0.55f, 0.6f, 0.68f, 1.f), [this]() { openSettingsSheet(); });
     tile(i18n.tr("power.title", "Power"), "power", nxui::Color(1.f, 0.36f, 0.36f, 1.f), [this]() {
-        m_topIndex = static_cast<int>(TopButton::Power);
-        activateTop();
+        openPowerMenu();
     });
     tile(i18n.tr("cards.menu_achievements", "Achievements"), "tag", nxui::Color(0.85f, 0.65f, 0.15f, 1.f), [this]() {
         const bool game = m_selected >= 0 && m_selected < m_catalog.count() && !m_catalog.at(m_selected).system;

@@ -88,6 +88,7 @@ private:
     nxui::GpuDevice& m_gpu;
     nxui::Renderer& m_renderer;
     nxui::ThreadPool& m_threadPool;
+    nxui::Font m_iconFont;
     nxui::Font* m_font = nullptr;
     nxui::Font* m_smallFont = nullptr;
     const nxui::Theme* m_theme = nullptr;

@@ -3,6 +3,7 @@
 #include <nxui/core/I18n.hpp>
 #include <nxui/core/Input.hpp>
 #include <filesystem>
+#include <algorithm>
 #include <system_error>
 
 namespace {
@@ -35,7 +36,8 @@ std::string joinPath(const std::string& base, const std::string& name) {
 
 void SidebarManager::build(nxui::GpuDevice& gpu, nxui::Renderer& ren,
                            const std::string& assetsBase,
-                           const Actions& actions) {
+                           const Actions& actions,
+                           const std::vector<int>& order) {
     constexpr float btnSize = 70.f;
     constexpr float gap     = 16.f;
     constexpr float marginX = 14.f;
@@ -69,63 +71,41 @@ void SidebarManager::build(nxui::GpuDevice& gpu, nxui::Renderer& ren,
         return btn;
     };
 
-    {
-        // 0: Sphaira (or Album)
-        auto sphaira = makeBtn(&m_icons[0], "sidebar.sphaira", "Sphaira", actions.onAlbum);
-        m_albumButton = sphaira.get();
-        sphaira->setRect({leftX, startY + 0.f * (btnSize + gap), btnSize, btnSize});
-        m_leftButtons.push_back(std::move(sphaira));
+    struct Def {
+        int id;
+        const char* key;
+        const char* fallback;
+        std::function<void()> action;
+    };
+    const Def defs[kSidebarIconCount] = {
+        {0, "sidebar.sphaira", "Sphaira", actions.onAlbum},
+        {1, "sidebar.discord", "Discord", actions.onDiscord ? actions.onDiscord : actions.onMiiEditor},
+        {2, "sidebar.news", "News", actions.onNews},
+        {3, "sidebar.nextendo", "Nextendo", actions.onNextendo},
+        {4, "sidebar.settings", "Settings", actions.onSettings},
+        {5, "sidebar.toggle", "Cards", actions.onToggle},
+        {6, "sidebar.controllers", "Controllers", actions.onControllers},
+        {7, "sidebar.social", "Social", actions.onSocial},
+        {8, "sidebar.theme_shop", "OmniLaunch", actions.onMiiverse},
+        {9, "sidebar.power", "Power Options", actions.onSleep},
+    };
 
-        // 1: Discord
-        auto middleBtn = actions.onDiscord
-            ? makeBtn(&m_icons[1], "sidebar.discord", "Discord", actions.onDiscord)
-            : makeBtn(&m_icons[1], "sidebar.mii_editor", "Mii Editor", actions.onMiiEditor);
-        middleBtn->setRect({leftX, startY + 1.f * (btnSize + gap), btnSize, btnSize});
-        m_leftButtons.push_back(std::move(middleBtn));
+    for (int slot = 0; slot < 10; ++slot) {
+        const int id = (order.size() == 10 && order[slot] >= 0 && order[slot] < kSidebarIconCount)
+                     ? order[slot] : slot;
+        const auto& d = defs[id];
+        auto btn = makeBtn(&m_icons[static_cast<std::size_t>(d.id)], d.key, d.fallback, d.action);
+        if (d.id == 0) m_albumButton = btn.get();
+        if (d.id == 4) m_settingsButton = btn.get();
+        if (d.id == 8) m_themeShopButton = btn.get();
 
-        // 2: News
-        auto news = makeBtn(&m_icons[2], "sidebar.news", "News", actions.onNews);
-        news->setRect({leftX, startY + 2.f * (btnSize + gap), btnSize, btnSize});
-        m_leftButtons.push_back(std::move(news));
-
-        // 3: Nextendo
-        auto nextendo = makeBtn(&m_icons[3], "sidebar.nextendo", "Nextendo", actions.onNextendo);
-        nextendo->setRect({leftX, startY + 3.f * (btnSize + gap), btnSize, btnSize});
-        m_leftButtons.push_back(std::move(nextendo));
-
-        // 4: Settings
-        auto settings = makeBtn(&m_icons[4], "sidebar.settings", "Settings", actions.onSettings);
-        m_settingsButton = settings.get();
-        settings->setRect({leftX, startY + 4.f * (btnSize + gap), btnSize, btnSize});
-        m_leftButtons.push_back(std::move(settings));
-    }
-
-    {
-        // 5: Toggle (Switch to Cards)
-        auto toggle = makeBtn(&m_icons[5], "sidebar.toggle", "Cards", actions.onToggle);
-        toggle->setRect({rightX, startY + 0.f * (btnSize + gap), btnSize, btnSize});
-        m_rightButtons.push_back(std::move(toggle));
-
-        // 6: Controllers
-        auto ctrl = makeBtn(&m_icons[6], "sidebar.controllers", "Controllers", actions.onControllers);
-        ctrl->setRect({rightX, startY + 1.f * (btnSize + gap), btnSize, btnSize});
-        m_rightButtons.push_back(std::move(ctrl));
-
-        // 7: Social
-        auto social = makeBtn(&m_icons[7], "sidebar.social", "Social", actions.onSocial);
-        social->setRect({rightX, startY + 2.f * (btnSize + gap), btnSize, btnSize});
-        m_rightButtons.push_back(std::move(social));
-
-        // 8: ThemeShop
-        auto themeShop = makeBtn(&m_icons[8], "sidebar.theme_shop", "OmniLaunch", actions.onMiiverse);
-        m_themeShopButton = themeShop.get();
-        themeShop->setRect({rightX, startY + 3.f * (btnSize + gap), btnSize, btnSize});
-        m_rightButtons.push_back(std::move(themeShop));
-
-        // 9: Power
-        auto sleep = makeBtn(&m_icons[9], "sidebar.power", "Power Options", actions.onSleep);
-        sleep->setRect({rightX, startY + 4.f * (btnSize + gap), btnSize, btnSize});
-        m_rightButtons.push_back(std::move(sleep));
+        if (slot < 5) {
+            btn->setRect({leftX, startY + static_cast<float>(slot) * (btnSize + gap), btnSize, btnSize});
+            m_leftButtons.push_back(std::move(btn));
+        } else {
+            btn->setRect({rightX, startY + static_cast<float>(slot - 5) * (btnSize + gap), btnSize, btnSize});
+            m_rightButtons.push_back(std::move(btn));
+        }
     }
 
     for (std::size_t i = 0; i < m_leftButtons.size(); ++i) {
@@ -181,7 +161,8 @@ void SidebarManager::setDynamicLineLayout(bool enabled) {
         return;
     }
 
-    const float totalH = 3.f * kSidebarButtonSize + 2.f * kSidebarColumnGap;
+    const float count = static_cast<float>(std::max(m_leftButtons.size(), m_rightButtons.size()));
+    const float totalH = count * kSidebarButtonSize + std::max(0.f, count - 1.f) * kSidebarColumnGap;
     const float startY = 360.f - totalH * 0.5f;
     const float rightX = 1280.f - kSidebarMarginX - kSidebarButtonSize;
     for (std::size_t i = 0; i < m_leftButtons.size(); ++i) {

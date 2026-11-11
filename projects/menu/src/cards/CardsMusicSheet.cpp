@@ -164,7 +164,6 @@ void CardsMusicSheet::render(nxui::Renderer& ren, CardsChrome& chrome, const Aud
         return;
 
     const float a = m_in;
-    ren.drawRect({0.f, 0.f, 1280.f, 720.f}, {0.f, 0.f, 0.f, 0.52f * a});
 
     // Glass panel with no dark flash
     const nxui::Rect card = kCard;
@@ -177,12 +176,16 @@ void CardsMusicSheet::render(nxui::Renderer& ren, CardsChrome& chrome, const Aud
             ren.copyOffscreen(nxui::GpuDevice::OFF_SHARP_A, nxui::GpuDevice::OFF_DIALOG);
             m_backdropCacheValid = true;
         }
+        ren.drawRect({0.f, 0.f, 1280.f, 720.f}, {0.f, 0.f, 0.f, 0.65f * a});
         ren.drawLiquidGlass(nxui::GpuDevice::OFF_DIALOG, card, 34.f, CardsChrome::glassTint(1.f), a, 0.35f);
         drawnGlass = true;
     }
 #endif
     if (!drawnGlass) {
-        ren.drawRoundedRect(card, CardsChrome::glassTint(a), 34.f);
+        ren.drawRect({0.f, 0.f, 1280.f, 720.f}, {0.f, 0.f, 0.f, 0.65f * a});
+        ren.drawRoundedRect(card, {0.09f, 0.11f, 0.15f, 0.94f * a}, 34.f);
+    } else {
+        ren.drawRoundedRect(card, {0.05f, 0.06f, 0.09f, 0.65f * a}, 34.f);
     }
     ren.drawRoundedRectOutline(card, {1.f, 1.f, 1.f, 0.16f * a}, 34.f, 1.5f);
 
@@ -192,7 +195,12 @@ void CardsMusicSheet::render(nxui::Renderer& ren, CardsChrome& chrome, const Aud
     auto& i18n = nxui::I18n::instance();
 
     const std::string title = i18n.tr("cards.music_title", "Music");
-    chrome.textMid(ren, tf, title, card.x + 44.f, card.y + 46.f, CardsChrome::kWhite.withAlpha(a));
+    chrome.icon(ren, "music", card.x + 44.f, card.y + 46.f, 22.f, CardsChrome::kWhite.withAlpha(a));
+    chrome.textMid(ren, tf, title, card.x + 68.f, card.y + 46.f, CardsChrome::kWhite.withAlpha(a));
+
+    const std::string headerHints = i18n.tr("cards.music_hints", "A Escolher   B Voltar");
+    chrome.textMid(ren, sf, headerHints, card.right() - sf.measure(headerHints).x - 44.f, card.y + 46.f,
+                   CardsChrome::kWhite.withAlpha(0.85f * a));
 
     // ── Vinyl Record ────────────────────────────────────────────────────────
     const nxui::Vec2 center{card.x + 220.f, card.y + 250.f};
@@ -206,8 +214,8 @@ void CardsMusicSheet::render(nxui::Renderer& ren, CardsChrome& chrome, const Aud
     for (float g = R - 12.f; g > 56.f; g -= 12.f)
         ren.drawRoundedRectOutline({center.x - g, center.y - g, g * 2.f, g * 2.f},
                                    {1.f, 1.f, 1.f, 0.05f * a}, g, 1.f);
-    // Center label (accent coloured)
-    ren.drawCircle(center, 46.f, CardsChrome::accent(0.85f * a), 36);
+    // Center label (clean white as HomeNX reference)
+    ren.drawCircle(center, 46.f, CardsChrome::kWhite.withAlpha(0.95f * a), 36);
     ren.drawCircle(center, 12.f, {0.04f, 0.04f, 0.06f, a}, 24);
 
     // ── Now Playing Info ────────────────────────────────────────────────────
@@ -260,8 +268,10 @@ void CardsMusicSheet::render(nxui::Renderer& ren, CardsChrome& chrome, const Aud
         const nxui::Vec2 bp = buttonPos(i, card.y - kCard.y);
         const bool focused = (m_zone == 0 && m_col == i);
         const float r = (i == 2) ? 28.f : 22.f;
+        const bool isPlayPause = (i == 2);
         const bool activeToggle = (i == 0 && audio.isShuffle()) || (i == 4 && audio.isRepeat());
-        const nxui::Color bgCol = focused ? CardsChrome::kWhite.withAlpha(0.95f * a)
+        const nxui::Color bgCol = isPlayPause ? CardsChrome::kWhite.withAlpha(0.95f * a)
+                                : focused ? CardsChrome::kWhite.withAlpha(0.85f * a)
                                 : activeToggle ? CardsChrome::accent(0.40f * a)
                                 : nxui::Color{0.20f, 0.23f, 0.30f, 0.50f * a};
         ren.drawCircle(bp, r, bgCol, 32);
@@ -272,8 +282,8 @@ void CardsMusicSheet::render(nxui::Renderer& ren, CardsChrome& chrome, const Aud
             ren.drawRoundedRectOutline({bp.x - r - 2.f, bp.y - r - 2.f, (r + 2.f) * 2.f, (r + 2.f) * 2.f},
                                        CardsChrome::accent(0.8f * a), r + 2.f, 1.5f);
 
-        const nxui::Color iconCol = focused ? nxui::Color{0.08f, 0.09f, 0.12f, a}
-                                            : CardsChrome::kWhite.withAlpha(a);
+        const nxui::Color iconCol = (isPlayPause || focused) ? nxui::Color{0.08f, 0.09f, 0.12f, a}
+                                                             : CardsChrome::kWhite.withAlpha(a);
         const float iconSz = (i == 2) ? 26.f : 20.f;
         chrome.icon(ren, iconNames[i], bp.x, bp.y, iconSz, iconCol);
     }
@@ -340,11 +350,11 @@ void CardsMusicSheet::render(nxui::Renderer& ren, CardsChrome& chrome, const Aud
         const float lv = m_viz[i];
         const float bh = 3.f + 56.f * lv;
         const nxui::Rect b{specLeft + static_cast<float>(i) * bandStep + 3.f, specBaseY - bh, bandW, bh};
-        const nxui::Color col = nxui::Color::lerp(CardsChrome::accent(a), CardsChrome::kWhite.withAlpha(a), lv * 0.4f);
-        ren.drawRoundedRect(b, col.withAlpha((0.60f + 0.40f * lv) * a), std::min(bandW * 0.5f, 4.f));
+        const nxui::Color col = CardsChrome::kWhite.withAlpha((0.65f + 0.35f * lv) * a);
+        ren.drawRoundedRect(b, col, std::min(bandW * 0.5f, 4.f));
         // Mirrored reflection below
         ren.drawRoundedRect({b.x, specBaseY + 2.f, bandW, bh * 0.35f},
-                            col.withAlpha(0.18f * a), std::min(bandW * 0.5f, 4.f));
+                            col.withAlpha(0.20f * a), std::min(bandW * 0.5f, 4.f));
     }
 }
 

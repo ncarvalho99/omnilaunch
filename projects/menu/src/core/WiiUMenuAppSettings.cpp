@@ -330,6 +330,25 @@ void WiiUMenuApp::createSettings() {
     m_settings->setSteamGridDbState(m_config.steamGridDbEnabled,
                                     !m_config.steamGridDbApiKey.empty());
 
+    const std::vector<std::string> sidebarNames = {
+        "Sphaira",
+        "Discord",
+        "News",
+        "Nextendo",
+        "Settings",
+        "Cards",
+        "Controllers",
+        "Social",
+        "ThemeShop",
+        "Power"
+    };
+    m_settings->setSidebarOrderState(m_config.sidebarOrder, sidebarNames);
+    m_settings->onSidebarOrderChange([this](const std::vector<int>& order) {
+        m_config.sidebarOrder = order;
+        m_config.save();
+        rebuildSidebar();
+    });
+
     m_settings->onNavigateSfx([this]() { m_audio.playSfx(Sfx::Navigate); });
     m_settings->onActivateSfx([this]() { m_audio.playSfx(Sfx::Activate); });
     m_settings->onCloseSfx([this]() { m_audio.playSfx(Sfx::ModalHide); });
@@ -3309,7 +3328,20 @@ void WiiUMenuApp::openNews() {
         e.kicker = a.topic;
         e.title = a.subject;
         e.body = a.body;
+        if (!a.footer.empty()) {
+            if (!e.body.empty()) e.body += "\n\n";
+            e.body += a.footer;
+        }
         e.footer = a.footer;
+        if (!a.image.empty()) {
+            auto imgBytes = std::make_shared<std::vector<std::uint8_t>>(std::move(a.image));
+            e.lazyImage = [this, imgBytes]() -> std::shared_ptr<nxui::Texture> {
+                auto tex = std::make_shared<nxui::Texture>();
+                if (tex->loadFromMemory(app().gpu(), app().renderer(), imgBytes->data(), imgBytes->size(), 720))
+                    return tex;
+                return nullptr;
+            };
+        }
         e.unread = !a.read && !readIds.count(a.id);
         const std::string id = a.id;
         e.onShown = [id]() { news::markArticleRead(id); };

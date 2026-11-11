@@ -1645,8 +1645,28 @@
     "apply": "Aplicar",
     "back": "Voltar",
     "music_source": "Música do HOME",
+    "music_hints": "A Escolher   B Voltar",
+    "power_hints": "A Escolher   B Voltar",
+    "power_sleep_desc": "Continuar depois",
+    "power_reboot_desc": "Desligar e ligar",
+    "power_shutdown_desc": "Desligar o console",
+    "power_hekate_desc": "Menu do Hekate",
     "sgdb_no_artwork": "Nenhuma imagem encontrada para este título.",
     "sgdb_empty_help": "Pressione X para trocar a resolução ou Y para mudar o nome da busca."
+  },
+  "settings": {
+    "homenx": {
+      "order": "Botões da barra lateral",
+      "order_desc": "Escolha o botão para esta posição; ele troca com o botão que estava nela.",
+      "left": "Esquerda",
+      "right": "Direita",
+      "hb_app": "Sphaira como aplicativo",
+      "hb_app_desc": "Ligado: Sphaira e homebrews recebem memória total emprestada de um jogo. Desligado: abrem pelo Álbum com menos memória.",
+      "ask_user": "Perguntar quem vai jogar",
+      "ask_user_desc": "Iniciar um jogo mostra a lista de usuários primeiro, como no menu original.",
+      "lock": "Tela de bloqueio",
+      "lock_desc": "Mostra data e hora ao ligar ou acordar o console. Pressione A para entrar no menu."
+    }
   },
   "news": {
     "empty_title": "Sem notícias",

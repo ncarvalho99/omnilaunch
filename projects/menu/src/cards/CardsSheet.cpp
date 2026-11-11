@@ -25,6 +25,7 @@ constexpr float kRepeatRate = 0.075f;
 } // namespace
 
 void CardsSheet::open(std::string title, std::vector<Section> sections, int section, int row) {
+    const bool refreshing = m_open && m_title == title;
     m_title = std::move(title);
     m_sections = std::move(sections);
     if (m_sections.empty())
@@ -33,11 +34,12 @@ void CardsSheet::open(std::string title, std::vector<Section> sections, int sect
     m_row = row;
     m_scroll = 0;
     m_reorderSection = {};
-    m_focusInContent = true;
-    if (!m_open)
+    if (!refreshing) {
+        m_focusInContent = m_sections.size() == 1 || m_sections.front().icon.empty();
         m_in = 0.f;
+        m_backdropCacheValid = false;
+    }
     m_open = true;
-    m_backdropCacheValid = false;
     m_repeatDir = 0;
     clampFocus();
 }
@@ -99,6 +101,12 @@ bool CardsSheet::handleInput(nxui::Input& in, float dt) {
             return true;
         }
         if (in.isDown(B::B)) {
+            if (m_focusInContent && !m_sections.front().icon.empty()) {
+                m_focusInContent = false;
+                m_repeatDir = 0;
+                if (m_nav) m_nav();
+                return true;
+            }
             m_open = false;
             if (m_onClosed) m_onClosed();
             return true;
@@ -132,7 +140,7 @@ bool CardsSheet::handleInput(nxui::Input& in, float dt) {
                 if (m_act) m_act();
                 return true;
             }
-            return true;
+            if (!in.touchDown()) return true;
         }
     } else {
         if (in.isDown(B::B)) {
@@ -157,6 +165,7 @@ bool CardsSheet::handleInput(nxui::Input& in, float dt) {
             const int s = static_cast<int>((y - (py + 64.f)) / (secH + 2.f));
             if (s >= 0 && s < static_cast<int>(m_sections.size())) {
                 m_section = s;
+                m_focusInContent = false;
                 m_row = 0;
                 m_scroll = 0;
                 clampFocus();
@@ -173,6 +182,7 @@ bool CardsSheet::handleInput(nxui::Input& in, float dt) {
             const auto& list = m_sections[static_cast<std::size_t>(m_section)].rows;
             if (i < static_cast<int>(list.size())) {
                 const bool activate = i == m_row;
+                m_focusInContent = true;
                 m_row = i;
                 const Row row = list[static_cast<std::size_t>(i)];
                 if (activate && row.enabled) {
@@ -241,7 +251,6 @@ void CardsSheet::render(nxui::Renderer& ren, CardsChrome& chrome) const {
     if (!m_open)
         return;
     const float a = 1.f - (1.f - m_in) * (1.f - m_in);
-    ren.drawRect({0.f, 0.f, 1280.f, 720.f}, {0.f, 0.f, 0.f, 0.45f * a});
 
     const bool twoCols = (m_sections.size() > 1 && !m_sections.front().icon.empty());
     const float kW = twoCols ? kMultiW : kSingleW;
@@ -260,12 +269,16 @@ void CardsSheet::render(nxui::Renderer& ren, CardsChrome& chrome) const {
             ren.copyOffscreen(nxui::GpuDevice::OFF_SHARP_A, nxui::GpuDevice::OFF_DIALOG);
             m_backdropCacheValid = true;
         }
+        ren.drawRect({0.f, 0.f, 1280.f, 720.f}, {0.f, 0.f, 0.f, 0.45f * a});
         ren.drawLiquidGlass(nxui::GpuDevice::OFF_DIALOG, p, 30.f, CardsChrome::glassTint(1.f), a, 0.35f);
         drawnGlass = true;
     }
 #endif
     if (!drawnGlass) {
-        ren.drawRoundedRect(p, CardsChrome::glassTint(a), 30.f);
+        ren.drawRect({0.f, 0.f, 1280.f, 720.f}, {0.f, 0.f, 0.f, 0.45f * a});
+        ren.drawRoundedRect(p, {0.08f, 0.09f, 0.13f, 0.86f * a}, 30.f);
+    } else {
+        ren.drawRoundedRect(p, {0.04f, 0.05f, 0.08f, 0.45f * a}, 30.f);
     }
     ren.drawRoundedRectOutline(p, {1.f, 1.f, 1.f, 0.16f * a}, 30.f, 1.5f);
     const nxui::Color white = CardsChrome::kWhite.withAlpha(a);
@@ -358,7 +371,7 @@ void CardsSheet::render(nxui::Renderer& ren, CardsChrome& chrome) const {
         hints.push_back({ui::glyph::button(nxui::Button::L) + " " + ui::glyph::button(nxui::Button::R),
                          i18n.tr("hint.section", "Section")});
         hints.push_back({ui::glyph::button(nxui::Button::B), i18n.tr("hint.back", "Back")});
-        ui::glyph::drawHintBar(ren, chrome.smallFont(), chrome.smallFont(), hints, p.right() - 24.f, p.bottom() - 14.f, a);
+        ui::glyph::drawHintBar(ren, chrome.iconFont(), chrome.smallFont(), hints, p.right() - 24.f, p.bottom() - 14.f, a);
 
     } else {
         // Single-column sheet
@@ -412,7 +425,7 @@ void CardsSheet::render(nxui::Renderer& ren, CardsChrome& chrome) const {
         std::vector<ui::glyph::ActionHint> hints;
         hints.push_back({ui::glyph::button(nxui::Button::A), i18n.tr("hint.select", "Select")});
         hints.push_back({ui::glyph::button(nxui::Button::B), i18n.tr("hint.back", "Back")});
-        ui::glyph::drawHintBar(ren, chrome.smallFont(), chrome.smallFont(), hints, p.right() - 24.f, p.bottom() - 14.f, a);
+        ui::glyph::drawHintBar(ren, chrome.iconFont(), chrome.smallFont(), hints, p.right() - 24.f, p.bottom() - 14.f, a);
     }
 }
 

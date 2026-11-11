@@ -109,6 +109,15 @@ bool AppConfig::load() {
     readJsonOpt(j, "viewSwitchButton", viewSwitchButton);
     if (viewSwitchButton != "Minus" && viewSwitchButton != "-")
         viewSwitchButton = "R";
+    if (j.contains("sidebarOrder") && j["sidebarOrder"].is_array()) {
+        sidebarOrder.clear();
+        for (const auto& el : j["sidebarOrder"]) {
+            if (el.is_number_integer())
+                sidebarOrder.push_back(el.get<int>());
+        }
+        if (sidebarOrder.size() != 10)
+            sidebarOrder = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+    }
     readJsonOpt(j, "uiLanguageOverride", uiLanguageOverride);
     readJsonOpt(j, "soundPreset", soundPreset);
     readJsonOpt(j, "defaultProfileEnabled", defaultProfileEnabled);
@@ -365,6 +374,7 @@ bool AppConfig::save() const {
     }
     j["actionHintStyle"] = actionHintStyle == "panel" ? "panel" : "capsules";
     j["viewSwitchButton"] = (viewSwitchButton == "Minus" || viewSwitchButton == "-") ? "Minus" : "R";
+    j["sidebarOrder"] = sidebarOrder;
     j["uiLanguageOverride"] = uiLanguageOverride;
     j["soundPreset"] = (m_safe && !m_touchedSound) ? m_savedSound : soundPreset;
     j["defaultProfileEnabled"] = defaultProfileEnabled;

@@ -40,6 +40,7 @@ public:
     nxui::Font& titleFont() { return m_title; }
     nxui::Font& labelFont() { return m_label; }
     nxui::Font& smallFont() { return m_small; }
+    nxui::Font& iconFont() { return m_glyphs; }
 
     /// Art fill (crop to cover), as upstream drawCover.
     static void drawCover(nxui::Renderer& r, const nxui::Texture* tex, const nxui::Rect& dst, float radius,
@@ -76,6 +77,7 @@ private:
     nxui::Font m_title;
     nxui::Font m_label;
     nxui::Font m_small;
+    nxui::Font m_glyphs;
     std::map<std::string, std::unique_ptr<nxui::Texture>> m_icons;
     nxui::GpuDevice* m_gpu = nullptr;
     nxui::Renderer* m_ren = nullptr;

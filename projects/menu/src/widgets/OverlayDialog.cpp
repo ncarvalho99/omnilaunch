@@ -110,6 +110,7 @@ void OverlayDialog::buildWidgetTree() {
                                         : nxui::Color(0.82f, 0.82f, 0.9f, 1.f);
 
     const int btnCount = std::max(1, (int)m_buttons.size());
+    m_stackButtons = (btnCount >= 4);
     nxui::Font* labelFont = bodyFont ? bodyFont : titleFont;
     float widestButton = 140.f;
     if (labelFont) {
@@ -120,14 +121,14 @@ void OverlayDialog::buildWidgetTree() {
         }
     }
 
-    // A dialog used to be fixed at 560 px. Adding a fourth action to the
-    // software menu left each button narrower than a translated label, so the
-    // text crossed its edge. Give all actions the room required by the widest
-    // label, up to the safe width of the 1280 px layout.
-    const float requestedPanelW = widestButton * btnCount
-                                + kButtonGap * (btnCount - 1)
-                                + kPanelPadX * 2.f;
-    m_panelW = std::clamp(requestedPanelW, kPanelW, 1120.f);
+    if (m_stackButtons) {
+        m_panelW = 540.f;
+    } else {
+        const float requestedPanelW = widestButton * btnCount
+                                    + kButtonGap * (btnCount - 1)
+                                    + kPanelPadX * 2.f;
+        m_panelW = std::clamp(requestedPanelW, kPanelW, 1120.f);
+    }
     float contentW = m_panelW - kPanelPadX * 2.f;
 
     float titleH = 0.f;
@@ -160,10 +161,15 @@ void OverlayDialog::buildWidgetTree() {
         }
     }
 
+    const float btnH = m_stackButtons ? 50.f : kButtonH;
+    const float buttonStackH = m_stackButtons
+        ? (btnH * btnCount + kButtonGap * (btnCount - 1))
+        : kButtonH;
+
     m_panelH = kPanelPadY
              + (titleH > 0.f ? titleH + kTitleMsgGap : 0.f)
              + (msgH   > 0.f ? msgH   + kMsgBtnGap   : 0.f)
-             + kButtonH
+             + buttonStackH
              + kPanelPadY;
 
     setAxis(nxui::Axis::COLUMN);
@@ -215,10 +221,10 @@ void OverlayDialog::buildWidgetTree() {
         m_messageTop = msgH;
     }
 
-    float btnW    = (contentW - kButtonGap * (btnCount - 1)) / (float)btnCount;
+    float btnW    = m_stackButtons ? contentW : ((contentW - kButtonGap * (btnCount - 1)) / (float)btnCount);
 
-    m_buttonRow = std::make_shared<nxui::Box>(nxui::Axis::ROW);
-    m_buttonRow->setRect({0, 0, contentW, kButtonH});
+    m_buttonRow = std::make_shared<nxui::Box>(m_stackButtons ? nxui::Axis::COLUMN : nxui::Axis::ROW);
+    m_buttonRow->setRect({0, 0, contentW, buttonStackH});
     m_buttonRow->setGap(kButtonGap);
     m_buttonRow->setAlignItems(nxui::AlignItems::STRETCH);
     m_buttonRow->setWireframeEnabled(false);
@@ -227,7 +233,7 @@ void OverlayDialog::buildWidgetTree() {
         auto btn = std::make_shared<ActionButton>();
         btn->setTheme(m_theme);
         btn->setCornerRadius(kButtonRadius);
-        btn->setRect({0, 0, btnW, kButtonH});
+        btn->setRect({0, 0, btnW, btnH});
         btn->setVisualState(1.f, 0.f);
         btn->setWireframeEnabled(false);
         btn->setGrow(1.f);
@@ -236,13 +242,6 @@ void OverlayDialog::buildWidgetTree() {
         lbl->setFont(labelFont);
         lbl->setTextColor(textPrimary);
 
-        // Buttons split the row evenly, so a long label is a label wider than
-        // its button -- and the text simply drew past the edge. English hides
-        // this ("Cancel", "OK"); "Informações do software" does not, and every
-        // translated build was one long word away from the same break.
-        //
-        // Shrink to fit rather than clip or ellipsize: the whole label still
-        // reads, which matters most on the button that deletes something.
         float labelScale = 0.94f;
         if (labelFont && !m_buttons[i].label.empty()) {
             const float available = btnW - kButtonLabelPadding * 2.f;
@@ -253,7 +252,7 @@ void OverlayDialog::buildWidgetTree() {
         lbl->setScale(labelScale);
         lbl->setHAlign(nxui::Label::HAlign::Center);
         lbl->setVAlign(nxui::Label::VAlign::Center);
-        lbl->setRect({0, 0, btnW, kButtonH});
+        lbl->setRect({0, 0, btnW, btnH});
         lbl->setGrow(1.f);
         btn->addChild(lbl);
 
@@ -813,11 +812,31 @@ void OverlayDialog::setupActions() {
 
     addDirectionAction(nxui::FocusDirection::UP, [this]() {
         if (!m_active || m_animatingOut) return;
-        scrollMessage(-1);
+        if (m_messageScrollable) {
+            scrollMessage(-1);
+            return;
+        }
+        if (m_stackButtons && !m_buttons.empty()) {
+            int n = (int)m_buttons.size();
+            m_selected = (m_selected + n - 1) % n;
+            animateButtonFocus(0.16f, nxui::Easing::outCubic);
+            if (m_navSfxCb) m_navSfxCb();
+            announceCurrentSelection();
+        }
     });
     addDirectionAction(nxui::FocusDirection::DOWN, [this]() {
         if (!m_active || m_animatingOut) return;
-        scrollMessage(1);
+        if (m_messageScrollable) {
+            scrollMessage(1);
+            return;
+        }
+        if (m_stackButtons && !m_buttons.empty()) {
+            int n = (int)m_buttons.size();
+            m_selected = (m_selected + 1) % n;
+            animateButtonFocus(0.16f, nxui::Easing::outCubic);
+            if (m_navSfxCb) m_navSfxCb();
+            announceCurrentSelection();
+        }
     });
 
     addAction(static_cast<uint64_t>(nxui::Button::A), [this]() {
