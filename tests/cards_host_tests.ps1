@@ -8,7 +8,7 @@ J=$(find /root/.xmake/packages/n/nlohmann_json -path '*/include/nlohmann/json.hp
 test -n "$J"
 g++ -std=c++20 -Wall -Wextra -pthread -Iprojects/menu/src -Iprojects/common/include -I"${J%/nlohmann/json.hpp}" -idirafter lib/nxui/include tests/cards_pages_test.cpp projects/menu/src/cards/CardsPages.cpp projects/menu/src/cards/CardsAchievements.cpp projects/menu/src/core/Config.cpp -o /tmp/cards_pages_test
 (cd /tmp && ./cards_pages_test)
-g++ -std=c++20 -Wall -Wextra -Itests/cards_sheet_stubs -Iprojects/menu/src -idirafter lib/nxui/include tests/cards_sheet_test.cpp projects/menu/src/cards/CardsSheet.cpp -o /tmp/cards_sheet_test
+g++ -std=c++20 -Wall -Wextra -Itests/cards_sheet_stubs -Iprojects/menu/src -idirafter lib/nxui/include tests/cards_sheet_test.cpp projects/menu/src/cards/CardsSheet.cpp tests/cards_sheet_stubs/nxui_i18n_stub.cpp -o /tmp/cards_sheet_test
 /tmp/cards_sheet_test
 g++ -std=c++20 -Wall -Wextra -Iprojects/menu/src tests/lock_password_test.cpp projects/menu/src/widgets/LockPassword.cpp -o /tmp/lock_password_test
 /tmp/lock_password_test

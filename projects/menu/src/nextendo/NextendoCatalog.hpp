@@ -13,7 +13,7 @@ constexpr const char* kNextendoUrlFallback = "https://nextendo.network/service-c
 constexpr const char* kNextendoNroDefault = "sdmc:/switch/nextendo.nro";
 constexpr const char* kNextendoPreludeNro = "sdmc:/switch/prelude.nro";
 constexpr const char* kNextendoDownloadUrl =
-    "https://github.com/NextendoNetwork/Prelude-Nextendo/releases/latest/download/nextendo.nro";
+    "https://git.nextendo.network/NextendoNetwork/Prelude-Nextendo/releases/download/v5.0.0/nextendo.nro";
 
 struct SpecificEndpoint {
     const char* path;

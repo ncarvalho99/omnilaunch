@@ -51,6 +51,12 @@ public:
     State state() const { return m_state; }
     std::string error() const { return m_error; }
     std::uint64_t version() const { return m_version; }
+    bool started() const { return m_state != State::SignedOut; }
+    int unreadDms() const { return 0; }
+    int friendsOnline() const { return 0; }
+    std::string myName() const {
+        return m_currentUser.username.empty() ? m_currentUser.globalName : m_currentUser.username;
+    }
 
     DiscordAccounts& accounts() { return m_accounts; }
     const DiscordAccounts& accounts() const { return m_accounts; }

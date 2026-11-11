@@ -1057,23 +1057,7 @@ void WiiUMenuApp::buildUserAvatarBar() {
 
         avatar->setOnActivate([this]() {
             m_audio.playSfx(Sfx::Activate);
-#ifdef SWITCHU_MENU
-            // The accounts open in the same styled dialog the launch flow uses,
-            // with a create tile after them. Picking an account still opens its
-            // page, which is what tapping the avatar used to do directly.
-            if (!m_userSelect)
-                return;
-            auto& i18n = nxui::I18n::instance();
-            m_userSelect->loadUsers(app().gpu(), app().renderer());
-            m_userSelect->showUserSwitcher(
-                [this](AccountUid picked) { m_launcher.launchUserPage(picked); },
-                [this]() { m_launcher.launchUserCreator(); },
-                i18n.tr("userselect.add_user", "Add user"));
-            // Without this the dialog draws but no button reaches it, which is
-            // how it came up touch-only.
-            raiseOverlay(m_userSelect);
-            focusManager().setFocus(m_userSelect.get());
-#endif
+            openProfileCarousel();
         });
 
         accountProfileClose(&profile);
@@ -1081,13 +1065,27 @@ void WiiUMenuApp::buildUserAvatarBar() {
         m_userAvatarBar->addChild(avatar);
     }
 
+    if (!m_bell) {
+        m_bell = std::make_shared<NotificationBell>();
+        m_bell->setSize(56.f, 56.f);
+        m_bell->setFont(&m_fontSmall);
+        m_bell->setTheme(&m_theme);
+        m_bell->setUnread(notifications::unreadCount());
+        m_bell->setOnActivate([this]() {
+            openNotifications();
+        });
+    }
+    m_userAvatarBar->addChild(m_bell);
+
     if (!m_userAvatarButtons.empty()) {
-        const float countF = static_cast<float>(m_userAvatarButtons.size());
+        const float countF = static_cast<float>(m_userAvatarButtons.size() + 1);
         m_userAvatarBar->setSize(countF * 56.f + (countF - 1.f) * 10.f, 56.f);
         m_userAvatarButtons.front()->setCustomNavigation(nxui::FocusDirection::LEFT,
                                                          m_userAvatarButtons.front().get());
-        m_userAvatarButtons.back()->setCustomNavigation(nxui::FocusDirection::RIGHT,
-                                                        m_userAvatarButtons.back().get());
+        m_userAvatarButtons.back()->setCustomNavigation(nxui::FocusDirection::RIGHT, m_bell.get());
+        m_bell->setCustomNavigation(nxui::FocusDirection::LEFT, m_userAvatarButtons.back().get());
+        m_bell->setCustomNavigation(nxui::FocusDirection::RIGHT, m_bell.get());
+        m_bell->setCustomNavigation(nxui::FocusDirection::UP, m_bell.get());
     }
 }
 
@@ -3069,12 +3067,16 @@ void WiiUMenuApp::updateGridXmbContext() {
         return preferred.valid() ? &preferred : fallback;
     };
 
-    nxui::Texture* sidebarAlbum = (m_sidebar.leftButtons().size() >= 3) ? m_sidebar.leftButtons()[0]->icon() : nullptr;
-    nxui::Texture* sidebarMii = (m_sidebar.leftButtons().size() >= 3) ? m_sidebar.leftButtons()[1]->icon() : nullptr;
-    nxui::Texture* sidebarSettings = (m_sidebar.leftButtons().size() >= 3) ? m_sidebar.leftButtons()[2]->icon() : nullptr;
-    nxui::Texture* sidebarControllers = (m_sidebar.rightButtons().size() >= 3) ? m_sidebar.rightButtons()[0]->icon() : nullptr;
-    nxui::Texture* sidebarPower = (m_sidebar.rightButtons().size() >= 3) ? m_sidebar.rightButtons()[1]->icon() : nullptr;
-    nxui::Texture* sidebarThemes = (m_sidebar.rightButtons().size() >= 3) ? m_sidebar.rightButtons()[2]->icon() : nullptr;
+    nxui::Texture* sidebarAlbum = (m_sidebar.leftButtons().size() > 0) ? m_sidebar.leftButtons()[0]->icon() : nullptr;
+    nxui::Texture* sidebarMii = (m_sidebar.leftButtons().size() > 1) ? m_sidebar.leftButtons()[1]->icon() : nullptr;
+    nxui::Texture* sidebarSettings = (m_sidebar.leftButtons().size() > 4) ? m_sidebar.leftButtons()[4]->icon()
+                                   : (m_sidebar.leftButtons().size() >= 3) ? m_sidebar.leftButtons()[2]->icon() : nullptr;
+    nxui::Texture* sidebarControllers = (m_sidebar.rightButtons().size() > 1) ? m_sidebar.rightButtons()[1]->icon()
+                                      : (!m_sidebar.rightButtons().empty()) ? m_sidebar.rightButtons()[0]->icon() : nullptr;
+    nxui::Texture* sidebarPower = (m_sidebar.rightButtons().size() > 4) ? m_sidebar.rightButtons()[4]->icon()
+                                : (m_sidebar.rightButtons().size() >= 2) ? m_sidebar.rightButtons()[1]->icon() : nullptr;
+    nxui::Texture* sidebarThemes = (m_sidebar.rightButtons().size() > 3) ? m_sidebar.rightButtons()[3]->icon()
+                                 : (m_sidebar.rightButtons().size() >= 3) ? m_sidebar.rightButtons()[2]->icon() : nullptr;
 
     ctx.texAlbum = pick(m_xmbAlbumTex, sidebarAlbum);
     ctx.texSettings = pick(m_xmbSettingsTex, sidebarSettings);
@@ -6849,7 +6851,19 @@ void WiiUMenuApp::buildGrid() {
 
     SidebarManager::Actions sidebarActions;
 #ifdef SWITCHU_MENU
-    sidebarActions.onAlbum       = [this]() { m_launcher.launchAlbum(); };
+    // HomeNX Classic: the first sidebar button opens Sphaira (falls back to the
+    // Album when no sphaira.nro is on the SD card).
+    sidebarActions.onAlbum = [this]() {
+        std::error_code ec;
+        for (const char* path : {"sdmc:/switch/sphaira/sphaira.nro", "sdmc:/switch/sphaira.nro"}) {
+            if (std::filesystem::exists(path, ec)) {
+                if (m_launcher.launchNro(path, 0, {}, true))
+                    return;
+                break;
+            }
+        }
+        m_launcher.launchAlbum();
+    };
     sidebarActions.onMiiEditor   = [this]() { m_launcher.launchMiiEditor(); };
     sidebarActions.onControllers = [this]() { m_launcher.launchControllerPairing(); };
 #else
@@ -6858,6 +6872,21 @@ void WiiUMenuApp::buildGrid() {
     sidebarActions.onControllers = [this]() { m_audio.playSfx(Sfx::Activate); };
 #endif
     sidebarActions.onDiscord     = [this]() { openDiscordPanel(); };
+    sidebarActions.onNews        = [this]() { openNews(); };
+    sidebarActions.onNextendo    = [this]() {
+        std::string outMsg;
+        const int res = m_homeCore.nextendo().openNextendoApp(m_homeCore, outMsg);
+        if (res != 0 && m_dialog) {
+            auto& i18n = nxui::I18n::instance();
+            m_audio.playSfx(Sfx::ModalShow);
+            m_dialog->show("Nextendo", i18n.tr(("cards." + outMsg).c_str(), outMsg.c_str()),
+                           {{i18n.tr("button.ok", "OK"), [] {}, true}}, 0, {});
+            focusManager().setFocus(m_dialog.get());
+        }
+    };
+    // The Cards HOME, same live switch the OmniLaunch menu offers.
+    sidebarActions.onToggle      = [this]() { m_frontendSwitchQueued = true; };
+    sidebarActions.onSocial      = [this]() { openFriends(); };
     sidebarActions.onSettings = [this]() {
         m_audio.playSfx(Sfx::ModalShow);
         createSettings();

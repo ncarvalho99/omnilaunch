@@ -1,4 +1,5 @@
 #include "WiiUMenuApp.hpp"
+#include "news/NewsStore.hpp"
 #include "video/VideoPlayer.hpp"
 #include "themeshop/ThemePackageInstaller.hpp"
 #include "settings/SettingsGlassTuning.hpp"
@@ -22,6 +23,8 @@
 #include <filesystem>
 #include <fstream>
 #include <cstdio>
+#include <cstring>
+#include <optional>
 #include <nlohmann/json.hpp>
 #include <system_error>
 #include <utility>
@@ -1707,6 +1710,10 @@ void WiiUMenuApp::createThemeShop() {
         m_refreshQueued = true;
         m_deferredRefreshFrames = std::max(m_deferredRefreshFrames, 3);
     });
+    m_themeShop->onSwitchToCardsRequest([this]() {
+        m_frontendSwitchQueued = true;
+        if (m_themeShop) m_themeShop->hide();
+    });
     m_themeShop->onThemeShopApply([this](const std::string& presetId) {
         DebugLog::log("[theme-apply] request from Theme Shop: preset=%s", presetId.c_str());
         ThemePreset* preset = findPresetPtr(presetId);
@@ -3277,4 +3284,170 @@ void WiiUMenuApp::deletePreset(const std::string& presetId) {
 
     refreshThemeShopState();
     m_audio.playSfx(Sfx::ConfirmPositive);
+}
+
+
+// ── HomeNX Classic additions: News, Social, notifications, accounts ────────
+// News as a list/detail overlay (same NewsStore the Cards sheet reads).
+void WiiUMenuApp::openNews() {
+    m_audio.playSfx(Sfx::ModalShow);
+    if (!m_newsScreen) {
+        m_newsScreen = std::make_shared<ListDetailScreen>();
+        m_newsScreen->setFont(&m_fontNormal);
+        m_newsScreen->setSmallFont(&m_fontSmall);
+        m_newsScreen->setTheme(&m_theme);
+        if (m_overlayLayer) m_overlayLayer->addChild(m_newsScreen);
+    }
+    Result rc = 0;
+    auto articles = news::loadNewsArticles(rc, 40);
+    const auto readIds = news::loadReadArticleIds();
+    auto& i18n = nxui::I18n::instance();
+    std::vector<ListDetailScreen::Entry> entries;
+    for (auto& a : articles) {
+        ListDetailScreen::Entry e;
+        e.listName = a.subject.empty() ? a.topic : a.subject;
+        e.kicker = a.topic;
+        e.title = a.subject;
+        e.body = a.body;
+        e.footer = a.footer;
+        e.unread = !a.read && !readIds.count(a.id);
+        const std::string id = a.id;
+        e.onShown = [id]() { news::markArticleRead(id); };
+        entries.push_back(std::move(e));
+    }
+    m_newsScreen->setEntries(std::move(entries), i18n.tr("news.empty_title", "No news"),
+                             i18n.tr("news.empty_message", "No news items available right now."));
+    raiseOverlay(m_newsScreen);
+    m_newsScreen->show();
+    focusManager().setFocus(m_newsScreen.get());
+}
+
+void WiiUMenuApp::openFriends(AccountUid forUser) {
+    if (m_editMode || (m_dialog && m_dialog->isActive()) ||
+        (m_quickSettings && m_quickSettings->isActive()) ||
+        (m_discordPanel && m_discordPanel->isActive()))
+        return;
+    if (!m_social) {
+        m_social = std::make_shared<SocialScreen>();
+        m_social->setFonts(&m_fontNormal, &m_fontSmall);
+        m_social->setGpu(&app().gpu(), &app().renderer());
+        m_social->setTheme(&m_theme);
+        m_social->setIconDir(std::string(SD_ASSETS) + "/icons");
+        m_social->setDiscord(&m_homeCore.discord());
+        SocialScreen::Callbacks cb;
+        cb.onClosed = [this]() {
+            m_audio.playSfx(Sfx::ModalHide);
+            if (m_grid && m_grid->focusManager().current())
+                focusManager().setFocus(m_grid->focusManager().current());
+        };
+        cb.onEnterText = [this](const std::string& title, const std::string& guide, const std::string& initial,
+                                int maxLength, std::function<void(const std::string&)> done) {
+            requestTextEntry(title, guide, initial, maxLength, false, std::move(done));
+        };
+        cb.onDiscord = [this]() {
+            if (m_social) m_social->hide();
+            openDiscordPanel();
+        };
+        cb.onMiiEditor = [this]() {
+#ifdef SWITCHU_MENU
+            m_launcher.launchMiiEditor();
+#endif
+        };
+        cb.onNavigate = [this]() { m_audio.playSfx(Sfx::Navigate); };
+        cb.onActivate = [this]() { m_audio.playSfx(Sfx::Activate); };
+        m_social->setCallbacks(std::move(cb));
+        if (m_overlayLayer) m_overlayLayer->addChild(m_social);
+    }
+    AccountUid uid = forUser;
+    std::string name;
+    std::shared_ptr<nxui::Texture> avatar;
+    for (const auto& btn : m_userAvatarButtons) {
+        if (!btn || btn->addUserMode()) continue;
+        const AccountUid btnUid = btn->uid();
+        if (!accountUidIsValid(&uid)) uid = btnUid;
+        if (std::memcmp(&btnUid, &uid, sizeof(AccountUid)) == 0) {
+            name = btn->nickname();
+            // Non-owning: the avatar button outlives the Social screen's view of it.
+            avatar = std::shared_ptr<nxui::Texture>(btn->avatarTexture(), [](nxui::Texture*) {});
+            break;
+        }
+    }
+    if (!accountUidIsValid(&uid)) return;
+    m_audio.playSfx(Sfx::ModalShow);
+    raiseOverlay(m_social);
+    m_social->show(uid, name, avatar);
+    focusManager().setFocus(m_social.get());
+}
+
+void WiiUMenuApp::openNotifications() {
+    if (!m_notifPanel) {
+        m_notifPanel = std::make_shared<NotificationPanel>();
+        m_notifPanel->setFonts(&m_fontNormal, &m_fontSmall);
+        m_notifPanel->setTheme(&m_theme);
+        NotificationPanel::Callbacks cb;
+        cb.onClosed = [this]() {
+            m_audio.playSfx(Sfx::ModalHide);
+            if (m_bell) m_bell->setUnread(notifications::unreadCount());
+            if (m_bell) focusManager().setFocus(m_bell.get());
+        };
+        cb.onOpen = [this](const notifications::Item& item) {
+            std::uint64_t channel = 0, guild = 0;
+            if (notifications::discordTarget(item, channel, guild)) {
+                openDiscordPanel();
+                if (channel && m_discordPanel) m_discordPanel->openChat(channel, guild, item.title);
+            }
+        };
+        cb.onNavigate = [this]() { m_audio.playSfx(Sfx::Navigate); };
+        cb.onCleared = [this]() { if (m_bell) m_bell->setUnread(0); };
+        m_notifPanel->setCallbacks(std::move(cb));
+        if (m_overlayLayer) m_overlayLayer->addChild(m_notifPanel);
+    }
+    m_audio.playSfx(Sfx::ModalShow);
+    raiseOverlay(m_notifPanel);
+    m_notifPanel->show();
+    focusManager().setFocus(m_notifPanel.get());
+}
+
+// HomeNX account picker: a row of profile tiles; A opens Social for that user.
+void WiiUMenuApp::openProfileCarousel() {
+    if (!m_profileCarousel) {
+        m_profileCarousel = std::make_shared<ProfileCarouselScreen>();
+        m_profileCarousel->setFont(&m_fontNormal);
+        m_profileCarousel->setSmallFont(&m_fontSmall);
+        m_profileCarousel->setTheme(&m_theme);
+        m_profileCarousel->onNavigateSfx([this]() { m_audio.playSfx(Sfx::Navigate); });
+        m_profileCarousel->onLockSfx([this]() { m_audio.playSfx(Sfx::ConfirmPositive); });
+        m_profileCarousel->onCloseSfx([this]() { m_audio.playSfx(Sfx::ModalHide); });
+        m_profileCarousel->onLockProfile([](std::optional<AccountUid>) {});
+        m_profileCarousel->onOpenProfile([this](AccountUid uid) {
+            m_profileCarousel->hide();
+            openFriends(uid);
+        });
+        m_profileCarousel->onAddUser([this]() {
+            m_profileCarousel->hide();
+#ifdef SWITCHU_MENU
+            m_launcher.launchUserCreator();
+#endif
+        });
+        m_profileCarousel->onClosed([this]() {
+            if (!m_userAvatarButtons.empty())
+                focusManager().setFocus(m_userAvatarButtons.front().get());
+        });
+        if (m_overlayLayer) m_overlayLayer->addChild(m_profileCarousel);
+    }
+    std::vector<HomeProfile> profiles;
+    for (const auto& btn : m_userAvatarButtons) {
+        if (!btn || btn->addUserMode()) continue;
+        HomeProfile p;
+        p.uid = btn->uid();
+        p.nickname = btn->nickname();
+        p.avatar = std::shared_ptr<nxui::Texture>(btn->avatarTexture(), [](nxui::Texture*) {});
+        profiles.push_back(std::move(p));
+    }
+    const bool canAdd = profiles.size() < 8;
+    m_profileCarousel->setProfiles(std::move(profiles), canAdd);
+    m_audio.playSfx(Sfx::ModalShow);
+    raiseOverlay(m_profileCarousel);
+    m_profileCarousel->show();
+    focusManager().setFocus(m_profileCarousel.get());
 }

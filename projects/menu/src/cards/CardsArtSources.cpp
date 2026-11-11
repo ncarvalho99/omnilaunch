@@ -283,6 +283,7 @@ SteamGridDbManager::BrowseResult CardsArtSources::browseAll(
             res.candidates.insert(res.candidates.begin() + (res.candidates.empty() ? 0 : 1), c);
         }
     } else if (kind == SteamGridDbManager::ArtworkKind::Hero) {
+        // Console resolution (1280x720) 16:9 banner and official screenshots from nlib
         const std::string nlibUrl = nlibBannerUrl(titleId, 1280, 720);
         if (!nlibUrl.empty()) {
             SteamGridDbManager::Candidate c;
@@ -292,6 +293,18 @@ SteamGridDbManager::BrowseResult CardsArtSources::browseAll(
             c.width = 1280;
             c.height = 720;
             res.candidates.insert(res.candidates.begin(), c);
+        }
+        if (titleId != 0) {
+            const std::string hid = hexId(titleId);
+            for (int s = 1; s <= 4; ++s) {
+                SteamGridDbManager::Candidate sc;
+                sc.id = 9000100 + s;
+                sc.url = "https://api.nlib.cc/nx/" + hid + "/screen/" + std::to_string(s);
+                sc.thumbnailUrl = sc.url;
+                sc.width = 1280;
+                sc.height = 720;
+                res.candidates.push_back(sc);
+            }
         }
     }
 

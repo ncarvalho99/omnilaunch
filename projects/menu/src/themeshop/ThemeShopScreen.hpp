@@ -143,6 +143,7 @@ public:
     // parece novo para nenhuma verificação automática.
     void onReloadCatalog(VoidCb cb)      { m_reloadCatalogCb = std::move(cb); }
     void onRebuildControlCache(VoidCb cb) { m_rebuildControlCacheCb = std::move(cb); }
+    void onSwitchToCardsRequest(VoidCb cb) { m_switchToCardsCb = std::move(cb); }
 
     void setMusicState(bool enabled, float musicVol, float sfxVol, bool themeMusicEnabled = true) {
         m_musicEnabled = enabled;
@@ -410,6 +411,7 @@ private:
     std::function<void()> m_selfUninstallCb;
     VoidCb m_reloadCatalogCb;
     VoidCb m_rebuildControlCacheCb;
+    VoidCb m_switchToCardsCb;
     std::function<void()> m_releaseNotesCb;
     std::string m_updateLatestVersion;
     std::string m_updateLatestNotes;

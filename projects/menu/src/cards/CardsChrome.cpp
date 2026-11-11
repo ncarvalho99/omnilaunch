@@ -218,8 +218,12 @@ void CardsChrome::drawTopBar(nxui::Renderer& r, const StatusSnapshot& st, TopBut
     }
     if (wFree > 0.f) {
         x += gap;
-        // SD card glyph: a small rounded outline.
-        r.drawRoundedRectOutline({x + 2.f, y - 10.f, 14.f, 20.f}, kWhite, 3.f, 2.f);
+        // SD card glyph: a small rounded outline with 3 contact lines in cyan.
+        const nxui::Color sd{0.39f, 0.82f, 1.f, 1.f};
+        const nxui::Rect cardRect{x + 2.f, y - 10.f, 15.f, 20.f};
+        r.drawRoundedRectOutline(cardRect, sd, 3.f, 2.f);
+        for (int i = 0; i < 3; ++i)
+            r.drawRect({cardRect.x + 3.5f + 3.f * static_cast<float>(i), cardRect.y + 3.f, 1.5f, 4.f}, sd);
         x += 26.f;
         textMid(r, m_pill, st.freeSpace, x, y, kWhite);
         x += m_pill.measure(st.freeSpace).x;
@@ -227,7 +231,7 @@ void CardsChrome::drawTopBar(nxui::Renderer& r, const StatusSnapshot& st, TopBut
     if (wPlayers > 0.f) {
         x += gap;
         const nxui::Rect playersHit{x - 4.f, y - 20.f, wPlayers + 8.f, 40.f};
-        icon(r, "nextendo", x + 12.f, y, 22.f, kWhite);
+        icon(r, "friends", x + 12.f, y, 22.f, kWhite);
         textMid(r, m_pill, players, x + 24.f + 6.f, y, kWhite);
         if (on(TopButton::Nextendo)) {
             const float pulse = 0.8f + 0.2f * std::sin(time * 5.f);
@@ -243,6 +247,12 @@ void CardsChrome::drawTopBar(nxui::Renderer& r, const StatusSnapshot& st, TopBut
     }
     icon(r, "bell", kBellX, y, 30.f, kWhite);
     glassCircle(r, kMusicX, y, kCircle, on(TopButton::Music), "music", 34.f, time);
+    if (st.musicPlaying) {
+        for (int i = 0; i < 3; ++i) {
+            const float hgt = 3.f + 5.f * (0.5f + 0.5f * std::sin(time * (5.f + i * 1.7f) + i));
+            r.drawRect({kMusicX - 7.f + i * 5.5f, y + 25.f - hgt, 3.f, hgt}, kWhite.withAlpha(0.85f));
+        }
+    }
     glassCircle(r, kPowerX, y, kCircle, on(TopButton::Power), "power", 34.f, time);
     glassCircle(r, kGearX, y, kCircle, on(TopButton::Settings), "gear", 36.f, time);
 }

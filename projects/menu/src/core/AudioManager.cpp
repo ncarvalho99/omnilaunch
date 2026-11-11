@@ -237,6 +237,8 @@ void AudioManager::playCurrentTrackLocked() {
     m_playing.store(true);
     m_paused.store(false);
     m_trackFinished.store(false);
+    m_trackStart = std::chrono::steady_clock::now();
+    m_pausedTotal = 0.0;
 }
 
 void AudioManager::play() {
@@ -276,6 +278,7 @@ void AudioManager::pause() {
     std::lock_guard<std::mutex> lk(m_trackMutex);
     if (m_playing.load() && !m_paused.load()) {
         Mix_PauseMusic();
+        m_pausedAt = std::chrono::steady_clock::now();
         m_paused.store(true);
     }
 }
@@ -284,6 +287,7 @@ void AudioManager::resume() {
     std::lock_guard<std::mutex> lk(m_trackMutex);
     if (m_paused.load()) {
         Mix_ResumeMusic();
+        m_pausedTotal += std::chrono::duration<double>(std::chrono::steady_clock::now() - m_pausedAt).count();
         m_paused.store(false);
         m_playing.store(true);
     } else if (!m_playing.load()) {
@@ -388,6 +392,28 @@ bool AudioManager::isShuffle() const {
     return m_shuffle;
 }
 
+void AudioManager::setRepeat(bool repeat) {
+    m_repeat = repeat;
+}
+
+bool AudioManager::isRepeat() const {
+    return m_repeat;
+}
+
+// The bundled SDL_mixer has no position/duration query: elapsed time is
+// counted from the track start, minus paused time. Duration is unknown (0).
+double AudioManager::trackPositionSeconds() const {
+    std::lock_guard<std::mutex> lk(m_trackMutex);
+    if (!m_activeMusic || !m_playing.load()) return 0.0;
+    const auto now = m_paused.load() ? m_pausedAt : std::chrono::steady_clock::now();
+    const double s = std::chrono::duration<double>(now - m_trackStart).count() - m_pausedTotal;
+    return s > 0.0 ? s : 0.0;
+}
+
+double AudioManager::trackDurationSeconds() const {
+    return 0.0;
+}
+
 int AudioManager::currentTrackIndex() const {
     std::lock_guard<std::mutex> lk(m_trackMutex);
     return m_current;
@@ -422,7 +448,12 @@ std::vector<TrackInfo> AudioManager::tracks() const {
 void AudioManager::update() {
     if (m_trackFinished.exchange(false)) {
         if (m_playing.load()) {
-            nextTrack();
+            if (m_repeat) {
+                std::lock_guard<std::mutex> lk(m_trackMutex);
+                playCurrentTrackLocked();
+            } else {
+                nextTrack();
+            }
         }
     }
 }

@@ -1976,7 +1976,10 @@ void WiiUMenuApp::updateCursor() {
         (m_dialog && m_dialog->isActive()) ||
         (m_progressDialog && m_progressDialog->isActive()) ||
         (m_userSelect && m_userSelect->isActive()) ||
-        (m_discordPanel && m_discordPanel->isActive())) {
+        (m_discordPanel && m_discordPanel->isActive()) ||
+        (m_notifPanel && m_notifPanel->isActive()) ||
+        (m_profileCarousel && m_profileCarousel->isActive()) ||
+        (m_social && m_social->isActive())) {
         // The dialogs, keyboard, quick settings, and overlays draw their
         // own internal selection. Hide the global cursor so it doesn't frame the panel.
         if (m_cursor) m_cursor->setVisible(false);

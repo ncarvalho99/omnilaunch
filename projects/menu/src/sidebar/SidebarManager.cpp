@@ -7,7 +7,7 @@
 
 namespace {
 
-constexpr int kSidebarIconCount = 6;
+constexpr int kSidebarIconCount = 10;
 constexpr float kSidebarButtonSize = 70.f;
 constexpr float kSidebarColumnGap = 16.f;
 constexpr float kSidebarMarginX = 14.f;
@@ -42,7 +42,7 @@ void SidebarManager::build(nxui::GpuDevice& gpu, nxui::Renderer& ren,
 
     float leftX  = marginX;
     float rightX = 1280.f - marginX - btnSize;
-    float totalH = 3 * btnSize + 2.f * gap;
+    float totalH = 5 * btnSize + 4.f * gap;
     float startY = 360.f - totalH * 0.5f;
 
     m_leftButtons.clear();
@@ -70,36 +70,62 @@ void SidebarManager::build(nxui::GpuDevice& gpu, nxui::Renderer& ren,
     };
 
     {
-        auto album = makeBtn(&m_icons[0], "sidebar.album", "Album", actions.onAlbum);
-        m_albumButton = album.get();
-        album->setRect({leftX, startY + 0.f * (btnSize + gap), btnSize, btnSize});
-        m_leftButtons.push_back(std::move(album));
+        // 0: Sphaira (or Album)
+        auto sphaira = makeBtn(&m_icons[0], "sidebar.sphaira", "Sphaira", actions.onAlbum);
+        m_albumButton = sphaira.get();
+        sphaira->setRect({leftX, startY + 0.f * (btnSize + gap), btnSize, btnSize});
+        m_leftButtons.push_back(std::move(sphaira));
 
+        // 1: Discord
         auto middleBtn = actions.onDiscord
             ? makeBtn(&m_icons[1], "sidebar.discord", "Discord", actions.onDiscord)
             : makeBtn(&m_icons[1], "sidebar.mii_editor", "Mii Editor", actions.onMiiEditor);
         middleBtn->setRect({leftX, startY + 1.f * (btnSize + gap), btnSize, btnSize});
         m_leftButtons.push_back(std::move(middleBtn));
 
-        auto settings = makeBtn(&m_icons[5], "sidebar.settings", "Settings", actions.onSettings);
+        // 2: News
+        auto news = makeBtn(&m_icons[2], "sidebar.news", "News", actions.onNews);
+        news->setRect({leftX, startY + 2.f * (btnSize + gap), btnSize, btnSize});
+        m_leftButtons.push_back(std::move(news));
+
+        // 3: Nextendo
+        auto nextendo = makeBtn(&m_icons[3], "sidebar.nextendo", "Nextendo", actions.onNextendo);
+        nextendo->setRect({leftX, startY + 3.f * (btnSize + gap), btnSize, btnSize});
+        m_leftButtons.push_back(std::move(nextendo));
+
+        // 4: Settings
+        auto settings = makeBtn(&m_icons[4], "sidebar.settings", "Settings", actions.onSettings);
         m_settingsButton = settings.get();
-        settings->setRect({leftX, startY + 2.f * (btnSize + gap), btnSize, btnSize});
+        settings->setRect({leftX, startY + 4.f * (btnSize + gap), btnSize, btnSize});
         m_leftButtons.push_back(std::move(settings));
     }
 
     {
-        auto ctrl = makeBtn(&m_icons[2], "sidebar.controllers", "Controllers", actions.onControllers);
-        ctrl->setRect({rightX, startY + 0.f * (btnSize + gap), btnSize, btnSize});
+        // 5: Toggle (Switch to Cards)
+        auto toggle = makeBtn(&m_icons[5], "sidebar.toggle", "Cards", actions.onToggle);
+        toggle->setRect({rightX, startY + 0.f * (btnSize + gap), btnSize, btnSize});
+        m_rightButtons.push_back(std::move(toggle));
+
+        // 6: Controllers
+        auto ctrl = makeBtn(&m_icons[6], "sidebar.controllers", "Controllers", actions.onControllers);
+        ctrl->setRect({rightX, startY + 1.f * (btnSize + gap), btnSize, btnSize});
         m_rightButtons.push_back(std::move(ctrl));
 
-        auto sleep = makeBtn(&m_icons[3], "sidebar.power", "Power Options", actions.onSleep);
-        sleep->setRect({rightX, startY + 1.f * (btnSize + gap), btnSize, btnSize});
-        m_rightButtons.push_back(std::move(sleep));
+        // 7: Social
+        auto social = makeBtn(&m_icons[7], "sidebar.social", "Social", actions.onSocial);
+        social->setRect({rightX, startY + 2.f * (btnSize + gap), btnSize, btnSize});
+        m_rightButtons.push_back(std::move(social));
 
-        auto themeShop = makeBtn(&m_icons[4], "sidebar.theme_shop", "OmniLaunch", actions.onMiiverse);
+        // 8: ThemeShop
+        auto themeShop = makeBtn(&m_icons[8], "sidebar.theme_shop", "OmniLaunch", actions.onMiiverse);
         m_themeShopButton = themeShop.get();
-        themeShop->setRect({rightX, startY + 2.f * (btnSize + gap), btnSize, btnSize});
+        themeShop->setRect({rightX, startY + 3.f * (btnSize + gap), btnSize, btnSize});
         m_rightButtons.push_back(std::move(themeShop));
+
+        // 9: Power
+        auto sleep = makeBtn(&m_icons[9], "sidebar.power", "Power Options", actions.onSleep);
+        sleep->setRect({rightX, startY + 4.f * (btnSize + gap), btnSize, btnSize});
+        m_rightButtons.push_back(std::move(sleep));
     }
 
     for (std::size_t i = 0; i < m_leftButtons.size(); ++i) {
@@ -291,7 +317,8 @@ void SidebarManager::loadAssets(nxui::GpuDevice& gpu, nxui::Renderer& ren,
     };
 
     const char* iconFiles[] = {
-        "album.png", m_hasDiscord ? "discord.png" : "mii_editor.png", "controller.png", "power.png", "themes.png", "settings.png",
+        "sphaira.png", m_hasDiscord ? "discord.png" : "mii_editor.png", "news.png", "nextendo.png", "settings.png",
+        "toggle.png", "controller.png", "friends.png", "themes.png", "power.png",
     };
     if ((int)m_icons.size() != kSidebarIconCount)
         m_icons.resize(kSidebarIconCount);
@@ -299,12 +326,12 @@ void SidebarManager::loadAssets(nxui::GpuDevice& gpu, nxui::Renderer& ren,
         loadIconTexture(i, iconFiles[i]);
 
     static const struct { int iconIdx; const char* webpFile; bool useFirstFrame; } animDefs[] = {
-        { 0, "album.webp",      false },
-        { 1, "mii_editor.webp", false },
-        { 2, "controller.webp", true  },
-        { 3, "power.webp",      false },
-        { 4, "themes.webp",     false },
-        { 5, "settings.webp",   false },
+        { 0, "sphaira.webp",    false },
+        { 1, "discord.webp",    false },
+        { 4, "settings.webp",   false },
+        { 6, "controller.webp", true  },
+        { 8, "themes.webp",     false },
+        { 9, "power.webp",      false },
     };
 
     m_anims.clear();
@@ -315,12 +342,11 @@ void SidebarManager::loadAssets(nxui::GpuDevice& gpu, nxui::Renderer& ren,
 
     for (const auto& def : animDefs) {
         AppletButton* btn = nullptr;
-        if (def.iconIdx == 0) btn = m_leftButtons[0].get();
-        else if (def.iconIdx == 1) btn = m_leftButtons[1].get();
-        else if (def.iconIdx == 2) btn = m_rightButtons[0].get();
-        else if (def.iconIdx == 3) btn = m_rightButtons[1].get();
-        else if (def.iconIdx == 4) btn = m_rightButtons[2].get();
-        else if (def.iconIdx == 5) btn = m_leftButtons[2].get();
+        if (def.iconIdx < 5 && def.iconIdx < (int)m_leftButtons.size())
+            btn = m_leftButtons[def.iconIdx].get();
+        else if (def.iconIdx >= 5 && (def.iconIdx - 5) < (int)m_rightButtons.size())
+            btn = m_rightButtons[def.iconIdx - 5].get();
+
         if (!btn)
             continue;
 

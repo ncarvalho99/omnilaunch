@@ -5,6 +5,7 @@
 // capture or blur (those belong to E8), so it adds no offscreen GPU work.
 // Owned and driven by CardsHomeActivity; no widget-tree or focus coupling.
 
+#include <nxui/core/Types.hpp>
 #include <functional>
 #include <string>
 #include <vector>
@@ -29,6 +30,8 @@ public:
     struct Section {
         std::string title;
         std::vector<Row> rows;
+        std::string icon;                         // CardsChrome icon name (two-column settings)
+        nxui::Color iconColor{1.f, 1.f, 1.f, 1.f};
     };
 
     /// Opens (or replaces) the sheet. `section`/`row` choose the start focus.
@@ -61,6 +64,7 @@ private:
     int m_row = 0;
     int m_scroll = 0;
     bool m_open = false;
+    bool m_focusInContent = false;
     float m_in = 0.f;          // 0 -> 1 open animation
     mutable bool m_backdropCacheValid = false; // C-PF-3 cached backdrop
     float m_repeatTimer = 0.f;

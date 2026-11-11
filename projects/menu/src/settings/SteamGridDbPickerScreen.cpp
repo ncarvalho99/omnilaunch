@@ -3,6 +3,7 @@
 #include "net/NetService.hpp"
 #include "themeshop/ThemeHttp.hpp"
 #include "settings/SettingsGlassTuning.hpp"
+#include "core/ButtonGlyph.hpp"
 
 #include <nxui/core/I18n.hpp>
 #include <nxui/core/Input.hpp>
@@ -27,6 +28,28 @@ namespace {
 constexpr int kColumns = 4;
 constexpr int kRows = 3;
 constexpr int kPerPage = kColumns * kRows;
+
+constexpr const char* kHeroDims[] = {"1280x720", "1920x1080", "1920x620", "3840x1240", "1600x650"};
+constexpr int kHeroDimCount = sizeof(kHeroDims) / sizeof(kHeroDims[0]);
+
+constexpr const char* kCoverDims[] = {"600x900", "342x482", "660x930", "512x512", "1024x1024"};
+constexpr int kCoverDimCount = sizeof(kCoverDims) / sizeof(kCoverDims[0]);
+}
+
+std::string SteamGridDbPickerScreen::currentDimensions() const {
+    if (m_result.kind == SteamGridDbManager::ArtworkKind::Hero)
+        return kHeroDims[std::clamp(m_heroDimIndex, 0, kHeroDimCount - 1)];
+    return kCoverDims[std::clamp(m_coverDimIndex, 0, kCoverDimCount - 1)];
+}
+
+void SteamGridDbPickerScreen::cycleDimensions() {
+    if (m_result.kind == SteamGridDbManager::ArtworkKind::Hero)
+        m_heroDimIndex = (m_heroDimIndex + 1) % kHeroDimCount;
+    else
+        m_coverDimIndex = (m_coverDimIndex + 1) % kCoverDimCount;
+    const std::string dim = currentDimensions();
+    if (m_dimCb)
+        m_dimCb(dim);
 }
 
 SteamGridDbPickerScreen::SteamGridDbPickerScreen(nxui::GpuDevice& gpu,
@@ -52,10 +75,11 @@ SteamGridDbPickerScreen::SteamGridDbPickerScreen(nxui::GpuDevice& gpu,
     addDirection(nxui::Button::DDown, 0, 1);
     addDirection(nxui::Button::LStickD, 0, 1);
     addAction(static_cast<std::uint64_t>(nxui::Button::A), [this]() { activateSelection(); });
-    addAction(static_cast<std::uint64_t>(nxui::Button::X), [this]() {
+    addAction(static_cast<std::uint64_t>(nxui::Button::B), [this]() { hide(); });
+    addAction(static_cast<std::uint64_t>(nxui::Button::X), [this]() { cycleDimensions(); });
+    addAction(static_cast<std::uint64_t>(nxui::Button::Y), [this]() {
         if (m_searchCb) m_searchCb();
     });
-    addAction(static_cast<std::uint64_t>(nxui::Button::B), [this]() { hide(); });
 }
 
 void SteamGridDbPickerScreen::showLoading(std::uint64_t titleId,
@@ -381,12 +405,30 @@ void SteamGridDbPickerScreen::onRender(nxui::Renderer& renderer) {
             renderer.drawRoundedRectOutline(card.expanded(3.f), m_theme->cursorNormal,
                                             18.f, 3.f);
     }
-    if (m_smallFont && count > 0) {
-        const int pages = (count + kPerPage - 1) / kPerPage;
-        renderer.drawText(nxui::I18n::instance().tr("cards.sgdb_hints", "A Apply   B Back   X Search   Page") + " " +
-                          std::to_string(page + 1)
-                          + "/" + std::to_string(pages),
-                          {108.f, 651.f}, m_smallFont, m_theme->textSecondary, 0.72f);
+
+    if (count == 0 && !m_loading && m_smallFont) {
+        auto& i18n = nxui::I18n::instance();
+        std::string emptyMsg = i18n.tr("cards.sgdb_no_artwork", "No artwork found for this title.");
+        std::string emptyHelp = i18n.tr("cards.sgdb_empty_help", "Press (X) to cycle dimensions or (Y) to change search name.");
+        float emW = m_smallFont->measure(emptyMsg).x;
+        float ehW = m_smallFont->measure(emptyHelp).x * 0.85f;
+        renderer.drawText(emptyMsg, {panel.x + (panel.width - emW) * 0.5f, 320.f}, m_smallFont, m_theme->textSecondary, 1.f);
+        renderer.drawText(emptyHelp, {panel.x + (panel.width - ehW) * 0.5f, 356.f}, m_smallFont, m_theme->textSecondary.withAlpha(0.7f), 0.85f);
+    }
+
+    if (m_smallFont && m_font) {
+        auto& i18n = nxui::I18n::instance();
+        std::vector<ui::glyph::ActionHint> hints;
+        if (count > 0)
+            hints.push_back({ui::glyph::button(nxui::Button::A), i18n.tr("cards.apply", "Apply")});
+        hints.push_back({ui::glyph::button(nxui::Button::B), i18n.tr("cards.back", "Back")});
+        hints.push_back({ui::glyph::button(nxui::Button::X), i18n.tr("dialog.gallery_dimension", "Dimension") + ": " + currentDimensions()});
+        hints.push_back({ui::glyph::button(nxui::Button::Y), i18n.tr("hint.search", "Search")});
+        if (count > kPerPage) {
+            const int pages = (count + kPerPage - 1) / kPerPage;
+            hints.push_back({"", std::to_string(page + 1) + "/" + std::to_string(pages)});
+        }
+        ui::glyph::drawHintBar(renderer, *m_font, *m_smallFont, hints, panel.right() - 24.f, panel.bottom() - 14.f, 1.f);
     }
 }
 

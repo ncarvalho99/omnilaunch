@@ -58,6 +58,11 @@ public:
 
     void setShuffle(bool shuffle);
     bool isShuffle() const;
+    void setRepeat(bool repeat);
+    bool isRepeat() const;
+
+    double trackPositionSeconds() const;
+    double trackDurationSeconds() const;
 
     int currentTrackIndex() const;
     size_t trackCount() const;
@@ -99,6 +104,10 @@ private:
     int   m_current = -1;
     int   m_shufflePos = 0;
     bool  m_shuffle = false;
+    bool  m_repeat = false;
+    std::chrono::steady_clock::time_point m_trackStart{};
+    std::chrono::steady_clock::time_point m_pausedAt{};
+    double m_pausedTotal = 0.0;
     float m_volume  = 0.5f;
     float m_musicFade = 1.f;
     std::atomic<bool> m_playing{false};

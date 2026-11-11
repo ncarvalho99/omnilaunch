@@ -30,6 +30,8 @@ struct CardEntry {
     std::string iconFile;
     // Homebrew NRO (Part F): path to .nro on SD card.
     bool isHomebrew = false;
+    bool needsDownload = false;
+    std::string downloadUrl;
     std::string homebrewPath;
     std::string author;
     std::string version;

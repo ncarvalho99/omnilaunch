@@ -21,6 +21,10 @@ public:
         std::function<void()> onSettings;
         std::function<void()> onMiiverse;
         std::function<void()> onDiscord;
+        std::function<void()> onNews;
+        std::function<void()> onNextendo;
+        std::function<void()> onToggle;
+        std::function<void()> onSocial;
     };
 
     void build(nxui::GpuDevice& gpu, nxui::Renderer& ren,

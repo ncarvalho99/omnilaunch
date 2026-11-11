@@ -8,6 +8,7 @@
 #include "cards/CardsHomeActivity.hpp"
 #include "cards/CardsPages.hpp"
 #include "core/DebugLog.hpp"
+#include "core/ButtonGlyph.hpp"
 #include "bluetooth/BluetoothManager.hpp"
 #include "core/PlayTime.hpp"
 #include "home/HomeCore.hpp"
@@ -192,63 +193,36 @@ void CardsHomeActivity::openNewsSheet() {
 
 // ── "..." menu (E3, C-UI-2) ─────────────────────────────────────────────────
 void CardsHomeActivity::openDotsMenu() {
+    // CardsNX build 185 layout: a popover under the "..." button with a
+    // "Pages" chip row and coloured shortcut tiles, four per row.
     auto& i18n = nxui::I18n::instance();
-    m_audio.playSfx(Sfx::ModalShow);
-    std::vector<CardsSheet::Row> rows;
-    for (int page : pages::shown(m_core.config().cards)) {
-        CardsSheet::Row r;
-        r.label = i18n.tr(pageKey(page), pageFallback(page));
-        r.value = [this, page]() {
-            return page == m_page ? nxui::I18n::instance().tr("cards.page_current", "Current page") : std::string();
-        };
-        r.onA = [this, page]() {
-            m_sheet.close();
-            goToPage(page, 0);
-        };
-        rows.push_back(std::move(r));
-    }
-    auto add = [&rows](std::string label, std::function<void()> fn) {
-        CardsSheet::Row r;
-        r.label = std::move(label);
-        r.onA = std::move(fn);
-        rows.push_back(std::move(r));
+    m_dotsTiles.clear();
+    auto tile = [this](std::string label, const char* icon, nxui::Color color, std::function<void()> run) {
+        m_dotsTiles.push_back({std::move(label), icon, color, std::move(run)});
     };
-    add(i18n.tr("cards.menu_news", "News"), [this]() {
-        m_sheet.close();
-        openNewsSheet();
-    });
-    add("Discord", [this]() {
-        m_sheet.close();
-        openDiscord();
-    });
-    add(i18n.tr("cards.menu_users", "Users"), [this]() { openUsersSheet(); });
-    add(i18n.tr("cards.menu_music", "Music"), [this]() {
-        m_sheet.close();
-        openMusicSheet();
-    });
-    add(i18n.tr("cards.menu_quick", "Quick settings"), [this]() {
-        m_sheet.close();
-        openQuickSettings();
-    });
-    add(i18n.tr("cards.menu_notifications", "Notifications"), [this]() { openNotificationsSheet(); });
-    add(homebrewUpdateCount() > 0
-            ? i18n.tr("cards.menu_updates", "Updates") + " (" + std::to_string(homebrewUpdateCount()) + ")"
-            : i18n.tr("cards.menu_updates", "Updates"),
-        [this]() { openHomebrewUpdates(); });
-    add(i18n.tr("cards.menu_achievements", "Achievements"), [this]() {
-        const bool game = m_selected >= 0 && m_selected < m_catalog.count() && !m_catalog.at(m_selected).system;
-        openAchievementsSheet(game ? m_catalog.at(m_selected).app.titleId : 0);
-    });
-    add(i18n.tr("sidebar.settings", "Settings"), [this]() { openSettingsSheet(); });
-    add(i18n.tr("power.title", "Power"), [this]() {
-        m_sheet.close();
+    tile(i18n.tr("cards.menu_news", "News"), "news", nxui::Color(0.95f, 0.25f, 0.25f, 1.f), [this]() { openNewsSheet(); });
+    tile("Discord", "discord", nxui::Color(0.35f, 0.40f, 0.95f, 1.f), [this]() { openDiscord(); });
+    tile(i18n.tr("cards.menu_users", "Users"), "friends", nxui::Color(1.f, 0.6f, 0.2f, 1.f), [this]() { openUsersSheet(); });
+    tile(i18n.tr("cards.menu_music", "Music"), "music", nxui::Color(0.95f, 0.35f, 0.6f, 1.f), [this]() { openMusicSheet(); });
+    tile(i18n.tr("cards.menu_quick", "Quick settings"), "sun", nxui::Color(1.f, 0.78f, 0.25f, 1.f), [this]() { openQuickSettings(); });
+    tile(homebrewUpdateCount() > 0
+             ? i18n.tr("cards.menu_updates", "Updates") + " (" + std::to_string(homebrewUpdateCount()) + ")"
+             : i18n.tr("cards.menu_updates", "Updates"),
+         "arrows", nxui::Color(0.25f, 0.8f, 0.5f, 1.f), [this]() { openHomebrewUpdates(); });
+    tile(i18n.tr("sidebar.settings", "Settings"), "gear", nxui::Color(0.55f, 0.6f, 0.68f, 1.f), [this]() { openSettingsSheet(); });
+    tile(i18n.tr("power.title", "Power"), "power", nxui::Color(1.f, 0.36f, 0.36f, 1.f), [this]() {
         m_topIndex = static_cast<int>(TopButton::Power);
         activateTop();
     });
+    tile(i18n.tr("cards.menu_achievements", "Achievements"), "tag", nxui::Color(0.85f, 0.65f, 0.15f, 1.f), [this]() {
+        const bool game = m_selected >= 0 && m_selected < m_catalog.count() && !m_catalog.at(m_selected).system;
+        openAchievementsSheet(game ? m_catalog.at(m_selected).app.titleId : 0);
+    });
+    tile(i18n.tr("cards.menu_notifications", "Notifications"), "bell", nxui::Color(0.45f, 0.55f, 0.95f, 1.f),
+         [this]() { openNotificationsSheet(); });
 #ifdef SWITCHU_MENU
     if (m_core.launcher().suspendedTitleId() != 0) {
-        add(i18n.tr("cards.close_software", "Close software"), [this]() {
-            m_sheet.close();
+        tile(i18n.tr("cards.close_software", "Close software"), "trash", nxui::Color(0.85f, 0.2f, 0.2f, 1.f), [this]() {
             // The suspended title may live on another page: go there first.
             const std::uint64_t id = runningCardId();
             const int home = pages::isHomebrewId(id) ? AppConfig::CardsPrefs::kHomebrew
@@ -265,7 +239,134 @@ void CardsHomeActivity::openDotsMenu() {
         });
     }
 #endif
-    m_sheet.open(i18n.tr("cards.menu_title", "Menu"), {{std::string(), std::move(rows)}});
+    m_audio.playSfx(Sfx::ModalShow);
+    m_dotsOpen = true;
+    m_dotsIn = 0.f;
+    m_dotsRow = 1;
+    m_dotsCol = 0;
+}
+
+namespace {
+constexpr int kDotsCols = 4;
+constexpr float kDotsX = 97.f, kDotsY = 93.f, kDotsW = 468.f;
+constexpr float kDotsTile = 102.f, kDotsGap = 9.f;
+
+nxui::Rect dotsPanelRect(std::size_t tiles) {
+    const int rows = static_cast<int>((tiles + kDotsCols - 1) / kDotsCols);
+    const float h = 112.f + rows * (kDotsTile + kDotsGap) + 50.f;
+    return {kDotsX, kDotsY, kDotsW, h};
+}
+} // namespace
+
+bool CardsHomeActivity::handleDotsInput(nxui::Input& in) {
+    if (!m_dotsOpen)
+        return false;
+    using B = nxui::Button;
+    const auto shown = pages::shown(m_core.config().cards);
+    const int tiles = static_cast<int>(m_dotsTiles.size());
+    const int rows = 1 + (tiles + kDotsCols - 1) / kDotsCols;
+    auto colsIn = [&](int row) {
+        return row == 0 ? static_cast<int>(shown.size()) : std::min(kDotsCols, tiles - (row - 1) * kDotsCols);
+    };
+    if (in.isDown(B::B) || in.isDown(B::Plus)) {
+        m_dotsOpen = false;
+        m_audio.playSfx(Sfx::ModalHide);
+        return true;
+    }
+    const bool up = in.isDown(B::DUp) || in.isDown(B::LStickU);
+    const bool down = in.isDown(B::DDown) || in.isDown(B::LStickD);
+    const bool left = in.isDown(B::DLeft) || in.isDown(B::LStickL);
+    const bool right = in.isDown(B::DRight) || in.isDown(B::LStickR);
+    if (up && m_dotsRow > 0) { --m_dotsRow; m_audio.playSfx(Sfx::Navigate); }
+    if (down && m_dotsRow < rows - 1) { ++m_dotsRow; m_audio.playSfx(Sfx::Navigate); }
+    m_dotsCol = std::clamp(m_dotsCol, 0, std::max(0, colsIn(m_dotsRow) - 1));
+    if (left && m_dotsCol > 0) { --m_dotsCol; m_audio.playSfx(Sfx::Navigate); }
+    if (right && m_dotsCol < colsIn(m_dotsRow) - 1) { ++m_dotsCol; m_audio.playSfx(Sfx::Navigate); }
+    if (in.touchDown()) {
+        const float x = in.touchX(), y = in.touchY();
+        const nxui::Rect p = dotsPanelRect(m_dotsTiles.size());
+        if (!p.contains(x, y)) {
+            m_dotsOpen = false;
+            m_audio.playSfx(Sfx::ModalHide);
+            return true;
+        }
+    }
+    if (!in.isDown(B::A))
+        return true;
+    m_dotsOpen = false;
+    m_audio.playSfx(Sfx::Activate);
+    if (m_dotsRow == 0) {
+        if (m_dotsCol >= 0 && m_dotsCol < static_cast<int>(shown.size()))
+            goToPage(shown[static_cast<std::size_t>(m_dotsCol)], 0);
+        return true;
+    }
+    const int i = (m_dotsRow - 1) * kDotsCols + m_dotsCol;
+    if (i >= 0 && i < tiles && m_dotsTiles[static_cast<std::size_t>(i)].run) {
+        auto run = m_dotsTiles[static_cast<std::size_t>(i)].run;
+        run();
+    }
+    return true;
+}
+
+void CardsHomeActivity::drawDots(nxui::Renderer& ren) {
+    if (!m_dotsOpen)
+        return;
+    m_dotsIn = std::min(1.f, m_dotsIn + 1.f / 12.f);
+    const float a = 1.f - (1.f - m_dotsIn) * (1.f - m_dotsIn);
+    auto& i18n = nxui::I18n::instance();
+    const nxui::Color white = CardsChrome::kWhite.withAlpha(a);
+    ren.drawRect({0.f, 0.f, 1280.f, 720.f}, {0.f, 0.f, 0.f, 0.30f * a});
+    nxui::Rect p = dotsPanelRect(m_dotsTiles.size());
+    p.y -= 10.f * (1.f - a);
+    ren.drawRoundedRect({p.x - 4.f, p.y + 10.f, p.width + 8.f, p.height + 4.f}, {0.f, 0.f, 0.f, 0.28f * a}, 24.f);
+    ren.drawRoundedRect(p, {0.10f, 0.11f, 0.15f, 0.90f * a}, 20.f);
+    ren.drawRoundedRectOutline(p, {1.f, 1.f, 1.f, 0.14f * a}, 20.f, 1.5f);
+    // Pointer notch under the "..." button.
+    ren.drawTriangle({134.f - 10.f, p.y + 1.f}, {134.f + 10.f, p.y + 1.f}, {134.f, p.y - 9.f},
+                     {0.10f, 0.11f, 0.15f, 0.90f * a});
+
+    auto& sf = m_chrome.smallFont();
+    auto& lf = m_chrome.labelFont();
+    m_chrome.textMid(ren, sf, i18n.tr("cards.pages", "Pages"), p.x + 21.f, p.y + 29.f, white);
+
+    const auto shown = pages::shown(m_core.config().cards);
+    const float chipW = (p.width - 24.f - 9.f * 3.f) / 4.f;
+    for (std::size_t c = 0; c < shown.size() && c < 4; ++c) {
+        const int page = shown[c];
+        const nxui::Rect chip{p.x + 17.f + static_cast<float>(c) * (chipW + 9.f), p.y + 47.f, chipW, 52.f};
+        const bool current = page == m_page;
+        const bool focus = m_dotsRow == 0 && m_dotsCol == static_cast<int>(c);
+        ren.drawRoundedRect(chip, current ? CardsChrome::kWhite.withAlpha(0.95f * a) : nxui::Color{1.f, 1.f, 1.f, 0.10f * a},
+                            26.f);
+        if (focus)
+            ren.drawRoundedRectOutline({chip.x - 3.f, chip.y - 3.f, chip.width + 6.f, chip.height + 6.f},
+                                       CardsChrome::accent(a), 29.f, 2.5f);
+        const std::string name = m_chrome.fit(sf, i18n.tr(pageKey(page), pageFallback(page)), chip.width - 12.f);
+        const nxui::Color ink = current ? nxui::Color{0.08f, 0.09f, 0.12f, a} : white;
+        m_chrome.textMid(ren, sf, name, chip.x + (chip.width - sf.measure(name).x) * 0.5f, chip.y + 26.f, ink);
+    }
+
+    for (std::size_t i = 0; i < m_dotsTiles.size(); ++i) {
+        const int row = static_cast<int>(i) / kDotsCols, col = static_cast<int>(i) % kDotsCols;
+        const nxui::Rect t{p.x + 17.f + col * (kDotsTile + kDotsGap), p.y + 113.f + row * (kDotsTile + kDotsGap),
+                           kDotsTile, kDotsTile};
+        const bool focus = m_dotsRow == row + 1 && m_dotsCol == col;
+        ren.drawRoundedRect(t, {1.f, 1.f, 1.f, (focus ? 0.16f : 0.07f) * a}, 14.f);
+        if (focus)
+            ren.drawRoundedRectOutline(t, CardsChrome::kWhite.withAlpha(0.9f * a), 14.f, 2.f);
+        const auto& d = m_dotsTiles[i];
+        ren.drawCircle({t.x + t.width * 0.5f, t.y + 38.f}, 25.f, d.color.withAlpha(a), 32);
+        m_chrome.icon(ren, d.icon, t.x + t.width * 0.5f, t.y + 38.f, 26.f, white);
+        const std::string lbl = m_chrome.fit(sf, d.label, t.width - 8.f);
+        m_chrome.textMid(ren, sf, lbl, t.x + (t.width - sf.measure(lbl).x) * 0.5f, t.y + 82.f, white);
+    }
+
+    std::vector<ui::glyph::ActionHint> hints{
+        {ui::glyph::button(nxui::Button::A), i18n.tr("hint.select", "Select")},
+        {ui::glyph::button(nxui::Button::B), i18n.tr("hint.back", "Back")},
+    };
+    ui::glyph::drawHintBar(ren, m_fontIcons, sf, hints, p.right() - 16.f, p.bottom() - 12.f, a);
+    (void)lf;
 }
 
 // ── Pages (E1, C-PG-1/3/4/5) ────────────────────────────────────────────────
@@ -1205,7 +1306,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
     std::map<std::string, CardsSheet::Section> all;
 
     { // Home: pages (C-PG-5), sort, ask user, HOME style.
-        CardsSheet::Section s{i18n.tr("cards.set_home", "Home"), {}};
+        CardsSheet::Section s{i18n.tr("cards.set_home", "Home"), {}, "home", nxui::Color(0.23f, 0.51f, 0.96f)};
         for (int page : m_core.config().cards.pageOrder) {
             Row r;
             r.label = i18n.tr(pageKey(page), pageFallback(page));
@@ -1334,7 +1435,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         all["home"] = std::move(s);
     }
     { // Appearance (HomeNX E8, C-SK-6/8: accent, glass, haze, motion).
-        CardsSheet::Section s{i18n.tr("cards.set_look", "Appearance"), {}};
+        CardsSheet::Section s{i18n.tr("cards.set_look", "Appearance"), {}, "sun", nxui::Color(0.66f, 0.33f, 0.97f)};
         Row acc;
         acc.label = i18n.tr("cards.set_accent", "Highlight colour");
         acc.value = [this]() {
@@ -1447,7 +1548,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         all["look"] = std::move(s);
     }
     { // Sound: shared with Classic, stored once at the top level.
-        CardsSheet::Section s{i18n.tr("cards.set_sound", "Sound"), {}};
+        CardsSheet::Section s{i18n.tr("cards.set_sound", "Sound"), {}, "speaker", nxui::Color(0.94f, 0.27f, 0.27f)};
         Row music;
         music.label = i18n.tr("cards.set_music", "Music");
         music.value = [this]() { return onOff(m_core.config().musicEnabled); };
@@ -1505,7 +1606,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         all["sound"] = std::move(s);
     }
     { // Console: the system pages that own network and controllers.
-        CardsSheet::Section s{i18n.tr("cards.set_console", "Console"), {}};
+        CardsSheet::Section s{i18n.tr("cards.set_console", "Console"), {}, "power", nxui::Color(0.39f, 0.45f, 0.55f)};
         Row net;
         net.label = i18n.tr("cards.tile_internet", "Internet");
         net.onA = [this]() {
@@ -1551,7 +1652,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         all["console"] = std::move(s);
     }
     { // About, with the section order (C-UI-14).
-        CardsSheet::Section s{i18n.tr("cards.set_about", "About"), {}};
+        CardsSheet::Section s{i18n.tr("cards.set_about", "About"), {}, "dots", nxui::Color(0.58f, 0.64f, 0.72f)};
         Row ver;
         ver.label = "OmniLaunch";
         ver.value = []() { return std::string(SWITCHU_VERSION); };
@@ -1622,7 +1723,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
     }
 
     {
-        CardsSheet::Section s{i18n.tr("cards.set_lock", "Lock screen"), {}};
+        CardsSheet::Section s{i18n.tr("cards.set_lock", "Lock screen"), {}, "moon", nxui::Color(0.39f, 0.40f, 0.95f)};
         Row enabled;
         enabled.label = i18n.tr("cards.set_lock", "Lock screen");
         enabled.detail = i18n.tr("cards.set_lock_desc", "After sleep. A password always locks.");
@@ -1687,7 +1788,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         all["lock"] = std::move(s);
     }
     {
-        CardsSheet::Section s{i18n.tr("cards.tile_internet", "Internet"), {}};
+        CardsSheet::Section s{i18n.tr("cards.tile_internet", "Internet"), {}, "wifi", nxui::Color(0.08f, 0.72f, 0.65f)};
 #ifdef SWITCHU_MENU
         std::string ssid, ipText;
         if (R_SUCCEEDED(nifmInitialize(NifmServiceType_User))) {
@@ -1739,7 +1840,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         all["internet"] = std::move(s);
     }
     {
-        CardsSheet::Section s{"Bluetooth", {}};
+        CardsSheet::Section s{"Bluetooth", {}, "bluetooth", nxui::Color(0.05f, 0.65f, 0.91f)};
         Row r;
         r.label = "Bluetooth";
         r.value = []() { return bluetooth::IsAvailable() ? onOff(bluetooth::IsRadioEnabled()) : std::string("..."); };
@@ -1766,7 +1867,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         all["bluetooth"] = std::move(s);
     }
     {
-        CardsSheet::Section s{i18n.tr("cards.art_choices", "Images"), {}};
+        CardsSheet::Section s{i18n.tr("cards.art_choices", "Images"), {}, "tag", nxui::Color(0.13f, 0.77f, 0.37f)};
         Row r;
         r.label = i18n.tr("cards.art_selected", "Images for the selected card");
         r.onA = [this]() {
@@ -1861,7 +1962,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         all["images"] = std::move(s);
     }
     {
-        CardsSheet::Section s{i18n.tr("cards.set_updates", "Updates"), {}};
+        CardsSheet::Section s{i18n.tr("cards.set_updates", "Updates"), {}, "arrows", nxui::Color(0.98f, 0.45f, 0.09f)};
         Row version;
         version.label = "OmniLaunch";
         version.value = []() { return std::string(SWITCHU_VERSION); };

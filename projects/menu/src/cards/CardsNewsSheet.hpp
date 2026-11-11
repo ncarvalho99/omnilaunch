@@ -86,6 +86,7 @@ private:
 
     bool m_open = false;
     float m_in = 0.f;
+    mutable bool m_backdropCacheValid = false;
     bool m_loading = false;
     float m_loadedAt = -1e9f;
     std::string m_emptyMsg;

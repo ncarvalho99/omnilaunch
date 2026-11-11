@@ -2,6 +2,7 @@
 #include "core/AudioManager.hpp"
 #include "core/DebugLog.hpp"
 #include "home/HomeCore.hpp"
+#include <nxui/core/GpuDevice.hpp>
 #include <nxui/core/I18n.hpp>
 #include <nxui/core/ThreadPool.hpp>
 #include <algorithm>
@@ -85,6 +86,7 @@ void CardsNewsSheet::open(home::HomeCore& core, CardsChrome& chrome, float now) 
     if (m_open) return;
     m_open = true;
     m_in = 0.f;
+    m_backdropCacheValid = false;
     m_dragging = false;
     if (m_loading) return; // shown again; the running load lands in update()
 
@@ -371,7 +373,23 @@ void CardsNewsSheet::render(nxui::Renderer& ren, CardsChrome& chrome, float time
     const nxui::Color white = CardsChrome::kWhite.withAlpha(a);
     const nxui::Color muted{0.8f, 0.82f, 0.88f, 0.85f * a};
     ren.drawRect({0.f, 0.f, 1280.f, 720.f}, {0.f, 0.f, 0.f, 0.52f * a});
-    ren.drawRoundedRect(kCard, {0.08f, 0.09f, 0.13f, 0.92f * a}, 34.f);
+
+    bool drawnGlass = false;
+#ifdef SWITCHU_MENU
+    if (ren.gpu().offscreenReady()) {
+        if (!m_backdropCacheValid) {
+            ren.captureToOffscreenSharp();
+            ren.applyBlur(2.5f, 2);
+            ren.copyOffscreen(nxui::GpuDevice::OFF_SHARP_A, nxui::GpuDevice::OFF_DIALOG);
+            m_backdropCacheValid = true;
+        }
+        ren.drawLiquidGlass(nxui::GpuDevice::OFF_DIALOG, kCard, 34.f, CardsChrome::glassTint(1.f), a, 0.35f);
+        drawnGlass = true;
+    }
+#endif
+    if (!drawnGlass) {
+        ren.drawRoundedRect(kCard, CardsChrome::glassTint(a), 34.f);
+    }
     ren.drawRoundedRectOutline(kCard, {1.f, 1.f, 1.f, 0.16f * a}, 34.f, 1.5f);
 
     auto& i18n = nxui::I18n::instance();

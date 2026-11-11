@@ -177,7 +177,12 @@
     "controllers": "Controles",
     "theme_shop": "OmniLaunch",
     "sleep": "Modo de Descanso",
-    "music": "Música"
+    "music": "Música",
+    "sphaira": "Sphaira",
+    "news": "Notícias",
+    "nextendo": "Nextendo",
+    "toggle": "Cards",
+    "social": "Social"
   },
   "hint": {
     "navigate": "Navegar",
@@ -204,7 +209,9 @@
     "favorite": "Favorito",
     "options": "Opções",
     "switch_layout": "Trocar visualização",
-    "sort_playtime": "Mais jogados"
+    "sort_playtime": "Mais jogados",
+    "change": "Alterar",
+    "section": "Seção"
   },
   "settings": {
     "layout": {
@@ -1330,7 +1337,8 @@
     "back": "< Voltar (B)",
     "no_messages": "Nenhuma mensagem ainda. A ou X para enviar!",
     "type_hint": "A ou X para escrever uma mensagem...",
-    "y_accounts": "  (Y: Contas)"
+    "y_accounts": "  (Y: Contas)",
+    "loading_image": "[Carregando imagem...]"
   },
   "cards": {
     "hb_kind": "Homebrew",
@@ -1627,6 +1635,21 @@
     "ach_games15": "Viajante",
     "ach_total100": "Maratona",
     "ach_total500": "Veterano",
-    "hb_delete_busy": "Aguarde a atualização do homebrew terminar"
+    "hb_delete_busy": "Aguarde a atualização do homebrew terminar",
+    "pages": "Páginas",
+    "download": "Baixar",
+    "download_from_github": "Baixar do GitHub",
+    "downloading_app": "Baixando app...",
+    "download_done": "Download concluído!",
+    "download_failed": "Falha no download.",
+    "apply": "Aplicar",
+    "back": "Voltar",
+    "music_source": "Música do HOME",
+    "sgdb_no_artwork": "Nenhuma imagem encontrada para este título.",
+    "sgdb_empty_help": "Pressione X para trocar a resolução ou Y para mudar o nome da busca."
+  },
+  "news": {
+    "empty_title": "Sem notícias",
+    "empty_message": "Nenhuma notícia disponível agora."
   }
 }

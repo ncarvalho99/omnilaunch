@@ -1,6 +1,7 @@
 #include "discord/DiscordPanel.hpp"
 #include "discord/DiscordApi.hpp"
 #include "home/HomeCore.hpp"
+#include "net/NetService.hpp"
 
 #include <nxui/core/Animation.hpp>
 #include <nxui/core/GpuDevice.hpp>
@@ -10,7 +11,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cmath>
+#include <sstream>
 
 namespace discord {
 
@@ -63,7 +66,87 @@ std::string cleanText(const std::string& s) {
     return out;
 }
 
+static std::vector<std::string> wrapLines(nxui::Font* font, const std::string& text, float maxW) {
+    std::vector<std::string> lines;
+    if (!font || text.empty()) return lines;
+    std::istringstream stream(text);
+    std::string paragraph;
+    while (std::getline(stream, paragraph)) {
+        if (paragraph.empty()) {
+            lines.push_back("");
+            continue;
+        }
+        std::string current;
+        std::istringstream words(paragraph);
+        std::string word;
+        while (words >> word) {
+            std::string test = current.empty() ? word : current + " " + word;
+            if (font->measure(test).x <= maxW) {
+                current = test;
+            } else {
+                if (!current.empty()) lines.push_back(current);
+                current = word;
+            }
+        }
+        if (!current.empty()) lines.push_back(current);
+    }
+    return lines;
+}
+
 } // namespace
+
+const nxui::Texture* DiscordPanel::requestImage(const std::string& url, int maxSide) const {
+    if (url.empty() || !m_core) return nullptr;
+    auto it = m_images.find(url);
+    if (it != m_images.end()) {
+        if (it->second.ready && it->second.texture.valid())
+            return &it->second.texture;
+        return nullptr;
+    }
+    if (m_images.size() > 160) return nullptr;
+    auto& slot = m_images[url];
+    slot.requested = true;
+    slot.decoded = std::make_shared<nxui::DecodedImage>();
+    auto dec = slot.decoded;
+    try {
+        slot.future = m_core->threadPool().submit([this, url, maxSide, dec]() {
+            try {
+                net::Request req;
+                req.url = url;
+                req.timeoutMs = 12000;
+                req.attempts = 1;
+                auto res = m_core->net().request(req);
+                if (res.ok() && !res.body.empty()) {
+                    *dec = nxui::Texture::decodeMemory(reinterpret_cast<const uint8_t*>(res.body.data()),
+                                                       res.body.size(), maxSide);
+                }
+            } catch (...) {}
+        });
+    } catch (...) {
+        slot.failed = true;
+    }
+    return nullptr;
+}
+
+void DiscordPanel::pumpImages(nxui::GpuDevice& gpu, nxui::Renderer& ren) const {
+    for (auto& [url, slot] : m_images) {
+        if (slot.requested && !slot.ready && !slot.failed && slot.future.valid()) {
+            if (slot.future.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+                try { slot.future.get(); } catch (...) {}
+                if (slot.decoded && slot.decoded->valid()) {
+                    if (slot.texture.loadFromPixels(gpu, ren, slot.decoded->rgba.data(),
+                                                    slot.decoded->width, slot.decoded->height)) {
+                        slot.ready = true;
+                    } else {
+                        slot.failed = true;
+                    }
+                } else {
+                    slot.failed = true;
+                }
+            }
+        }
+    }
+}
 
 DiscordPanel::DiscordPanel() {
     setRect({0.f, 0.f, 1280.f, 720.f});
@@ -455,6 +538,7 @@ void DiscordPanel::onUpdate(float dt) {
 
 void DiscordPanel::onRender(nxui::Renderer& ren) {
     if (!isVisible() || m_anim <= 0.001f) return;
+    pumpImages(ren.gpu(), ren);
     const float a = m_anim;
 
     // Dimmed background
@@ -551,7 +635,10 @@ void DiscordPanel::drawRail(nxui::Renderer& ren, const nxui::Rect& p, float a) {
             if (focused) {
                 ren.drawRoundedRectOutline(gHit, {1.f, 1.f, 1.f, 0.7f * a}, 16.f, 2.f);
             }
-            if (m_smallFont) {
+            const nxui::Texture* gIcon = requestImage(guilds[i].iconUrl(64), 48);
+            if (gIcon) {
+                ren.drawTextureRounded(gIcon, gHit, sel ? 16.f : 24.f, {1.f, 1.f, 1.f, a});
+            } else if (m_smallFont) {
                 const std::string inits = guilds[i].initials();
                 const float textW = m_smallFont->measure(inits).x;
                 drawLabel(ren, m_smallFont, cx - textW * 0.5f, y + 14.f, inits, nxui::Color(1.f, 1.f, 1.f, a));
@@ -715,12 +802,12 @@ void DiscordPanel::drawQrView(nxui::Renderer& ren, const nxui::Rect& p, float a)
 
 void DiscordPanel::drawChat(nxui::Renderer& ren, const nxui::Rect& p, float a) {
     // Top bar
-    m_backHit = {p.x + 12.f, p.y + 12.f, 90.f, 36.f};
+    m_backHit = {p.x + 12.f, p.y + 12.f, 96.f, 36.f};
     ren.drawRoundedRect(m_backHit, bgSelected(a), 6.f);
     if (m_smallFont) {
-        drawLabel(ren, m_smallFont, m_backHit.x + 10.f, m_backHit.y + 10.f, T("discord_ui.back", "< Back (B)"), textNormal(a));
+        drawLabel(ren, m_smallFont, m_backHit.x + 8.f, m_backHit.y + 10.f, T("discord_ui.back", "< Voltar (B)"), textNormal(a));
     }
-    drawLabel(ren, m_font, p.x + 115.f, p.y + 16.f, m_chatName, textNormal(a));
+    drawLabel(ren, m_font, p.x + 120.f, p.y + 16.f, m_chatName, textNormal(a));
     ren.drawRect({p.x, p.y + kTopH - 1.f, p.width, 1.f}, {1.f, 1.f, 1.f, 0.08f * a});
 
     // Message list area
@@ -732,18 +819,29 @@ void DiscordPanel::drawChat(nxui::Renderer& ren, const nxui::Rect& p, float a) {
 
     if (msgs.empty()) {
         if (m_smallFont) {
-            drawLabel(ren, m_smallFont, p.x + 24.f, chatY + 24.f, T("discord_ui.no_messages", "No messages yet. Press A or X to send one!"), textMuted(a));
+            drawLabel(ren, m_smallFont, p.x + 24.f, chatY + 24.f, T("discord_ui.no_messages", "Nenhuma mensagem ainda. Pressione A ou X para digitar!"), textMuted(a));
         }
     } else {
-        // Calculate message heights
-        float totalMsgH = 12.f;
-        std::vector<float> msgHeights(msgs.size());
+        struct MsgLayout {
+            std::vector<std::string> lines;
+            std::vector<std::string> images;
+            float height = 0.f;
+        };
+        const float maxTextW = chatArea.width - 64.f;
+        std::vector<MsgLayout> layouts(msgs.size());
+        float totalMsgH = 16.f;
         for (std::size_t i = 0; i < msgs.size(); ++i) {
-            float mh = 48.f;
-            if (msgs[i].content.size() > 40) mh += 20.f;
-            if (msgs[i].content.size() > 80) mh += 20.f;
-            msgHeights[i] = mh;
-            totalMsgH += mh + 6.f;
+            auto& lay = layouts[i];
+            const auto& m = msgs[i];
+            lay.lines = wrapLines(m_smallFont, cleanText(m.content), maxTextW);
+            for (const auto& att : m.attachmentUrls) {
+                lay.images.push_back(att);
+            }
+            float h = 28.f;
+            h += static_cast<float>(std::max<std::size_t>(1, lay.lines.size())) * 20.f;
+            h += static_cast<float>(lay.images.size()) * 156.f;
+            lay.height = h;
+            totalMsgH += h + 8.f;
         }
 
         const float maxScroll = std::max(0.f, totalMsgH - chatH + 10.f);
@@ -754,14 +852,55 @@ void DiscordPanel::drawChat(nxui::Renderer& ren, const nxui::Rect& p, float a) {
         float y = chatY + 10.f - m_chatScroll;
         for (std::size_t i = 0; i < msgs.size(); ++i) {
             const auto& m = msgs[i];
-            const float mh = msgHeights[i];
-            if (y + mh >= chatArea.y - 10.f && y <= chatArea.bottom() + 10.f) {
-                drawLabel(ren, m_font, chatArea.x + 12.f, y + 4.f, m.author.displayName(), blurple(a));
-                if (m_smallFont) {
-                    drawLabel(ren, m_smallFont, chatArea.x + 12.f, y + 26.f, cleanText(m.content), textNormal(a));
+            const auto& lay = layouts[i];
+            const float mh = lay.height;
+            if (y + mh >= chatArea.y - 20.f && y <= chatArea.bottom() + 20.f) {
+                // Avatar
+                const nxui::Texture* avTex = requestImage(m.author.avatarUrl(64), 64);
+                const nxui::Rect avRect{chatArea.x + 8.f, y + 4.f, 34.f, 34.f};
+                if (avTex) {
+                    ren.drawTextureRounded(avTex, avRect, 17.f, {1.f, 1.f, 1.f, a});
+                } else {
+                    ren.drawCircle({avRect.x + 17.f, avRect.y + 17.f}, 17.f, blurple(a), 24);
+                    std::string init = m.author.displayName().substr(0, 1);
+                    if (m_smallFont)
+                        drawLabel(ren, m_smallFont, avRect.x + 12.f, avRect.y + 10.f, init, textNormal(a));
+                }
+
+                // Author name & time
+                drawLabel(ren, m_font, chatArea.x + 50.f, y + 2.f, m.author.displayName(), blurple(a));
+                if (m_smallFont && !m.timestamp.empty()) {
+                    float nw = m_font ? m_font->measure(m.author.displayName()).x : 80.f;
+                    drawLabel(ren, m_smallFont, chatArea.x + 50.f + nw + 10.f, y + 6.f, m.timestamp, textMuted(a));
+                }
+
+                // Content lines
+                float ly = y + 24.f;
+                for (const auto& line : lay.lines) {
+                    if (m_smallFont) {
+                        drawLabel(ren, m_smallFont, chatArea.x + 50.f, ly, line, textNormal(a));
+                    }
+                    ly += 20.f;
+                }
+
+                // Attachment images
+                for (const auto& imgUrl : lay.images) {
+                    const nxui::Rect imgBox{chatArea.x + 50.f, ly + 4.f, std::min(maxTextW, 260.f), 144.f};
+                    const nxui::Texture* imgTex = requestImage(imgUrl, 320);
+                    if (imgTex) {
+                        ren.drawTextureRounded(imgTex, imgBox, 8.f, {1.f, 1.f, 1.f, a});
+                    } else {
+                        ren.drawRoundedRect(imgBox, bgTertiary(a), 8.f);
+                        ren.drawRoundedRectOutline(imgBox, {1.f, 1.f, 1.f, 0.12f * a}, 8.f, 1.f);
+                        if (m_smallFont) {
+                            drawLabel(ren, m_smallFont, imgBox.x + 16.f, imgBox.y + imgBox.height * 0.5f - 8.f,
+                                      T("discord_ui.loading_image", "[Carregando imagem...]"), textMuted(a));
+                        }
+                    }
+                    ly += 154.f;
                 }
             }
-            y += mh + 6.f;
+            y += mh + 8.f;
         }
 
         ren.popClipRect();
@@ -773,7 +912,10 @@ void DiscordPanel::drawChat(nxui::Renderer& ren, const nxui::Rect& p, float a) {
     ren.drawRoundedRectOutline(m_replyHit, {1.f, 1.f, 1.f, 0.12f * a}, 8.f, 1.f);
     if (m_smallFont) {
         drawLabel(ren, m_smallFont, m_replyHit.x + 14.f, m_replyHit.y + 12.f,
-                  T("discord_ui.type_hint", "Press (A) or (X) to type a message..."), textMuted(a));
+                  T("discord_ui.type_hint", "Pressione (A) ou (X) para digitar uma mensagem..."), textMuted(a));
+        const nxui::Rect xKey{m_replyHit.right() - 32.f, m_replyHit.y + 10.f, 24.f, 24.f};
+        ren.drawRoundedRect(xKey, bgSelected(a), 12.f);
+        drawLabel(ren, m_smallFont, xKey.x + 7.f, xKey.y + 4.f, "X", textNormal(a));
     }
 }
 

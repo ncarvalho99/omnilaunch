@@ -16,8 +16,8 @@ namespace {
 // Covers are 600x900 or larger; a card is 250x354 at most. Decoding at 512
 // keeps one cover near 1 MB of GPU memory instead of 2-4 MB.
 constexpr int kCoverMaxSide = 512;
-// The background is drawn full screen under a dark wash; 640 wide is enough.
-constexpr int kBackgroundMaxSide = 640;
+// The background is drawn full screen; decode at 1280 for sharp 720p presentation.
+constexpr int kBackgroundMaxSide = 1280;
 
 bool isFile(const std::string& path) {
     struct stat st{};

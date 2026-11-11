@@ -26,6 +26,7 @@ struct StatusSnapshot {
     std::string freeSpace;    // "13.3 GB", empty = hidden
     const nxui::Texture* avatar = nullptr;
     int nextendoPlayers = -2; // -2 disabled/hidden, -1 counting, >=0 online players
+    bool musicPlaying = false;
 };
 
 enum class TopButton { Menu, Discord, Sort, User, Nextendo, Bell, Music, Power, Settings, Count };

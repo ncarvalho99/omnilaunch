@@ -125,6 +125,8 @@ private:
     void handleMoveInput();
     void saveConfig(const char* why);
     void openDotsMenu();
+    bool handleDotsInput(nxui::Input& in);
+    void drawDots(nxui::Renderer& ren);
     void openUsersSheet();
     void openNotificationsSheet();
     void openAchievementsSheet(std::uint64_t titleId);
@@ -232,6 +234,21 @@ private:
     // Achievements newly earned while away, said once on arrival (E11).
     // An overlay was open this frame: its press must not reach the row.
     bool m_overlayLatch = false;
+    // "..." popover (CardsNX layout): row 0 = page chips, rows 1.. = 4-wide tiles.
+    struct DotsTile {
+        std::string label;
+        const char* icon;
+        nxui::Color color;
+        std::function<void()> run;
+    };
+    std::vector<DotsTile> m_dotsTiles;
+    // Media app download (TikTok): 0 idle, 1 running, 2 done, 3 failed. Shared
+    // with the worker so a late finish after destroy touches no dead state.
+    std::shared_ptr<std::atomic<int>> m_appDownloadState = std::make_shared<std::atomic<int>>(0);
+    bool m_dotsOpen = false;
+    float m_dotsIn = 0.f;
+    int m_dotsRow = 1;
+    int m_dotsCol = 0;
     // This activation was a fast return: no automatic welcome tour.
     bool m_tutorialBlocked = false;
 

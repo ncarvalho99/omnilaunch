@@ -1,7 +1,7 @@
 #pragma once
 #include <set>
 namespace nxui {
-enum class Button { A,B,X,Y,L,R,ZL,ZR,DUp,DDown,DLeft,DRight,LStickU,LStickD,LStickL,LStickR };
+enum class Button { A,B,X,Y,L,R,ZL,ZR,Plus,Minus,LStick,RStick,DUp,DDown,DLeft,DRight,LStickU,LStickD,LStickL,LStickR };
 class Input {
 public:
  std::set<Button> down, held;

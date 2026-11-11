@@ -22,6 +22,11 @@
 #include "widgets/QuickSettingsOverlay.hpp"
 #include "widgets/ContextMenu.hpp"
 #include "discord/DiscordPanel.hpp"
+#include "widgets/NotificationBell.hpp"
+#include "widgets/NotificationPanel.hpp"
+#include "widgets/ProfileCarouselScreen.hpp"
+#include "settings/ListDetailScreen.hpp"
+#include "widgets/SocialScreen.hpp"
 #include "widgets/ProgressDialog.hpp"
 #include "widgets/LockScreen.hpp"
 #include "widgets/AppletButton.hpp"
@@ -634,6 +639,16 @@ private:
     std::shared_ptr<OverlayDialog>     m_dialog;
     std::shared_ptr<QuickSettingsOverlay> m_quickSettings;
     std::shared_ptr<discord::DiscordPanel> m_discordPanel;
+    std::shared_ptr<NotificationBell>      m_bell;
+    std::shared_ptr<NotificationPanel>     m_notifPanel;
+    std::shared_ptr<ProfileCarouselScreen> m_profileCarousel;
+    std::shared_ptr<ListDetailScreen>      m_newsScreen;
+    std::shared_ptr<SocialScreen>          m_social;
+
+    void openNotifications();
+    void openProfileCarousel();
+    void openNews();
+    void openFriends(AccountUid forUser = {});
     std::shared_ptr<ContextMenu>       m_contextMenu;
     std::shared_ptr<ProgressDialog>    m_progressDialog;
     std::shared_ptr<SettingsScreen>    m_settings;

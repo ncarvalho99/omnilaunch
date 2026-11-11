@@ -118,6 +118,21 @@ ThemeShopScreen::Tab themeshop::tabs::OptionsTab::build(ThemeShopScreen& screen)
     }
 
     {
+        // Switch between Classic and Cards HOME frontends
+        SettingItem it;
+        it.label = i18n.tr("cards.home_style", "HOME style");
+        it.description = i18n.tr("settings.system.home_style_desc",
+                                 "Switch to the Cards HOME. Cards can switch back from its settings button.");
+        it.type = ItemType::Action;
+        it.infoText = i18n.tr("cards.home_style_classic", "Classic");
+        it.buttonLabel = i18n.tr("settings.system.home_style_switch", "Switch to Cards");
+        it.onChange = [&screen](SettingItem& /* self */) {
+            if (screen.m_switchToCardsCb) screen.m_switchToCardsCb();
+        };
+        t.items.push_back(std::move(it));
+    }
+
+    {
         SettingItem it;
         it.label = i18n.tr("settings.display.launcher_view", "Launcher View");
         it.description = i18n.tr("settings.display.launcher_view_desc",

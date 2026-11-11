@@ -10,9 +10,12 @@
 
 #include <nxui/core/Font.hpp>
 #include <nxui/core/Renderer.hpp>
+#include <nxui/core/Texture.hpp>
 #include <nxui/widgets/Widget.hpp>
 
 #include <functional>
+#include <future>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -121,6 +124,18 @@ private:
     std::uint64_t m_lastVersion = 0;
     View m_lastView = View::Home;
     int m_lastRailSel = 0;
+
+    struct ImageSlot {
+        nxui::Texture texture;
+        std::shared_ptr<nxui::DecodedImage> decoded;
+        std::future<void> future;
+        bool requested = false;
+        bool ready = false;
+        bool failed = false;
+    };
+    mutable std::map<std::string, ImageSlot> m_images;
+    const nxui::Texture* requestImage(const std::string& url, int maxSide = 256) const;
+    void pumpImages(nxui::GpuDevice& gpu, nxui::Renderer& ren) const;
 };
 
 } // namespace discord

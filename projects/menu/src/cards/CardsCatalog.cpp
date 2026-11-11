@@ -9,6 +9,8 @@
 #include <nxui/core/Renderer.hpp>
 #include <nxui/core/ThreadPool.hpp>
 #include <algorithm>
+#include <filesystem>
+#include <system_error>
 
 namespace cards {
 
@@ -114,6 +116,37 @@ void CardsCatalog::setPage(int page, const AppConfig& config) {
             c.app.title = config.customTitle(a.titleId, a.title);
             adopt(c);
             m_entries.push_back(std::move(c));
+        }
+        if (media) {
+            constexpr const char* kTikTokPath = "sdmc:/switch/TikTok/TikTok.nro";
+            std::error_code ec;
+            auto& i18n = nxui::I18n::instance();
+            if (std::filesystem::exists(kTikTokPath, ec)) {
+                CardEntry tik;
+                tik.isHomebrew = true;
+                tik.homebrewPath = kTikTokPath;
+                tik.app.title = "TikTok";
+                tik.app.titleId = pg::homebrewId(kTikTokPath);
+                tik.author = "ad3333m";
+                tik.app.kind = GridEntryKind::Application;
+                tik.app.userRequired = false;
+                adopt(tik);
+                m_entries.push_back(std::move(tik));
+            } else {
+                CardEntry tik;
+                tik.isHomebrew = true;
+                tik.needsDownload = true;
+                tik.homebrewPath = kTikTokPath;
+                tik.downloadUrl = "https://github.com/ad3333m/tiktok-nx/releases/download/latest/TikTok.nro";
+                tik.app.title = "TikTok";
+                tik.app.titleId = pg::homebrewId(kTikTokPath); // same stable id before and after download
+                tik.author = i18n.tr("cards.download_from_github", "Download from GitHub");
+                tik.app.kind = GridEntryKind::Application;
+                tik.app.userRequired = false;
+                tik.iconFile = m_assetsRoot + "/icons/cards/download.png";
+                adopt(tik);
+                m_entries.push_back(std::move(tik));
+            }
         }
         sort(config);
     }
@@ -262,7 +295,7 @@ void CardsCatalog::pumpIcons(nxui::GpuDevice& gpu, nxui::Renderer& ren, nxui::Th
         auto decoded = p.decoded;
         auto cancelled = p.cancelled;
         const std::uint64_t titleId = p.titleId;
-        const std::string iconFile = card.system ? card.iconFile : std::string();
+        const std::string iconFile = !card.iconFile.empty() ? card.iconFile : std::string();
         const std::string hbPath = card.isHomebrew ? card.homebrewPath : std::string();
         try {
             p.future = pool.submit([decoded, cancelled, titleId, iconFile, hbPath]() {

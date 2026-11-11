@@ -45,9 +45,12 @@ public:
 
     void onClosed(std::function<void()> cb) { m_closedCb = std::move(cb); }
     void onSearch(std::function<void()> cb) { m_searchCb = std::move(cb); }
+    void onDimensionChange(std::function<void(const std::string&)> cb) { m_dimCb = std::move(cb); }
     void onApply(std::function<void(const BrowseResult&, const Candidate&)> cb) {
         m_applyCb = std::move(cb);
     }
+    void cycleDimensions();
+    std::string currentDimensions() const;
     void handleTouch(nxui::Input& input);
 
 protected:
@@ -106,5 +109,8 @@ private:
 
     std::function<void()> m_closedCb;
     std::function<void()> m_searchCb;
+    std::function<void(const std::string&)> m_dimCb;
     std::function<void(const BrowseResult&, const Candidate&)> m_applyCb;
+    int m_heroDimIndex = 0;
+    int m_coverDimIndex = 0;
 };

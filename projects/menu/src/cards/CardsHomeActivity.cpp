@@ -2,8 +2,10 @@
 #include "cards/CardsLayout.hpp"
 #include "cards/CardsAchievements.hpp"
 #include "cards/CardsPages.hpp"
+#include "core/ButtonGlyph.hpp"
 #include "core/DebugLog.hpp"
 #include "core/LeaveFrameCache.hpp"
+#include "net/NetService.hpp"
 #include "core/PlayTime.hpp"
 #include "home/HomeCore.hpp"
 #include "home/HomeFrontend.hpp"
@@ -537,6 +539,15 @@ bool CardsHomeActivity::onCreate() {
                             openTitlePicker(titleId, title, kind, typed);
                     });
     });
+    m_picker->onDimensionChange([this](const std::string& /* dim */) {
+        if (!m_picker || !m_picker->isActive())
+            return;
+        const auto kind = m_picker->artworkKind();
+        const auto titleId = m_picker->titleId();
+        const auto title = m_picker->title();
+        const auto query = m_picker->query();
+        openTitlePicker(titleId, title, kind, query);
+    });
     m_picker->onApply([this](const SteamGridDbManager::BrowseResult& browse,
                              const SteamGridDbManager::Candidate& candidate) {
         applyPickerCandidate(browse, candidate);
@@ -870,6 +881,15 @@ void CardsHomeActivity::onUpdate(float dt) {
     nxui::AnimationManager::instance().update(dt);
     finishAudioLoad();
     m_audio.update();
+    m_status.musicPlaying = m_audio.isPlaying() && !m_audio.isPaused();
+    if (const int dl = m_appDownloadState->load(); dl >= 2) {
+        m_appDownloadState->store(0);
+        auto& t = nxui::I18n::instance();
+        showToast(dl == 2 ? t.tr("cards.download_done", "Download complete!")
+                          : t.tr("cards.download_failed", "Download failed."));
+        if (dl == 2)
+            m_catalog.rebuild(m_core.config());
+    }
     pollPlaytime();
     pollNetCheck();
     pollArtJobs();
@@ -966,6 +986,8 @@ void CardsHomeActivity::onUpdate(float dt) {
                     m_core.config().cards.tutorialDone = true;
                     saveConfig("cards tutorial");
                 }
+            } else if (m_dotsOpen) {
+                handleDotsInput(app().input());
             } else if (m_sheet.isOpen()) {
                 m_sheet.handleInput(app().input(), dt);
             } else if (m_musicSheet.isOpen()) {
@@ -1118,6 +1140,7 @@ void CardsHomeActivity::updateStatus(float dt) {
         m_status.freeSpace = free;
     }
     m_status.avatar = m_avatar.get();
+    m_status.musicPlaying = m_audio.isPlaying() && !m_audio.isPaused();
     if (m_core.config().cards.showNextendo) {
         m_status.nextendoPlayers = m_core.nextendo().totalOnline();
     } else {
@@ -1482,6 +1505,39 @@ void CardsHomeActivity::startLaunchHomebrew(const std::string& path) {
 }
 
 void CardsHomeActivity::launchTitle(const CardEntry& card) {
+    if (card.needsDownload) {
+        // Media app not on the SD card (TikTok, as CardsNX): fetch its .nro.
+        auto& i18n = nxui::I18n::instance();
+        if (m_appDownloadState->load() == 1) {
+            showToast(i18n.tr("cards.downloading_app", "Downloading app..."));
+            return;
+        }
+        if (!m_core.net().online()) {
+            showToast(i18n.tr("cards.net_offline", "No internet connection"));
+            return;
+        }
+        if (!m_core.threadPool().acceptingTasks())
+            return;
+        showToast(i18n.tr("cards.downloading_app", "Downloading app..."));
+        const std::string url = card.downloadUrl;
+        const std::string dest = card.homebrewPath;
+        std::error_code ec;
+        std::filesystem::create_directories(std::filesystem::path(dest).parent_path(), ec);
+        auto state = m_appDownloadState;
+        state->store(1);
+        net::NetService* net = &m_core.net();
+        m_core.threadPool().submit([state, net, url, dest]() {
+            net::Download dl;
+            dl.url = url;
+            dl.path = dest;
+            dl.timeoutMs = 120000;
+            const auto res = net->download(dl);
+            DebugLog::log("[cards] app download %s -> %s status=%ld %s", url.c_str(), dest.c_str(), res.status,
+                          res.error.c_str());
+            state->store(res.ok() ? 2 : 3);
+        });
+        return;
+    }
     if (card.isHomebrew) {
 #ifdef SWITCHU_MENU
         if (isRunningCard(card.app.titleId)) {
@@ -1805,7 +1861,7 @@ void CardsHomeActivity::drawCard(nxui::Renderer& ren, int index, const nxui::Rec
     ren.drawRoundedRect({card.x - 3.f, card.y + 6.f + 6.f * chosen, card.width + 6.f, card.height + 6.f},
                         {0.f, 0.f, 0.f, shadow}, layout::kCardRadius + 3.f);
 
-    const nxui::Texture* cover = entry.system ? nullptr : m_art.cover(id);
+    const nxui::Texture* cover = (entry.system || entry.needsDownload) ? nullptr : m_art.cover(id);
     const float coverIn = cover ? std::min(1.f, m_art.coverAge(id, m_time) / 0.35f) : 0.f;
     if (coverIn < 1.f) {
         // No cover yet (or fading in): the icon on glass with the name.
@@ -1818,8 +1874,16 @@ void CardsHomeActivity::drawCard(nxui::Renderer& ren, int index, const nxui::Rec
         auto& f = m_chrome.labelFont();
         const std::string name = m_chrome.fit(f, entry.app.title, card.width - 28.f);
         const float w = f.measure(name).x;
-        m_chrome.textMid(ren, f, name, card.x + (card.width - w) * 0.5f, card.bottom() - 46.f,
+        const float nameY = entry.needsDownload ? card.bottom() - 52.f : card.bottom() - 46.f;
+        m_chrome.textMid(ren, f, name, card.x + (card.width - w) * 0.5f, nameY,
                          CardsChrome::kWhite);
+        if (entry.needsDownload) {
+            auto& sf = m_chrome.smallFont();
+            const std::string sub = m_chrome.fit(sf, entry.author, card.width - 28.f);
+            const float sw = sf.measure(sub).x;
+            m_chrome.textMid(ren, sf, sub, card.x + (card.width - sw) * 0.5f, card.bottom() - 26.f,
+                             CardsChrome::kWhite.withAlpha(0.72f));
+        }
     }
     if (cover)
         CardsChrome::drawCover(ren, cover, card, layout::kCardRadius, CardsChrome::kWhite.withAlpha(coverIn));
@@ -1919,6 +1983,8 @@ void CardsHomeActivity::drawPanel(nxui::Renderer& ren) {
     const std::uint64_t played = m_core.config().playtimeOf(id);
     if (entry.system) {
         line = i18n.tr("cards.system_tile", "Nintendo");
+    } else if (entry.needsDownload) {
+        line = entry.author;
     } else if (entry.isHomebrew && !suspended) {
         line = entry.author.empty() ? i18n.tr("cards.hb_kind", "Homebrew")
                                     : i18n.tr("cards.hb_by", "Homebrew by {author}");
@@ -1971,6 +2037,7 @@ void CardsHomeActivity::drawPanel(nxui::Renderer& ren) {
                                    CardsChrome::accent(pulse * d), 43.5f, 3.f);
     }
     const std::string label = suspended ? i18n.tr("cards.resume", "Resume")
+        : entry.needsDownload ? i18n.tr("cards.download", "Download")
         : (entry.isHomebrew || entry.system) ? i18n.tr("cards.open", "Open")
                                               : i18n.tr("cards.play", "Play");
     auto& lf = m_chrome.labelFont();
@@ -2068,8 +2135,22 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
         : m_page == AppConfig::CardsPrefs::kHomebrew ? tr.tr("cards.page_homebrew", "Homebrew")
         : m_page == AppConfig::CardsPrefs::kNintendo ? tr.tr("cards.page_nintendo", "Nintendo")
                                                     : tr.tr("cards.page_media", "Media");
-    m_chrome.textMid(ren, m_chrome.smallFont(), "ZL  " + pageLabel + "  ZR", 30.f, 111.f,
-                     {1.f, 1.f, 1.f, 0.72f});
+    {
+        // Page label as button-glyph capsules (Classic hint style), in the gap
+        // left of the first card so it no longer overlaps the card row.
+        auto& sf = m_chrome.smallFont();
+        const std::string zl = ui::glyph::button(nxui::Button::ZL);
+        const std::string zr = ui::glyph::button(nxui::Button::ZR);
+        const float zw = m_fontIcons.measure(zl).x * 0.68f;
+        const float lw = sf.measure(pageLabel).x;
+        const nxui::Rect cap{16.f, 92.f, zw * 2.f + lw + 40.f, 26.f};
+        ren.drawRoundedRect(cap, {0.12f, 0.14f, 0.20f, 0.55f}, 13.f);
+        ren.drawRoundedRectOutline(cap, {1.f, 1.f, 1.f, 0.18f}, 13.f, 1.f);
+        const float iy = cap.y + (cap.height - m_fontIcons.measure(zl).y * 0.68f) * 0.5f;
+        ren.drawText(zl, {cap.x + 10.f, iy}, &m_fontIcons, CardsChrome::kWhite, 0.68f);
+        m_chrome.textMid(ren, sf, pageLabel, cap.x + 16.f + zw, cap.y + 13.f, {1.f, 1.f, 1.f, 0.9f});
+        ren.drawText(zr, {cap.x + 22.f + zw + lw, iy}, &m_fontIcons, CardsChrome::kWhite, 0.68f);
+    }
 
     // Neighbours first, focused card last so its outline sits on top.
     const bool zoomLeaving = m_leaving && m_core.config().cardsLaunchStyle == 1;
@@ -2114,6 +2195,7 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
         m_chrome.textMid(ren, f, banner, box.x + 24.f, box.y + 22.f, CardsChrome::kWhite);
     }
     drawMoveHint(ren);
+    drawDots(ren);
     m_sheet.render(ren, m_chrome);
     m_musicSheet.render(ren, m_chrome, m_audio);
     m_newsSheet.render(ren, m_chrome, m_time);

@@ -769,6 +769,14 @@ void WiiUMenuApp::closeActiveOverlays(bool preserveDialog) {
         m_quickSettings->hide();
     if (m_discordPanel && m_discordPanel->isActive())
         m_discordPanel->hide();
+    if (m_notifPanel && m_notifPanel->isActive())
+        m_notifPanel->hide();
+    if (m_profileCarousel && m_profileCarousel->isActive())
+        m_profileCarousel->hide();
+    if (m_newsScreen && m_newsScreen->isActive())
+        m_newsScreen->hide();
+    if (m_social && m_social->isActive())
+        m_social->hide();
     if (!preserveDialog && m_dialog && m_dialog->isActive())
         m_dialog->hide();
     if (m_settings && m_settings->isActive())
@@ -826,6 +834,10 @@ nxui::Widget* WiiUMenuApp::focusRoot() {
     if (m_platformPicker && m_platformPicker->isActive()) return m_platformPicker.get();
     if (m_dialog && m_dialog->isActive()) return m_dialog.get();
     if (m_discordPanel && m_discordPanel->isActive()) return m_discordPanel.get();
+    if (m_notifPanel && m_notifPanel->isOpen()) return m_notifPanel.get();
+    if (m_profileCarousel && m_profileCarousel->isOpen()) return m_profileCarousel.get();
+    if (m_social && m_social->isOpen()) return m_social.get();
+    if (m_newsScreen && m_newsScreen->isActive()) return m_newsScreen.get();
     if (m_steamGridDbPicker && m_steamGridDbPicker->isActive()) return m_steamGridDbPicker.get();
     if (m_mediaCenterScreen && m_mediaCenterScreen->isActive()) return m_mediaCenterScreen.get();
     if (m_controllerTest && m_controllerTest->isActive()) return m_controllerTest.get();

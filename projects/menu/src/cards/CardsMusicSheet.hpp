@@ -47,6 +47,7 @@ private:
     int m_col = 2;    // default Play/Pause
     int m_row = 0;    // playlist row
     int m_scroll = 0;
+    mutable bool m_backdropCacheValid = false;
     std::function<void()> m_onClosed;
 };
 

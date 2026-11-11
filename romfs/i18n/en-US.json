@@ -177,7 +177,12 @@
     "controllers": "Controllers",
     "theme_shop": "OmniLaunch",
     "sleep": "Sleep",
-    "music": "Music"
+    "music": "Music",
+    "sphaira": "Sphaira",
+    "news": "News",
+    "nextendo": "Nextendo",
+    "toggle": "Cards",
+    "social": "Social"
   },
   "hint": {
     "navigate": "Navigate",
@@ -204,7 +209,9 @@
     "favorite": "Favorite",
     "options": "Options",
     "switch_layout": "Switch view",
-    "sort_playtime": "Most played"
+    "sort_playtime": "Most played",
+    "change": "Change",
+    "section": "Section"
   },
   "settings": {
     "layout": {
@@ -1330,7 +1337,8 @@
     "back": "< Back (B)",
     "no_messages": "No messages yet. Press A or X to send one!",
     "type_hint": "Press (A) or (X) to type a message...",
-    "y_accounts": "  (Y: Accounts)"
+    "y_accounts": "  (Y: Accounts)",
+    "loading_image": "[Loading image...]"
   },
   "cards": {
     "hb_kind": "Homebrew",
@@ -1627,6 +1635,21 @@
     "ach_games15": "Globetrotter",
     "ach_total100": "Marathon",
     "ach_total500": "Lifer",
-    "hb_delete_busy": "Wait for the homebrew update to finish"
+    "hb_delete_busy": "Wait for the homebrew update to finish",
+    "pages": "Pages",
+    "download": "Download",
+    "download_from_github": "Download from GitHub",
+    "downloading_app": "Downloading app...",
+    "download_done": "Download complete!",
+    "download_failed": "Download failed.",
+    "apply": "Apply",
+    "back": "Back",
+    "music_source": "HOME Music",
+    "sgdb_no_artwork": "No artwork found for this title.",
+    "sgdb_empty_help": "Press X to change the resolution or Y to change the search name."
+  },
+  "news": {
+    "empty_title": "No news",
+    "empty_message": "No news items available right now."
   }
 }
