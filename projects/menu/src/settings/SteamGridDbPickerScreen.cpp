@@ -4,6 +4,7 @@
 #include "themeshop/ThemeHttp.hpp"
 #include "settings/SettingsGlassTuning.hpp"
 
+#include <nxui/core/I18n.hpp>
 #include <nxui/core/Input.hpp>
 #include <nxui/core/Renderer.hpp>
 #include <nxui/third_party/stb/stb_image.h>
@@ -12,6 +13,15 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+
+namespace {
+// Replaces {n} and {name} in a translated template.
+std::string fill(std::string t, const std::string& n, const std::string& name) {
+    if (auto p = t.find("{n}"); p != std::string::npos) t.replace(p, 3, n);
+    if (auto p = t.find("{name}"); p != std::string::npos) t.replace(p, 6, name);
+    return t;
+}
+} // namespace
 
 namespace {
 constexpr int kColumns = 4;
@@ -65,7 +75,7 @@ void SteamGridDbPickerScreen::showLoading(std::uint64_t titleId,
     m_result.kind = kind;
     m_selected = 0;
     m_loading = true;
-    m_message = "Searching SteamGridDB...";
+    m_message = nxui::I18n::instance().tr("cards.sgdb_searching", "Searching SteamGridDB...");
     m_backdropCacheValid = false;
     m_active = true;
     setVisible(true);
@@ -76,7 +86,8 @@ void SteamGridDbPickerScreen::setResult(BrowseResult result) {
     m_loading = false;
     m_selected = 0;
     m_message = m_result.success
-        ? std::to_string(m_result.candidates.size()) + " choices for " + m_result.gameName
+        ? fill(nxui::I18n::instance().tr("cards.sgdb_choices", "{n} choices for {name}"),
+               std::to_string(m_result.candidates.size()), m_result.gameName)
         : m_result.error;
     ++m_generation;
     schedulePreviews();
@@ -328,7 +339,8 @@ void SteamGridDbPickerScreen::onRender(nxui::Renderer& renderer) {
     if (m_smallFont) {
         renderer.drawText(m_result.title, {108.f, 110.f}, m_smallFont,
                           m_theme->textSecondary, 0.78f);
-        renderer.drawText("Search: " + m_result.query + "   [X] Change name",
+        renderer.drawText(nxui::I18n::instance().tr("cards.sgdb_search", "Search:") + " " + m_result.query + "   " +
+                              nxui::I18n::instance().tr("cards.sgdb_change_name", "[X] Change name"),
                           {108.f, 139.f}, m_smallFont, m_theme->textSecondary, 0.72f);
         renderer.drawText(m_message, {108.f, 169.f}, m_smallFont,
                           m_theme->textPrimary, 0.72f);
@@ -371,7 +383,8 @@ void SteamGridDbPickerScreen::onRender(nxui::Renderer& renderer) {
     }
     if (m_smallFont && count > 0) {
         const int pages = (count + kPerPage - 1) / kPerPage;
-        renderer.drawText("A Apply   B Back   X Search   Page " + std::to_string(page + 1)
+        renderer.drawText(nxui::I18n::instance().tr("cards.sgdb_hints", "A Apply   B Back   X Search   Page") + " " +
+                          std::to_string(page + 1)
                           + "/" + std::to_string(pages),
                           {108.f, 651.f}, m_smallFont, m_theme->textSecondary, 0.72f);
     }
@@ -388,7 +401,7 @@ void SteamGridDbPickerScreen::activateSelection() {
     const int count = static_cast<int>(std::min(m_result.candidates.size(), m_slots.size()));
     if (m_loading || m_selected < 0 || m_selected >= count) return;
     m_loading = true;
-    m_message = "Applying selection...";
+    m_message = nxui::I18n::instance().tr("cards.sgdb_applying", "Applying selection...");
     if (m_applyCb) m_applyCb(m_result, m_result.candidates[(size_t)m_selected]);
 }
 

@@ -16,6 +16,11 @@ namespace discord {
 
 namespace {
 
+// Panel text through the locale files; the English literal is the fallback.
+inline std::string T(const char* key, const char* fallback) {
+    return nxui::I18n::instance().tr(key, fallback);
+}
+
 inline void drawLabel(nxui::Renderer& ren, nxui::Font* font, float x, float y,
                       const std::string& text, const nxui::Color& color) {
     if (font && !text.empty()) {
@@ -286,20 +291,20 @@ void DiscordPanel::rebuildRows() {
         Row addQr;
         addQr.kind = Row::Button;
         addQr.text = "+ Add another account (QR Code)";
-        addQr.detail = "Fast login via Discord mobile app";
+        addQr.detail = T("discord_ui.qr_detail", "Fast login via Discord mobile app");
         addQr.action = 1;
         m_rows.push_back(std::move(addQr));
 
         Row addTok;
         addTok.kind = Row::Button;
         addTok.text = "+ Add account via Token";
-        addTok.detail = "Enter an account token manually via keyboard";
+        addTok.detail = T("discord_ui.token_detail", "Enter an account token manually via keyboard");
         addTok.action = 2;
         m_rows.push_back(std::move(addTok));
 
         Row out;
         out.kind = Row::Button;
-        out.text = "Sign out current account";
+        out.text = T("discord_ui.sign_out", "Sign out current account");
         out.action = 3;
         out.danger = true;
         m_rows.push_back(std::move(out));
@@ -311,45 +316,45 @@ void DiscordPanel::rebuildRows() {
     if (st == DiscordService::State::SignedOut) {
         Row qr;
         qr.kind = Row::Button;
-        qr.text = "Sign in with QR Code";
-        qr.detail = "Fast login via Discord mobile app";
+        qr.text = T("discord_ui.sign_in_qr", "Sign in with QR Code");
+        qr.detail = T("discord_ui.qr_detail", "Fast login via Discord mobile app");
         qr.action = 1;
         qr.primary = true;
         m_rows.push_back(std::move(qr));
 
         Row tok;
         tok.kind = Row::Button;
-        tok.text = "Sign in with User Token";
-        tok.detail = "Enter an account token manually via keyboard";
+        tok.text = T("discord_ui.sign_in_token", "Sign in with User Token");
+        tok.detail = T("discord_ui.token_detail", "Enter an account token manually via keyboard");
         tok.action = 2;
         m_rows.push_back(std::move(tok));
 
         Row info;
         info.kind = Row::Info;
-        info.text = "Tip: Open Discord on your phone > Settings > Scan QR Code to connect instantly.";
+        info.text = T("discord_ui.tip", "Tip: Open Discord on your phone > Settings > Scan QR Code to connect instantly.");
         m_rows.push_back(std::move(info));
     } else if (st == DiscordService::State::Connecting) {
         Row c;
         c.kind = Row::Info;
-        c.text = "Connecting to Discord...";
+        c.text = T("discord_ui.connecting", "Connecting to Discord...");
         m_rows.push_back(std::move(c));
     } else if (st == DiscordService::State::Failed) {
         Row err;
         err.kind = Row::Error;
-        err.text = "Connection failed";
-        err.detail = m_service->error().empty() ? "Could not connect to Discord" : m_service->error();
+        err.text = T("discord_ui.failed", "Connection failed");
+        err.detail = m_service->error().empty() ? T("discord_ui.failed_detail", "Could not connect to Discord") : m_service->error();
         m_rows.push_back(std::move(err));
 
         Row retry;
         retry.kind = Row::Button;
-        retry.text = "Try QR Sign in again";
+        retry.text = T("discord_ui.retry_qr", "Try QR Sign in again");
         retry.action = 1;
         m_rows.push_back(std::move(retry));
 
         Row tok;
         tok.kind = Row::Button;
-        tok.text = "Sign in with User Token";
-        tok.detail = "Enter an account token manually via keyboard";
+        tok.text = T("discord_ui.sign_in_token", "Sign in with User Token");
+        tok.detail = T("discord_ui.token_detail", "Enter an account token manually via keyboard");
         tok.action = 2;
         m_rows.push_back(std::move(tok));
     } else if (st == DiscordService::State::Ready) {
@@ -357,15 +362,15 @@ void DiscordPanel::rebuildRows() {
             for (const auto& d : m_service->dms()) {
                 Row r;
                 r.kind = Row::Dm;
-                r.text = d.name.empty() ? "Direct Message" : d.name;
-                r.detail = d.topic.empty() ? "Direct Message" : d.topic;
+                r.text = d.name.empty() ? T("discord_ui.dm", "Direct Message") : d.name;
+                r.detail = d.topic.empty() ? T("discord_ui.dm", "Direct Message") : d.topic;
                 r.id = d.id;
                 m_rows.push_back(std::move(r));
             }
             if (m_rows.empty()) {
                 Row empty;
                 empty.kind = Row::Info;
-                empty.text = "No direct messages yet.";
+                empty.text = T("discord_ui.no_dms", "No direct messages yet.");
                 m_rows.push_back(std::move(empty));
             }
         } else { // Guild channels
@@ -377,7 +382,7 @@ void DiscordPanel::rebuildRows() {
                     m_service->fetchGuildChannelsAsync(*m_core, g.id);
                     Row loading;
                     loading.kind = Row::Info;
-                    loading.text = "Loading channels...";
+                    loading.text = T("discord_ui.loading_channels", "Loading channels...");
                     m_rows.push_back(std::move(loading));
                 } else {
                     for (const auto& c : g.channels) {
@@ -399,7 +404,7 @@ void DiscordPanel::rebuildRows() {
                     if (m_rows.empty()) {
                         Row empty;
                         empty.kind = Row::Info;
-                        empty.text = "No text channels in this server.";
+                        empty.text = T("discord_ui.no_channels", "No text channels in this server.");
                         m_rows.push_back(std::move(empty));
                     }
                 }
@@ -483,10 +488,10 @@ void DiscordPanel::onRender(nxui::Renderer& ren) {
     // Top title bar
     std::string titleText = "Discord";
     if (m_view == View::Accounts) {
-        titleText = "Accounts";
+        titleText = T("discord_ui.accounts", "Accounts");
     } else if (hasRail) {
         if (m_railSel == 0) {
-            titleText = "Direct Messages";
+            titleText = T("discord_ui.dms", "Direct Messages");
         } else if (m_service) {
             const auto& guilds = m_service->guilds();
             const std::size_t gIdx = static_cast<std::size_t>(m_railSel - 1);
@@ -651,7 +656,7 @@ void DiscordPanel::drawMe(nxui::Renderer& ren, const nxui::Rect& p, float a) {
     ren.drawRoundedRect(me, bgUser(a), 18.f);
 
     const auto u = m_service ? m_service->currentUser() : User{};
-    const std::string name = u.id != 0 ? u.displayName() : "Signed in";
+    const std::string name = u.id != 0 ? u.displayName() : T("discord_ui.signed_in", "Signed in");
     const std::string tag = u.id != 0 ? "@" + u.username : "";
 
     // Avatar circle
@@ -662,15 +667,15 @@ void DiscordPanel::drawMe(nxui::Renderer& ren, const nxui::Rect& p, float a) {
 
     drawLabel(ren, m_font, me.x + 62.f, me.y + 12.f, name, textNormal(a));
     if (m_smallFont) {
-        drawLabel(ren, m_smallFont, me.x + 62.f, me.y + 36.f, tag + "  (Y: Accounts)", textMuted(a));
+        drawLabel(ren, m_smallFont, me.x + 62.f, me.y + 36.f, tag + T("discord_ui.y_accounts", "  (Y: Accounts)"), textMuted(a));
     }
 }
 
 void DiscordPanel::drawQrView(nxui::Renderer& ren, const nxui::Rect& p, float a) {
-    drawLabel(ren, m_font, p.x + 24.f, p.y + 36.f, "Scan QR Code", textNormal(a));
+    drawLabel(ren, m_font, p.x + 24.f, p.y + 36.f, T("discord_ui.scan_qr", "Scan QR Code"), textNormal(a));
     if (m_smallFont) {
         drawLabel(ren, m_smallFont, p.x + 24.f, p.y + 64.f,
-                  "Scan with Discord mobile app (User Settings > Scan QR Code)", textMuted(a));
+                  T("discord_ui.scan_hint", "Scan with Discord mobile app (User Settings > Scan QR Code)"), textMuted(a));
     }
 
     const auto snap = m_service ? m_service->remoteAuth().snapshot() : DiscordRemoteAuth::Snapshot{};
@@ -695,15 +700,15 @@ void DiscordPanel::drawQrView(nxui::Renderer& ren, const nxui::Rect& p, float a)
 
         if (m_smallFont) {
             const std::string status = snap.username.empty()
-                ? "Waiting for scan from phone..."
-                : "Confirm login on phone: @" + snap.username;
+                ? T("discord_ui.waiting_scan", "Waiting for scan from phone...")
+                : T("discord_ui.confirm_phone", "Confirm login on phone: @") + snap.username;
             drawLabel(ren, m_smallFont, p.x + 24.f, p.y + 400.f, status, textNormal(a));
-            drawLabel(ren, m_smallFont, p.x + 24.f, p.y + 430.f, "Press (B) to Cancel", textMuted(a));
+            drawLabel(ren, m_smallFont, p.x + 24.f, p.y + 430.f, T("discord_ui.press_b_cancel", "Press (B) to Cancel"), textMuted(a));
         }
     } else {
-        drawLabel(ren, m_font, p.x + 100.f, p.y + 240.f, "Generating QR Code...", textMuted(a));
+        drawLabel(ren, m_font, p.x + 100.f, p.y + 240.f, T("discord_ui.generating_qr", "Generating QR Code..."), textMuted(a));
         if (m_smallFont) {
-            drawLabel(ren, m_smallFont, p.x + 24.f, p.y + 430.f, "Press (B) to Cancel", textMuted(a));
+            drawLabel(ren, m_smallFont, p.x + 24.f, p.y + 430.f, T("discord_ui.press_b_cancel", "Press (B) to Cancel"), textMuted(a));
         }
     }
 }
@@ -713,7 +718,7 @@ void DiscordPanel::drawChat(nxui::Renderer& ren, const nxui::Rect& p, float a) {
     m_backHit = {p.x + 12.f, p.y + 12.f, 90.f, 36.f};
     ren.drawRoundedRect(m_backHit, bgSelected(a), 6.f);
     if (m_smallFont) {
-        drawLabel(ren, m_smallFont, m_backHit.x + 10.f, m_backHit.y + 10.f, "< Back (B)", textNormal(a));
+        drawLabel(ren, m_smallFont, m_backHit.x + 10.f, m_backHit.y + 10.f, T("discord_ui.back", "< Back (B)"), textNormal(a));
     }
     drawLabel(ren, m_font, p.x + 115.f, p.y + 16.f, m_chatName, textNormal(a));
     ren.drawRect({p.x, p.y + kTopH - 1.f, p.width, 1.f}, {1.f, 1.f, 1.f, 0.08f * a});
@@ -727,7 +732,7 @@ void DiscordPanel::drawChat(nxui::Renderer& ren, const nxui::Rect& p, float a) {
 
     if (msgs.empty()) {
         if (m_smallFont) {
-            drawLabel(ren, m_smallFont, p.x + 24.f, chatY + 24.f, "No messages yet. Press A or X to send one!", textMuted(a));
+            drawLabel(ren, m_smallFont, p.x + 24.f, chatY + 24.f, T("discord_ui.no_messages", "No messages yet. Press A or X to send one!"), textMuted(a));
         }
     } else {
         // Calculate message heights
@@ -768,7 +773,7 @@ void DiscordPanel::drawChat(nxui::Renderer& ren, const nxui::Rect& p, float a) {
     ren.drawRoundedRectOutline(m_replyHit, {1.f, 1.f, 1.f, 0.12f * a}, 8.f, 1.f);
     if (m_smallFont) {
         drawLabel(ren, m_smallFont, m_replyHit.x + 14.f, m_replyHit.y + 12.f,
-                  "Press (A) or (X) to type a message...", textMuted(a));
+                  T("discord_ui.type_hint", "Press (A) or (X) to type a message..."), textMuted(a));
     }
 }
 

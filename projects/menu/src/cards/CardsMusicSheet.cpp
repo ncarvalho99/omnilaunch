@@ -204,7 +204,11 @@ void CardsMusicSheet::render(nxui::Renderer& ren, CardsChrome& chrome, const Aud
     chrome.textMid(ren, sf, countStr, kInfoX, card.y + 204.f, {1.f, 1.f, 1.f, 0.60f * a});
 
     // ── Controls: Shuffle, Prev, Play/Pause, Next, Repeat ───────────────────
-    const char* labels[5] = {"Shuffle", "Prev", audio.isPlaying() && !audio.isPaused() ? "Pause" : "Play", "Next", "Stop"};
+    const std::string labels[5] = {
+        i18n.tr("cards.music_shuffle", "Shuffle"), i18n.tr("cards.music_prev", "Prev"),
+        audio.isPlaying() && !audio.isPaused() ? i18n.tr("cards.music_pause", "Pause")
+                                               : i18n.tr("cards.music_play", "Play"),
+        i18n.tr("cards.music_next", "Next"), i18n.tr("cards.music_stop", "Stop")};
     for (int i = 0; i < 5; ++i) {
         const nxui::Vec2 bp = buttonPos(i, card.y - kCard.y);
         const bool focused = (m_zone == 0 && m_col == i);
@@ -231,7 +235,8 @@ void CardsMusicSheet::render(nxui::Renderer& ren, CardsChrome& chrome, const Aud
         ren.drawRoundedRectOutline({volR.x - 4.f, volR.y - 4.f, volR.width + 8.f, volR.height + 8.f},
                                    CardsChrome::accent(a), 8.f, 2.f);
     }
-    const std::string volText = "Vol: " + std::to_string(static_cast<int>(audio.volume() * 100.f)) + "%";
+    const std::string volText = i18n.tr("cards.music_volume", "Volume") + ": " +
+                                std::to_string(static_cast<int>(audio.volume() * 100.f)) + "%";
     chrome.textMid(ren, sf, volText, volR.x, volR.y - 18.f, {1.f, 1.f, 1.f, 0.75f * a});
 
     // ── Playlist ────────────────────────────────────────────────────────────

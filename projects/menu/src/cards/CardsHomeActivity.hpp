@@ -201,6 +201,8 @@ private:
     // Short message under the top bar.
     std::string m_toast;
     float m_toastUntil = 0.f;
+    // Discord messages received while this frontend runs (notifications sheet).
+    std::vector<discord::Alert> m_discordNotices;
     float m_detailChangedAt = 0.f;
     std::shared_ptr<OverlayDialog> m_userSelect;
 

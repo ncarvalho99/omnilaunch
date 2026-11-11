@@ -879,6 +879,9 @@ void CardsHomeActivity::onUpdate(float dt) {
     discord::Alert discordAlert;
     if (m_core.discord().takeAlert(discordAlert)) {
         showToast(discordAlert.title + ": " + discordAlert.text);
+        m_discordNotices.push_back(discordAlert);
+        if (m_discordNotices.size() > 20)
+            m_discordNotices.erase(m_discordNotices.begin());
     }
     if (m_discordPanel && m_discordPanel->isActive()) {
         m_discordPanel->update(dt);
@@ -1916,6 +1919,22 @@ void CardsHomeActivity::drawPanel(nxui::Renderer& ren) {
     const std::uint64_t played = m_core.config().playtimeOf(id);
     if (entry.system) {
         line = i18n.tr("cards.system_tile", "Nintendo");
+    } else if (entry.isHomebrew && !suspended) {
+        line = entry.author.empty() ? i18n.tr("cards.hb_kind", "Homebrew")
+                                    : i18n.tr("cards.hb_by", "Homebrew by {author}");
+        const auto at = line.find("{author}");
+        if (at != std::string::npos)
+            line.replace(at, 8, entry.author);
+        if (m_hbState && !m_hbJob) {
+            if (const auto* offer = hbupdate::pendingOffer(
+                    *m_hbState, hbupdate::Installed{entry.homebrewPath, std::string(), entry.version})) {
+                std::string up = i18n.tr("cards.hb_update_to", "Update to {version} (+)");
+                const auto vp = up.find("{version}");
+                if (vp != std::string::npos)
+                    up.replace(vp, 9, offer->latest);
+                line += "    " + up;
+            }
+        }
     } else if (suspended) {
         const std::string openNow = i18n.tr("cards.open_now_desc", "Open now: Resume carries on");
         if (played > 0)
@@ -1927,7 +1946,7 @@ void CardsHomeActivity::drawPanel(nxui::Renderer& ren) {
     } else {
         line = i18n.tr("cards.not_played", "Not played yet");
     }
-    if (m_details.titleId == id && m_details.lastPlayed && *m_details.lastPlayed > 0) {
+    if (!entry.isHomebrew && m_details.titleId == id && m_details.lastPlayed && *m_details.lastPlayed > 0) {
         const std::string ago = lastPlayedText(*m_details.lastPlayed);
         if (!ago.empty())
             line += "    " + ago;
@@ -1935,9 +1954,11 @@ void CardsHomeActivity::drawPanel(nxui::Renderer& ren) {
     m_chrome.textMid(ren, m_chrome.smallFont(), m_chrome.fit(m_chrome.smallFont(), line, maxW), tx,
                      p.y + 72.f, dim);
     // Version tag, as CardsNX.
-    if (m_details.titleId == id && !m_details.version.empty()) {
+    const std::string versionTag = entry.isHomebrew ? entry.version
+        : (m_details.titleId == id ? m_details.version : std::string());
+    if (!versionTag.empty()) {
         m_chrome.icon(ren, "tag", tx + 8.f, p.y + 97.f, 16.f, dim);
-        m_chrome.textMid(ren, m_chrome.smallFont(), m_details.version, tx + 22.f, p.y + 97.f, dim);
+        m_chrome.textMid(ren, m_chrome.smallFont(), versionTag, tx + 22.f, p.y + 97.f, dim);
     }
     const nxui::Rect button{p.x + 18.f, p.bottom() - 97.f, 262.f, 77.f};
     const bool playFocus = m_panelZone && m_panelIndex == 0;
@@ -1949,7 +1970,9 @@ void CardsHomeActivity::drawPanel(nxui::Renderer& ren) {
         ren.drawRoundedRectOutline({button.x - 5.f, button.y - 5.f, button.width + 10.f, button.height + 10.f},
                                    CardsChrome::accent(pulse * d), 43.5f, 3.f);
     }
-    const std::string label = suspended ? i18n.tr("cards.resume", "Resume") : i18n.tr("cards.play", "Play");
+    const std::string label = suspended ? i18n.tr("cards.resume", "Resume")
+        : (entry.isHomebrew || entry.system) ? i18n.tr("cards.open", "Open")
+                                              : i18n.tr("cards.play", "Play");
     auto& lf = m_chrome.labelFont();
     const float lw = lf.measure(label).x;
     const float cx = button.x + button.width * 0.5f;

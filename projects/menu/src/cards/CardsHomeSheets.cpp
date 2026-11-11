@@ -239,7 +239,7 @@ void CardsHomeActivity::openDotsMenu() {
         const bool game = m_selected >= 0 && m_selected < m_catalog.count() && !m_catalog.at(m_selected).system;
         openAchievementsSheet(game ? m_catalog.at(m_selected).app.titleId : 0);
     });
-    add(i18n.tr("settings.title", "Settings"), [this]() { openSettingsSheet(); });
+    add(i18n.tr("sidebar.settings", "Settings"), [this]() { openSettingsSheet(); });
     add(i18n.tr("power.title", "Power"), [this]() {
         m_sheet.close();
         m_topIndex = static_cast<int>(TopButton::Power);
@@ -971,18 +971,19 @@ void CardsHomeActivity::openNotificationsSheet() {
         }
     }
 #endif
-    if (m_core.discord().state() == discord::DiscordService::State::Ready) {
-        for (const auto& d : m_core.discord().dms()) {
-            CardsSheet::Row r;
-            r.label = d.name.empty() ? "Discord DM" : "Discord: " + d.name;
-            r.detail = d.topic;
-            r.onA = [this, chanId = d.id, name = d.name]() {
-                m_sheet.close();
-                openDiscord();
-                if (m_discordPanel) m_discordPanel->openChat(chanId, 0, name);
-            };
-            rows.push_back(std::move(r));
-        }
+    // Discord: only messages that arrived while the menu was open (newest
+    // first), not the whole DM list -- that is the Discord panel's job.
+    for (auto it = m_discordNotices.rbegin(); it != m_discordNotices.rend(); ++it) {
+        CardsSheet::Row r;
+        r.label = "Discord: " + it->title;
+        r.detail = it->text;
+        r.onA = [this, chanId = it->channelId, guildId = it->guildId, name = it->title]() {
+            m_sheet.close();
+            m_discordNotices.clear();
+            openDiscord();
+            if (m_discordPanel) m_discordPanel->openChat(chanId, guildId, name);
+        };
+        rows.push_back(std::move(r));
     }
     if (rows.empty()) {
         CardsSheet::Row r;
@@ -1298,9 +1299,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         Row nextendo;
         nextendo.label = i18n.tr("cards.nextendo_players", "Nextendo players");
         nextendo.value = [this]() {
-            return m_core.config().cards.showNextendo
-                ? nxui::I18n::instance().tr("setting.on", "On")
-                : nxui::I18n::instance().tr("setting.off", "Off");
+            return onOff(m_core.config().cards.showNextendo);
         };
         nextendo.onChange = [this, reopen](int) {
             auto& c = m_core.config().cards;
@@ -1898,7 +1897,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
 
 void CardsHomeActivity::openSettingsSheet() {
     m_audio.playSfx(Sfx::ModalShow);
-    m_sheet.open(nxui::I18n::instance().tr("settings.title", "Settings"), settingsSections());
+    m_sheet.open(nxui::I18n::instance().tr("sidebar.settings", "Settings"), settingsSections());
     m_sheet.onReorderSection([this](int d) { reorderSettingsSection(d); });
 }
 
@@ -1920,7 +1919,7 @@ void CardsHomeActivity::drawTutorial(nxui::Renderer& ren) {
          "Your software as cards. Left/Right to browse, A to play."},
         {"cards.tut2_title", "Card options", "cards.tut2_body",
          "Press + on a card to move it, rename it or send it to Media."},
-        {"cards.tut3_title", "Pages", "cards.tut3_body", "ZL and ZR change page: Games, Nintendo and Media."},
+        {"cards.tut3_title", "Pages", "cards.tut3_body", "ZL and ZR change page: Games, Homebrew, Nintendo and Media."},
         {"cards.tut4_title", "Quick settings", "cards.tut4_body", "Click the left stick for quick settings: volume and power."},
     };
     const Card& c = kCards[std::clamp(m_tutorialCard, 1, 4) - 1];
