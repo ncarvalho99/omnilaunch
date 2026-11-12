@@ -6,6 +6,7 @@
 #include <cstring>
 #include <chrono>
 #include <fstream>
+#include <iterator>
 
 namespace nxui {
 
@@ -125,13 +126,17 @@ Texture* Font::getOrRender(GpuDevice& gpu, Renderer& ren, const std::string& tex
         return &it->second->tex;
     }
 
-    // Full: refuse instead of recycling the oldest texture in place. Reloading
-    // a texture in place waits for the GPU (it may be on screen this frame),
-    // so every new string past the cap stalled a frame. The owner trims the
-    // cache when asked; the string is drawn a frame or two later.
+    // Full: drop the least-recently-used string. Its texture is retired to
+    // the renderer and freed frames later, so this does not wait for the GPU
+    // the way reloading that texture in place did (every new string past the
+    // cap used to stall a frame). Owners that trim on the flag still can.
     if (m_lruList.size() >= kMaxCacheEntries) {
         m_maintenanceRequested = true;
-        return nullptr;
+        auto victim = std::prev(m_lruList.end());
+        const std::size_t bytes = victim->tex.allocationSize();
+        m_lruMap.erase(victim->key);
+        m_lruList.erase(victim);
+        m_cacheBytes = bytes <= m_cacheBytes ? m_cacheBytes - bytes : 0;
     }
     // A raster costs milliseconds on the render thread, and a screen change
     // meets dozens of new strings in one frame: spread them, a few per frame,
