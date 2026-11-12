@@ -33,6 +33,11 @@ public:
     // Measure text dimensions
     Vec2 measure(const std::string& text) const;
 
+    // True when the font has a real glyph for this codepoint (not the box).
+    bool hasGlyph(std::uint32_t cp) const {
+        return m_font && TTF_GlyphIsProvided32(m_font, static_cast<Uint32>(cp)) != 0;
+    }
+
     // True when draw() of this exact string needs no rasterization or upload.
     bool cached(const std::string& text) const { return m_lruMap.count(text) != 0; }
 

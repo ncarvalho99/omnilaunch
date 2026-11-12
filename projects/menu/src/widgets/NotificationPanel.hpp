@@ -24,7 +24,13 @@ public:
     };
 
     NotificationPanel();
-    void setFonts(nxui::Font* font, nxui::Font* small) { m_font = font; m_small = small; }
+    void setFonts(nxui::Font* font, nxui::Font* small, nxui::Font* icons = nullptr) {
+        m_font = font;
+        m_small = small;
+        m_icons = icons;
+    }
+    // The bell it drops down from: the card is centred under this point.
+    void setAnchor(float centerX, float bottomY) { m_anchorX = centerX; m_anchorY = bottomY; }
     void setTheme(const nxui::Theme* theme) { m_theme = theme; }
     void setCallbacks(Callbacks cb) { m_cb = std::move(cb); }
 
@@ -47,6 +53,10 @@ private:
 
     nxui::Font* m_font = nullptr;
     nxui::Font* m_small = nullptr;
+    nxui::Font* m_icons = nullptr;    // button glyphs for the hint capsules
+    float m_anchorX = -1.f;           // < 0: the old top-left spot
+    float m_anchorY = 0.f;
+    bool m_backdropValid = false;     // blurred copy of the screen, taken once per open
     const nxui::Theme* m_theme = nullptr;
     Callbacks m_cb;
     std::vector<notifications::Item> m_items;

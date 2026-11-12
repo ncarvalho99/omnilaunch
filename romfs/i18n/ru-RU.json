@@ -1,4 +1,10 @@
 {
+  "notifications": {
+    "title": "Уведомления",
+    "caught_up": "Новых уведомлений нет",
+    "empty_hint": "Здесь появляются сообщения Discord и разряженные контроллеры.",
+    "clear_all": "Очистить всё"
+  },
   "lock_screen": {
     "password_hint": "Введите пароль крестовиной. Забыли? Нажмите HOME",
     "recovery_hint": "Теперь удерживайте Минус (-) + Плюс (+) 3 секунды, чтобы удалить пароль",
@@ -1184,6 +1190,16 @@
     "hint_today": "Сегодня"
   },
   "discord_ui": {
+    "add_qr": "Добавить ещё аккаунт (QR-код)",
+    "add_token": "Добавить аккаунт по токену",
+    "members": "участников",
+    "status_online": "В сети",
+    "status_idle": "Неактивен",
+    "status_dnd": "Не беспокоить",
+    "switch": "Сменить",
+    "reply": "Ответить",
+    "write": "Написать",
+    "message_to": "Сообщение в",
     "qr_detail": "Fast login via Discord mobile app",
     "token_detail": "Enter an account token manually via keyboard",
     "sign_out": "Sign out current account",
@@ -1213,6 +1229,20 @@
     "y_accounts": "  (Y: Accounts)"
   },
   "cards": {
+    "moved_back": "Возвращено на свою страницу",
+    "opt_card_image": "Изображение карточки",
+    "opt_title_image": "Изображение названия",
+    "opt_show_cover": "Показывать обложку на карточке",
+    "opt_show_icon": "Показывать значок как карточку",
+    "set_repeat": "Повтор трека",
+    "set_repeat_desc": "Играть тот же трек снова",
+    "set_auto_time": "Устанавливать время автоматически",
+    "set_auto_time_desc": "Через интернет",
+    "set_sleep_tv": "Спящий режим на ТВ",
+    "set_sleep_handheld": "Спящий режим в портативном режиме",
+    "set_sleep_desc": "Через это время без нажатий",
+    "set_auto_brightness": "Автояркость",
+    "set_auto_brightness_desc": "В портативном режиме следует за освещением",
     "hb_kind": "Homebrew",
     "hb_by": "Homebrew от {author}",
     "hb_update_to": "Обновить до {version} (+)",

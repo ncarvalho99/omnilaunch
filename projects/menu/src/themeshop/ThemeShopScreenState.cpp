@@ -42,3 +42,19 @@ void ThemeShopScreen::buildTabs() {
     // old Update-tab selection and then rebuildCurrentTab() immediately did
     // the same work again.  Keep this method to data/cache construction only.
 }
+
+// The sidebar order and names arrive after the tabs were first built (the
+// shop is created once, warmed up, then fed state on every open). Without
+// this the OmniLaunch tab kept its empty first build: no sidebar rows.
+void ThemeShopScreen::rebuildOmniLaunchTab() {
+    for (std::size_t i = 0; i < m_tabs.size(); ++i) {
+        if (m_tabs[i].name != "OmniLaunch")
+            continue;
+        m_tabs[i] = themeshop::tabs::OmniLaunchTab::build(*this);
+        if (i < m_cachedTabContentWidgets.size())
+            m_cachedTabContentWidgets[i].clear();
+        if (static_cast<int>(i) == m_tabIndex)
+            refreshState();
+        return;
+    }
+}

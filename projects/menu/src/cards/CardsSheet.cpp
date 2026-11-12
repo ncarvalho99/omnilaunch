@@ -247,6 +247,15 @@ void CardsSheet::update(float dt) {
         m_in = std::min(1.f, m_in + dt / 0.18f);
 }
 
+namespace {
+// HomeNX on/off switch: a pill with a knob, green when on.
+void drawToggle(nxui::Renderer& ren, float x, float cy, bool on, float a) {
+    const nxui::Rect pill{x, cy - 16.f, 56.f, 32.f};
+    ren.drawRoundedRect(pill, on ? CardsChrome::kGreen.withAlpha(a) : nxui::Color(1.f, 1.f, 1.f, 0.22f * a), 16.f);
+    ren.drawCircle({on ? pill.right() - 16.f : pill.x + 16.f, cy}, 12.5f, nxui::Color(1.f, 1.f, 1.f, a), 28);
+}
+} // namespace
+
 void CardsSheet::render(nxui::Renderer& ren, CardsChrome& chrome) const {
     if (!m_open)
         return;
@@ -340,10 +349,11 @@ void CardsSheet::render(nxui::Renderer& ren, CardsChrome& chrome) const {
                 const nxui::Color ink = row.enabled ? white : dim.withAlpha(0.5f * a);
                 const bool twoLines = !row.detail.empty() || static_cast<bool>(row.progress);
                 const float labelY = twoLines ? r.y + 15.f : r.y + r.height * 0.5f;
-                std::string value = row.value ? row.value() : std::string();
+                std::string value = (row.value && !row.toggle) ? row.value() : std::string();
                 if (row.onChange && !value.empty())
                     value = "\u2039  " + value + "  \u203A";
-                const float vw = value.empty() ? 0.f : sf.measure(value).x;
+                const float vw = row.toggle ? 60.f : (value.empty() ? 0.f : sf.measure(value).x);
+                if (row.toggle) drawToggle(ren, r.right() - 70.f, r.y + r.height * 0.5f, row.toggle(), a);
                 chrome.textMid(ren, lf, chrome.fit(lf, row.label, r.width - vw - 36.f), r.x + 14.f, labelY, ink);
                 if (!value.empty())
                     chrome.textMid(ren, sf, value, r.right() - 14.f - vw, r.y + r.height * 0.5f, ink);
@@ -393,10 +403,11 @@ void CardsSheet::render(nxui::Renderer& ren, CardsChrome& chrome) const {
                 const nxui::Color ink = row.enabled ? white : dim.withAlpha(0.5f * a);
                 const bool twoLines = !row.detail.empty() || static_cast<bool>(row.progress);
                 const float labelY = twoLines ? r.y + 15.f : r.y + r.height * 0.5f;
-                std::string value = row.value ? row.value() : std::string();
+                std::string value = (row.value && !row.toggle) ? row.value() : std::string();
                 if (row.onChange && !value.empty())
                     value = "\u2039  " + value + "  \u203A";
-                const float vw = value.empty() ? 0.f : sf.measure(value).x;
+                const float vw = row.toggle ? 60.f : (value.empty() ? 0.f : sf.measure(value).x);
+                if (row.toggle) drawToggle(ren, r.right() - 70.f, r.y + r.height * 0.5f, row.toggle(), a);
                 chrome.textMid(ren, lf, chrome.fit(lf, row.label, r.width - vw - 48.f), r.x + 16.f, labelY, ink);
                 if (!value.empty())
                     chrome.textMid(ren, sf, value, r.right() - 16.f - vw, r.y + r.height * 0.5f, ink);

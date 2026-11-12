@@ -914,6 +914,7 @@ void WiiUMenuApp::ensureDiscordPanel() {
         m_discordPanel = std::make_shared<discord::DiscordPanel>();
         m_discordPanel->setFont(&m_fontNormal);
         m_discordPanel->setSmallFont(&m_fontSmall);
+        m_discordPanel->setIconFont(&m_fontIcons);
         m_discordPanel->setService(&m_homeCore.discord(), &m_homeCore);
         discord::DiscordPanel::Callbacks cb;
         cb.onClosed = [this]() {
@@ -3415,7 +3416,7 @@ void WiiUMenuApp::openFriends(AccountUid forUser) {
 void WiiUMenuApp::openNotifications() {
     if (!m_notifPanel) {
         m_notifPanel = std::make_shared<NotificationPanel>();
-        m_notifPanel->setFonts(&m_fontNormal, &m_fontSmall);
+        m_notifPanel->setFonts(&m_fontNormal, &m_fontSmall, &m_fontIcons);
         m_notifPanel->setTheme(&m_theme);
         NotificationPanel::Callbacks cb;
         cb.onClosed = [this]() {
@@ -3436,6 +3437,10 @@ void WiiUMenuApp::openNotifications() {
         if (m_overlayLayer) m_overlayLayer->addChild(m_notifPanel);
     }
     m_audio.playSfx(Sfx::ModalShow);
+    if (m_bell) { // drop down centred under the bell
+        const nxui::Rect b = m_bell->rect();
+        m_notifPanel->setAnchor(b.x + b.width * 0.5f, b.y + b.height);
+    }
     raiseOverlay(m_notifPanel);
     m_notifPanel->show();
     focusManager().setFocus(m_notifPanel.get());

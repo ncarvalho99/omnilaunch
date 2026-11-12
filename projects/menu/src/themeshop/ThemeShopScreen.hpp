@@ -85,7 +85,9 @@ public:
     void setSidebarOrderState(const std::vector<int>& order, const std::vector<std::string>& names) {
         m_sidebarOrder = order;
         m_sidebarNames = names;
+        rebuildOmniLaunchTab(); // that tab is built before this state arrives
     }
+    void rebuildOmniLaunchTab();
     // The three appearance controls also live under Settings > Display. They
     // are repeated here because this is the screen someone is on while judging
     // how a theme looks, and walking back out to change them breaks that.

@@ -1,4 +1,10 @@
 {
+  "notifications": {
+    "title": "Notificaciones",
+    "caught_up": "Estás al día",
+    "empty_hint": "Aquí aparecen los mensajes de Discord y los mandos con poca batería.",
+    "clear_all": "Borrar todo"
+  },
   "lock_screen": {
     "password_hint": "Introduce tu contraseña con la cruceta. ¿La olvidaste? Pulsa HOME",
     "recovery_hint": "Ahora mantén Menos (-) + Más (+) 3 segundos para quitar la contraseña",
@@ -1233,6 +1239,16 @@
     "title": "Tema automático"
   },
   "discord_ui": {
+    "add_qr": "Añadir otra cuenta (código QR)",
+    "add_token": "Añadir cuenta con token",
+    "members": "miembros",
+    "status_online": "En línea",
+    "status_idle": "Ausente",
+    "status_dnd": "No molestar",
+    "switch": "Cambiar",
+    "reply": "Responder",
+    "write": "Escribir",
+    "message_to": "Mensaje en",
     "qr_detail": "Fast login via Discord mobile app",
     "token_detail": "Enter an account token manually via keyboard",
     "sign_out": "Sign out current account",
@@ -1262,6 +1278,20 @@
     "y_accounts": "  (Y: Accounts)"
   },
   "cards": {
+    "moved_back": "Volvió a su página",
+    "opt_card_image": "Imagen de la tarjeta",
+    "opt_title_image": "Imagen del título",
+    "opt_show_cover": "Mostrar la portada en la tarjeta",
+    "opt_show_icon": "Mostrar el icono como tarjeta",
+    "set_repeat": "Repetir canción",
+    "set_repeat_desc": "Reproducir la misma canción otra vez",
+    "set_auto_time": "Ajustar la hora automáticamente",
+    "set_auto_time_desc": "Por internet",
+    "set_sleep_tv": "Suspender en la TV",
+    "set_sleep_handheld": "Suspender en modo portátil",
+    "set_sleep_desc": "Tras este tiempo sin pulsar nada",
+    "set_auto_brightness": "Brillo automático",
+    "set_auto_brightness_desc": "En modo portátil sigue la luz ambiental",
     "hb_kind": "Homebrew",
     "hb_by": "Homebrew de {author}",
     "hb_update_to": "Actualizar a {version} (+)",

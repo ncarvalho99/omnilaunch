@@ -18,7 +18,10 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
+
+#include <nxui/core/Input.hpp>
 
 namespace nxui { class GpuDevice; class Input; }
 namespace home { class HomeCore; }
@@ -40,6 +43,7 @@ public:
 
     void setFont(nxui::Font* f) { m_font = f; }
     void setSmallFont(nxui::Font* f) { m_smallFont = f; }
+    void setIconFont(nxui::Font* f) { m_iconFont = f; } // button glyphs for the hints
     void setService(DiscordService* s, home::HomeCore* core) { m_service = s; m_core = core; }
     void setCallbacks(Callbacks cb) { m_cb = std::move(cb); }
 
@@ -103,7 +107,13 @@ private:
     home::HomeCore* m_core = nullptr;
     nxui::Font* m_font = nullptr;
     nxui::Font* m_smallFont = nullptr;
+    nxui::Font* m_iconFont = nullptr;
     Callbacks m_cb;
+
+    std::string clean(const std::string& text) const;       // drop letters the font lacks
+    mutable std::unordered_map<std::uint32_t, bool> m_glyphs; // codepoint -> font has it
+    void drawHint(nxui::Renderer& ren, nxui::Button btn, const std::string& label,
+                  float rightX, float y, float a, float* outW = nullptr);
 
     bool m_active = false;
     float m_anim = 0.f;

@@ -500,6 +500,9 @@ bool CardsHomeActivity::onCreate() {
             m_audio.stopAll();
     });
     m_lock.onUnlocked([this]() {
+        // The extra presses of an unlock mash must not reach the Cards view
+        // (L opened Discord on its own): wait until every button is released.
+        m_waitRelease = true;
         if (m_core.config().musicEnabled && m_audioStarted && !m_audio.isPlaying())
             m_audio.play();
         m_audio.playSfx(Sfx::ModalHide);
@@ -686,6 +689,7 @@ void CardsHomeActivity::onDestroy() {
     m_moving = false;
     m_quick.reset();
     m_text.reset();
+    m_profiles.reset();
     // Frontend-owned GPU resources (audit §6.1 rule 3).
     m_chrome.release();
     m_avatar.reset();
@@ -699,6 +703,8 @@ nxui::Widget* CardsHomeActivity::focusRoot() {
         return m_userSelect.get();
     if (m_text && m_text->isActive())
         return m_text.get();
+    if (m_profiles && m_profiles->isOpen())
+        return m_profiles.get();
     if (m_picker && m_picker->isActive())
         return m_picker.get();
     if (m_quick && m_quick->isActive())
@@ -914,6 +920,11 @@ void CardsHomeActivity::onUpdate(float dt) {
         m_quick->update(dt);
     if (m_text)
         m_text->update(dt);
+    if (m_profiles && m_profiles->isActive()) {
+        m_profiles->update(dt);
+        if (m_profiles->isOpen() && !m_lock.isLocked())
+            m_profiles->handleTouch(app().input());
+    }
     if (m_picker)
         m_picker->update(dt);
     if (m_pageIn < 1.f)
@@ -1377,7 +1388,12 @@ void CardsHomeActivity::handleInput() {
     if (in.isDown(B::LStick)) { openQuickSettings(); return; }
     if (in.isDown(B::L)) { openDiscord(); return; }
     if (in.isDown(B::Y)) { openSortSheet(); return; }
-    if (in.isDown(B::Plus)) { openCardOptions(); return; }
+    if (in.isDown(B::Plus)) {
+        DebugLog::log("[cards] plus -> options (sel=%d count=%d top=%d panel=%d)", m_selected, m_catalog.count(),
+                      m_topZone ? 1 : 0, m_panelZone ? 1 : 0);
+        openCardOptions();
+        return;
+    }
     if (m_topZone) {
         constexpr int kTopCount = static_cast<int>(TopButton::Count);
         const bool l = in.isDown(B::DLeft) || (in.isDown(B::LStickL) || in.isDown(B::RStickL));
@@ -1810,6 +1826,11 @@ void CardsHomeActivity::handleSystemAction(SysAction action) {
             m_overlayLatch = true;
             break;
         }
+        if (m_profiles && m_profiles->isActive()) {
+            m_profiles->hide();
+            m_overlayLatch = true;
+            break;
+        }
         if (m_picker && m_picker->isActive()) {
             m_picker->hide();
             m_overlayLatch = true;
@@ -2214,6 +2235,8 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
         m_picker->render(ren);
     if (m_text && m_text->isActive())
         m_text->render(ren);
+    if (m_profiles && m_profiles->isActive())
+        m_profiles->render(ren);
     if (m_userSelect && m_userSelect->isActive())
         m_userSelect->render(ren);
     if (m_deleteProgress && m_deleteProgress->isActive())

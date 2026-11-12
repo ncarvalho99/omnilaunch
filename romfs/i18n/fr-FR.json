@@ -1,4 +1,10 @@
 {
+  "notifications": {
+    "title": "Notifications",
+    "caught_up": "Vous êtes à jour",
+    "empty_hint": "Les messages Discord et les manettes à batterie faible apparaissent ici.",
+    "clear_all": "Tout effacer"
+  },
   "lock_screen": {
     "password_hint": "Saisis ton mot de passe avec la croix. Oublié ? Appuie sur HOME",
     "recovery_hint": "Maintiens maintenant Moins (-) + Plus (+) 3 secondes pour supprimer le mot de passe",
@@ -1184,6 +1190,16 @@
     "hint_today": "Aujourd'hui"
   },
   "discord_ui": {
+    "add_qr": "Ajouter un autre compte (code QR)",
+    "add_token": "Ajouter un compte par jeton",
+    "members": "membres",
+    "status_online": "En ligne",
+    "status_idle": "Absent",
+    "status_dnd": "Ne pas déranger",
+    "switch": "Changer",
+    "reply": "Répondre",
+    "write": "Écrire",
+    "message_to": "Message dans",
     "qr_detail": "Fast login via Discord mobile app",
     "token_detail": "Enter an account token manually via keyboard",
     "sign_out": "Sign out current account",
@@ -1213,6 +1229,20 @@
     "y_accounts": "  (Y: Accounts)"
   },
   "cards": {
+    "moved_back": "Remis sur sa page",
+    "opt_card_image": "Image de la carte",
+    "opt_title_image": "Image du titre",
+    "opt_show_cover": "Afficher la jaquette sur la carte",
+    "opt_show_icon": "Afficher l'icône comme carte",
+    "set_repeat": "Répéter le morceau",
+    "set_repeat_desc": "Rejouer le même morceau",
+    "set_auto_time": "Régler l'heure automatiquement",
+    "set_auto_time_desc": "Par internet",
+    "set_sleep_tv": "Veille sur la TV",
+    "set_sleep_handheld": "Veille en mode portable",
+    "set_sleep_desc": "Après ce délai sans appui",
+    "set_auto_brightness": "Luminosité automatique",
+    "set_auto_brightness_desc": "En mode portable, suit la lumière ambiante",
     "hb_kind": "Homebrew",
     "hb_by": "Homebrew de {author}",
     "hb_update_to": "Mettre à jour vers {version} (+)",

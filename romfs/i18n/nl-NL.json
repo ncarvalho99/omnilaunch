@@ -1,4 +1,10 @@
 {
+  "notifications": {
+    "title": "Meldingen",
+    "caught_up": "Je bent helemaal bij",
+    "empty_hint": "Discord-berichten en controllers met een lege batterij verschijnen hier.",
+    "clear_all": "Alles wissen"
+  },
   "lock_screen": {
     "password_hint": "Voer je wachtwoord in met de richtingsknoppen. Vergeten? Druk op HOME",
     "recovery_hint": "Houd nu Min (-) + Plus (+) 3 seconden ingedrukt om het wachtwoord te verwijderen",
@@ -1184,6 +1190,16 @@
     "hint_today": "Vandaag"
   },
   "discord_ui": {
+    "add_qr": "Nog een account toevoegen (QR-code)",
+    "add_token": "Account toevoegen met token",
+    "members": "leden",
+    "status_online": "Online",
+    "status_idle": "Afwezig",
+    "status_dnd": "Niet storen",
+    "switch": "Wisselen",
+    "reply": "Beantwoorden",
+    "write": "Schrijven",
+    "message_to": "Bericht in",
     "qr_detail": "Fast login via Discord mobile app",
     "token_detail": "Enter an account token manually via keyboard",
     "sign_out": "Sign out current account",
@@ -1213,6 +1229,20 @@
     "y_accounts": "  (Y: Accounts)"
   },
   "cards": {
+    "moved_back": "Terug naar zijn pagina",
+    "opt_card_image": "Kaartafbeelding",
+    "opt_title_image": "Titelafbeelding",
+    "opt_show_cover": "Hoes op de kaart tonen",
+    "opt_show_icon": "Pictogram als kaart tonen",
+    "set_repeat": "Nummer herhalen",
+    "set_repeat_desc": "Hetzelfde nummer opnieuw afspelen",
+    "set_auto_time": "Tijd automatisch instellen",
+    "set_auto_time_desc": "Via internet",
+    "set_sleep_tv": "Slaapstand op tv",
+    "set_sleep_handheld": "Slaapstand in handheldmodus",
+    "set_sleep_desc": "Na zo lang zonder knopdruk",
+    "set_auto_brightness": "Automatische helderheid",
+    "set_auto_brightness_desc": "In handheldmodus volgt hij het omgevingslicht",
     "hb_kind": "Homebrew",
     "hb_by": "Homebrew van {author}",
     "hb_update_to": "Bijwerken naar {version} (+)",

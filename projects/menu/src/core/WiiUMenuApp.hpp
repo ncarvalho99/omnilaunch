@@ -957,7 +957,13 @@ private:
     bool frontendSwitchBlocked() const;
     void updateFrontendSwitch(float dt);
     // Raw-input paths in onUpdate check this too (focusRoot covers dispatch).
-    bool transitionInputBlocked() const { return m_frontendSwitchFade >= 0.f || m_switchWaitRelease; }
+    bool transitionInputBlocked() const {
+        return m_frontendSwitchFade >= 0.f || m_switchWaitRelease || m_unlockInputGuard > 0.f;
+    }
+    // After the lock screen opens, the extra presses of an unlock mash must not
+    // reach HOME (they opened Discord via L / the sidebar): input is held off
+    // for this long and until every button is released.
+    float m_unlockInputGuard          = 0.f;
     float m_frontendSwitchFade        = -1.f;
     bool m_switchWaitRelease          = false;
     float m_switchFadeIn              = 0.f;

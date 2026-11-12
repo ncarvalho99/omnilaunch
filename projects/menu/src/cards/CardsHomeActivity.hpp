@@ -21,6 +21,7 @@
 #include "homebrew/HomebrewUpdateCatalog.hpp"
 #include "home/HomeStyle.hpp"
 #include "widgets/LockScreen.hpp"
+#include "widgets/ProfileCarouselScreen.hpp"
 #include "widgets/QuickSettingsOverlay.hpp"
 #include "settings/SteamGridDbPickerScreen.hpp"
 #include "settings/TextEntryScreen.hpp"
@@ -134,6 +135,10 @@ private:
     void closePowerMenu();
     bool handlePowerInput(nxui::Input& in);
     void drawPower(nxui::Renderer& ren);
+    // OmniLaunch glass for the Cards popups: blurred screen copy (taken once per
+    // open) under a translucent tint, like the sheets.
+    void drawGlassCard(nxui::Renderer& ren, const nxui::Rect& card, float radius, float a);
+    bool m_popupBackdropValid = false;
     void openUsersSheet();
     void openNotificationsSheet();
     void openAchievementsSheet(std::uint64_t titleId);
@@ -232,6 +237,7 @@ private:
     std::shared_ptr<discord::DiscordPanel> m_discordPanel;
     std::shared_ptr<QuickSettingsOverlay> m_quick;
     std::shared_ptr<TextEntryScreen> m_text;
+    std::shared_ptr<ProfileCarouselScreen> m_profiles; // HomeNX account picker (same as Classic)
     std::shared_ptr<SteamGridDbPickerScreen> m_picker;
     nxui::Theme m_overlayTheme = nxui::Theme::dark();
     nxui::Font m_fontIcons;

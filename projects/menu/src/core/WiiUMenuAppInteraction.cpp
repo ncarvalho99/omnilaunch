@@ -820,7 +820,7 @@ nxui::Widget* WiiUMenuApp::focusRoot() {
     if (m_lockScreen.isLocked()) return nullptr;
     // HomeNX D2: nothing during the switch fade, and after arriving by a
     // switch nothing until the confirming press has been released.
-    if (m_frontendSwitchFade >= 0.f || m_switchWaitRelease) return nullptr;
+    if (m_frontendSwitchFade >= 0.f || m_switchWaitRelease || m_unlockInputGuard > 0.f) return nullptr;
     if (m_leaveCapturePending) return nullptr;
     if (leaveSplashActive()) return nullptr;
     if (m_launchAnim && m_launchAnim->isPlaying()) return nullptr;

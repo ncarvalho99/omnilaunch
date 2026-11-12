@@ -1,4 +1,10 @@
 {
+  "notifications": {
+    "title": "Notifications",
+    "caught_up": "You're all caught up",
+    "empty_hint": "Discord messages and low controller batteries show up here.",
+    "clear_all": "Clear all"
+  },
   "lock_screen": {
     "password_hint": "Enter your password with the D-pad. Forgot it? Press HOME",
     "recovery_hint": "Now hold Minus (-) + Plus (+) for 3 seconds to remove the password",
@@ -1311,6 +1317,16 @@
     "title": "Auto Theme"
   },
   "discord_ui": {
+    "add_qr": "Add another account (QR code)",
+    "add_token": "Add account via token",
+    "members": "members",
+    "status_online": "Online",
+    "status_idle": "Idle",
+    "status_dnd": "Do Not Disturb",
+    "switch": "Switch",
+    "reply": "Reply",
+    "write": "Write",
+    "message_to": "Message",
     "qr_detail": "Fast login via Discord mobile app",
     "token_detail": "Enter an account token manually via keyboard",
     "sign_out": "Sign out current account",
@@ -1341,6 +1357,20 @@
     "loading_image": "[Loading image...]"
   },
   "cards": {
+    "moved_back": "Moved back to its page",
+    "opt_card_image": "Card image",
+    "opt_title_image": "Title image",
+    "opt_show_cover": "Show the cover on the card",
+    "opt_show_icon": "Show icon as card image",
+    "set_repeat": "Repeat song",
+    "set_repeat_desc": "Play the same song again",
+    "set_auto_time": "Set the time automatically",
+    "set_auto_time_desc": "From the internet",
+    "set_sleep_tv": "Sleep on TV",
+    "set_sleep_handheld": "Sleep in handheld mode",
+    "set_sleep_desc": "After this long without a press",
+    "set_auto_brightness": "Automatic brightness",
+    "set_auto_brightness_desc": "In handheld mode it follows the room light",
     "hb_kind": "Homebrew",
     "hb_by": "Homebrew by {author}",
     "hb_update_to": "Update to {version} (+)",

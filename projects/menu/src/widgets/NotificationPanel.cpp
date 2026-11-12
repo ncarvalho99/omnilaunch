@@ -1,6 +1,8 @@
 #include "NotificationPanel.hpp"
+#include "core/ButtonGlyph.hpp"
 
 #include <nxui/core/Animation.hpp>
+#include <nxui/core/GpuDevice.hpp>
 #include <nxui/core/I18n.hpp>
 #include <nxui/core/Input.hpp>
 #include <nxui/core/Renderer.hpp>
@@ -64,6 +66,7 @@ void NotificationPanel::show() {
     notifications::markSeen();
     m_sel = 0;
     m_top = 0;
+    m_backdropValid = false;
     m_active = true;
     setVisible(true);
     setFocusable(true);
@@ -92,7 +95,12 @@ int NotificationPanel::visibleRows() const {
 nxui::Rect NotificationPanel::cardRect() const {
     const float h = kHeaderH + kRowH * visibleRows() + kFooterH;
     const float a = nxui::Easing::outCubic(m_anim);
-    return {kCardX, kCardY - 14.f * (1.f - a), kCardW, h};
+    float x = kCardX, y = kCardY;
+    if (m_anchorX >= 0.f) { // centred right under the bell, kept on screen
+        x = std::clamp(m_anchorX - kCardW * 0.5f, 16.f, 1280.f - 16.f - kCardW);
+        y = m_anchorY + 12.f;
+    }
+    return {x, y - 14.f * (1.f - a), kCardW, h};
 }
 
 void NotificationPanel::move(int delta) {
@@ -151,10 +159,32 @@ void NotificationPanel::onRender(nxui::Renderer& ren) {
     const nxui::Color text = nxui::Color(0.95f, 0.96f, 0.98f, a), muted = nxui::Color(0.65f, 0.68f, 0.74f, a);
     const nxui::Color accent = m_theme ? m_theme->cursorNormal.withAlpha(a) : nxui::Color(0.35f, 0.6f, 1.f, a);
 
-    ren.drawRect({0.f, 0.f, 1280.f, 720.f}, nxui::Color(0.f, 0.f, 0.f, 0.35f * a));
     const nxui::Rect card = cardRect();
-    ren.drawRoundedRect(card, nxui::Color(0.10f, 0.11f, 0.15f, 0.97f * a), 26.f);
-    ren.drawRoundedRectOutline(card, nxui::Color(1.f, 1.f, 1.f, 0.10f * a), 26.f, 1.5f);
+    // OmniLaunch glass: a blurred copy of the screen behind the card, tinted
+    // with the theme's panel colour (the same recipe as the Social panel).
+    bool frosted = false;
+#ifdef SWITCHU_MENU
+    if (ren.gpu().offscreenReady()) {
+        if (!m_backdropValid) {
+            ren.captureToOffscreenSharp();
+            ren.applyBlur(4.f, 2);
+            ren.copyOffscreen(nxui::GpuDevice::OFF_SHARP_A, nxui::GpuDevice::OFF_DIALOG);
+            m_backdropValid = true;
+        }
+        frosted = true;
+    }
+#endif
+    ren.drawRect({0.f, 0.f, 1280.f, 720.f}, nxui::Color(0.f, 0.f, 0.f, 0.30f * a));
+#ifdef SWITCHU_MENU
+    if (frosted) ren.drawOffscreenRounded(nxui::GpuDevice::OFF_DIALOG, card, 26.f, nxui::Color::white().withAlpha(a));
+#endif
+    const nxui::Color base = m_theme ? m_theme->panelBase : nxui::Color(0.10f, 0.11f, 0.15f, 1.f);
+    ren.drawRoundedRect(card, base.withAlpha((frosted ? 0.35f : 0.90f) * a), 26.f);
+    if (frosted)
+        ren.drawGradientRect({card.x + 2.f, card.y + 2.f, card.width - 4.f, 60.f}, nxui::Color(1.f, 1.f, 1.f, 0.06f * a),
+                             nxui::Color(1.f, 1.f, 1.f, 0.f));
+    const nxui::Color border = m_theme ? m_theme->panelBorder : nxui::Color(1.f, 1.f, 1.f, 0.10f);
+    ren.drawRoundedRectOutline(card, border.withAlpha(a), 26.f, 1.5f);
 
     // Header: the title and how many.
     ren.drawText(i18n.tr("notifications.title", "Notifications"), {card.x + 24.f, card.y + 16.f}, m_font, text);
@@ -214,9 +244,18 @@ void NotificationPanel::onRender(nxui::Renderer& ren) {
         ren.drawRoundedRect({card.x + card.width - 6.f, y, 3.f, h}, nxui::Color(1.f, 1.f, 1.f, 0.25f * a), 1.5f);
     }
 
-    // Footer: the buttons.
-    const std::string hints = m_items.empty()
-        ? i18n.tr("notifications.hint_empty", "B  Close")
-        : i18n.tr("notifications.hint", "A  Open      X  Clear all      B  Close");
-    ren.drawText(hints, {card.x + 24.f, card.y + card.height - kFooterH + 10.f}, small, muted, 0.8f);
+    // Footer: OmniLaunch's button capsules (glyph + translated label).
+    std::vector<ui::glyph::ActionHint> hints;
+    if (!m_items.empty()) {
+        hints.push_back({ui::glyph::button(nxui::Button::A), i18n.tr("hint.open", "Open")});
+        hints.push_back({ui::glyph::button(nxui::Button::X), i18n.tr("notifications.clear_all", "Clear all")});
+    }
+    hints.push_back({ui::glyph::button(nxui::Button::B), i18n.tr("hint.close", "Close")});
+    if (m_icons) {
+        ui::glyph::drawHintBar(ren, *m_icons, *small, hints, card.x + card.width - 16.f, card.y + card.height - 10.f, a);
+    } else {
+        std::string line;
+        for (const auto& h : hints) line += (line.empty() ? "" : "      ") + h.label;
+        ren.drawText(line, {card.x + 24.f, card.y + card.height - kFooterH + 10.f}, small, muted, 0.8f);
+    }
 }

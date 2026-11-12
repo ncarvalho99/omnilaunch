@@ -1,4 +1,10 @@
 {
+  "notifications": {
+    "title": "Notifiche",
+    "caught_up": "Sei in pari",
+    "empty_hint": "Qui compaiono i messaggi di Discord e i controller con batteria scarica.",
+    "clear_all": "Cancella tutto"
+  },
   "lock_screen": {
     "password_hint": "Inserisci la password con la croce direzionale. Dimenticata? Premi HOME",
     "recovery_hint": "Ora tieni premuti Meno (-) + Più (+) per 3 secondi per rimuovere la password",
@@ -1184,6 +1190,16 @@
     "hint_today": "Oggi"
   },
   "discord_ui": {
+    "add_qr": "Aggiungi un altro account (codice QR)",
+    "add_token": "Aggiungi account con token",
+    "members": "membri",
+    "status_online": "Online",
+    "status_idle": "Inattivo",
+    "status_dnd": "Non disturbare",
+    "switch": "Cambia",
+    "reply": "Rispondi",
+    "write": "Scrivi",
+    "message_to": "Messaggio in",
     "qr_detail": "Fast login via Discord mobile app",
     "token_detail": "Enter an account token manually via keyboard",
     "sign_out": "Sign out current account",
@@ -1213,6 +1229,20 @@
     "y_accounts": "  (Y: Accounts)"
   },
   "cards": {
+    "moved_back": "Tornato alla sua pagina",
+    "opt_card_image": "Immagine della scheda",
+    "opt_title_image": "Immagine del titolo",
+    "opt_show_cover": "Mostra la copertina sulla scheda",
+    "opt_show_icon": "Mostra l'icona come scheda",
+    "set_repeat": "Ripeti brano",
+    "set_repeat_desc": "Riproduci di nuovo lo stesso brano",
+    "set_auto_time": "Imposta l'ora automaticamente",
+    "set_auto_time_desc": "Tramite internet",
+    "set_sleep_tv": "Standby sulla TV",
+    "set_sleep_handheld": "Standby in modalità portatile",
+    "set_sleep_desc": "Dopo questo tempo senza premere nulla",
+    "set_auto_brightness": "Luminosità automatica",
+    "set_auto_brightness_desc": "In modalità portatile segue la luce ambientale",
     "hb_kind": "Homebrew",
     "hb_by": "Homebrew di {author}",
     "hb_update_to": "Aggiorna a {version} (+)",

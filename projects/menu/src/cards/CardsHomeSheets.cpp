@@ -10,6 +10,7 @@
 #include "cards/CardsDotsNavigation.hpp"
 #include "core/DebugLog.hpp"
 #include "core/ButtonGlyph.hpp"
+#include <nxui/core/GpuDevice.hpp>
 #include "bluetooth/BluetoothManager.hpp"
 #include "core/PlayTime.hpp"
 #include "home/HomeCore.hpp"
@@ -22,6 +23,7 @@
 #include "themeshop/ThemeHttp.hpp"
 #ifdef SWITCHU_MENU
 #include "core/NsService.hpp"
+#include "smi_commands.hpp"
 #include <switchu/control_cache.hpp>
 #include <switchu/sd_commit.hpp>
 #include <switchu/title_footprint.hpp>
@@ -72,6 +74,7 @@ std::string onOff(bool v) {
 
 bool CardsHomeActivity::overlayActive() const {
     return (m_userSelect && m_userSelect->isActive()) || (m_text && m_text->isActive()) ||
+           (m_profiles && m_profiles->isActive()) ||
            (m_quick && m_quick->isActive()) || (m_deleteProgress && m_deleteProgress->isActive()) ||
            (m_picker && m_picker->isActive()) || (m_discordPanel && m_discordPanel->isActive());
 }
@@ -89,6 +92,7 @@ void CardsHomeActivity::saveConfig(const char* why) {
 void CardsHomeActivity::openPowerMenu() {
     m_powerOpen = true;
     m_powerIn = 0.f;
+    m_popupBackdropValid = false;
     m_powerSel = 0;
     m_audio.playSfx(Sfx::ModalShow);
 }
@@ -179,17 +183,39 @@ bool CardsHomeActivity::handlePowerInput(nxui::Input& in) {
     return true;
 }
 
+void CardsHomeActivity::drawGlassCard(nxui::Renderer& ren, const nxui::Rect& card, float radius, float a) {
+    bool glass = false;
+#ifdef SWITCHU_MENU
+    if (ren.gpu().offscreenReady()) {
+        if (!m_popupBackdropValid) {
+            ren.captureToOffscreenSharp();
+            ren.applyBlur(2.5f, 2);
+            ren.copyOffscreen(nxui::GpuDevice::OFF_SHARP_A, nxui::GpuDevice::OFF_DIALOG);
+            m_popupBackdropValid = true;
+        }
+        ren.drawRect({0.f, 0.f, 1280.f, 720.f}, {0.f, 0.f, 0.f, 0.45f * a});
+        ren.drawLiquidGlass(nxui::GpuDevice::OFF_DIALOG, card, radius, CardsChrome::glassTint(1.f), a, 0.35f);
+        ren.drawRoundedRect(card, {0.04f, 0.05f, 0.08f, 0.45f * a}, radius);
+        glass = true;
+    }
+#endif
+    if (!glass) {
+        ren.drawRect({0.f, 0.f, 1280.f, 720.f}, {0.f, 0.f, 0.f, 0.55f * a});
+        ren.drawRoundedRect(card, {0.08f, 0.09f, 0.13f, 0.86f * a}, radius);
+    }
+    ren.drawRoundedRectOutline(card, {1.f, 1.f, 1.f, 0.16f * a}, radius, 1.5f);
+    ren.drawGradientRect({card.x + 2.f, card.y + 2.f, card.width - 4.f, 90.f}, {1.f, 1.f, 1.f, 0.05f * a},
+                         {1.f, 1.f, 1.f, 0.f});
+}
+
 void CardsHomeActivity::drawPower(nxui::Renderer& ren) {
     if (!m_powerOpen)
         return;
     m_powerIn = std::min(1.f, m_powerIn + 1.f / 10.f);
     const float a = 1.f - (1.f - m_powerIn) * (1.f - m_powerIn);
-    ren.drawRect({0.f, 0.f, 1280.f, 720.f}, {0.f, 0.f, 0.f, 0.65f * a});
 
     const nxui::Rect card{180.f, 190.f, 920.f, 340.f};
-    ren.drawRoundedRect({card.x - 4.f, card.y + 12.f, card.width + 8.f, card.height + 6.f}, {0.f, 0.f, 0.f, 0.35f * a}, 36.f);
-    ren.drawRoundedRect(card, {0.09f, 0.11f, 0.15f, 0.94f * a}, 32.f);
-    ren.drawRoundedRectOutline(card, {1.f, 1.f, 1.f, 0.15f * a}, 32.f, 1.5f);
+    drawGlassCard(ren, card, 32.f, a);
 
     auto& tf = m_chrome.titleFont();
     auto& lf = m_chrome.labelFont();
@@ -199,8 +225,13 @@ void CardsHomeActivity::drawPower(nxui::Renderer& ren) {
     m_chrome.icon(ren, "power", card.x + 44.f, card.y + 44.f, 26.f, CardsChrome::kWhite.withAlpha(a));
     m_chrome.textMid(ren, tf, i18n.tr("power.title", "Power"), card.x + 68.f, card.y + 44.f, CardsChrome::kWhite.withAlpha(a));
 
-    const std::string hints = i18n.tr("cards.power_hints", "A Escolher   B Voltar");
-    m_chrome.textMid(ren, sf, hints, card.right() - sf.measure(hints).x - 40.f, card.y + 44.f, CardsChrome::kWhite.withAlpha(0.85f * a));
+    {
+        const std::vector<ui::glyph::ActionHint> hints = {
+            {ui::glyph::button(nxui::Button::A), i18n.tr("hint.select", "Select")},
+            {ui::glyph::button(nxui::Button::B), i18n.tr("hint.back", "Back")},
+        };
+        ui::glyph::drawHintBar(ren, m_fontIcons, sf, hints, card.right() - 32.f, card.y + 57.f, a);
+    }
 
     struct PowerTileDef {
         std::string name;
@@ -288,6 +319,7 @@ void CardsHomeActivity::ensureDiscordPanel() {
         m_discordPanel = std::make_shared<discord::DiscordPanel>();
         m_discordPanel->setFont(&m_chrome.labelFont());
         m_discordPanel->setSmallFont(&m_chrome.smallFont());
+        m_discordPanel->setIconFont(&m_fontIcons);
         m_discordPanel->setService(&m_core.discord(), &m_core);
         discord::DiscordPanel::Callbacks cb;
         cb.onClosed = [this]() {
@@ -665,7 +697,7 @@ void CardsHomeActivity::applySort(int mode) {
 }
 
 void CardsHomeActivity::startMove() {
-    if (m_page == AppConfig::CardsPrefs::kNintendo || m_catalog.count() < 2)
+    if (m_catalog.count() < 2)
         return;
     m_moveBackup = m_catalog.pageIds();
     m_moving = true;
@@ -712,8 +744,15 @@ void CardsHomeActivity::finishMove(bool keep) {
     if (m_page == AppConfig::CardsPrefs::kMedia) {
         config.cards.mediaOrder = ids;
     } else {
-        config.cards.gamesOrder = ids;
-        config.cardsSort = 3; // C-PG-1: moving a card makes "my order" the sort
+        // Games, Homebrew and Nintendo share one hand order: replace only this
+        // page's ids and keep the other pages' entries after them.
+        std::vector<std::uint64_t> merged = ids;
+        for (std::uint64_t id : config.cards.gamesOrder)
+            if (std::find(ids.begin(), ids.end(), id) == ids.end())
+                merged.push_back(id);
+        config.cards.gamesOrder = std::move(merged);
+        if (m_page == AppConfig::CardsPrefs::kGames)
+            config.cardsSort = 3; // C-PG-1: moving a card makes "my order" the sort
     }
     saveConfig("cards move");
     m_audio.playSfx(Sfx::ConfirmPositive);
@@ -802,10 +841,6 @@ void CardsHomeActivity::openCardOptions() {
         return;
     auto& i18n = nxui::I18n::instance();
     const CardEntry& card = m_catalog.at(m_selected);
-    if (card.system) {
-        openSystemTile(card.app.titleId);
-        return;
-    }
     const std::uint64_t titleId = card.app.titleId;
     const std::string title = card.app.title;
     const std::string path = card.homebrewPath;
@@ -836,11 +871,51 @@ void CardsHomeActivity::openCardOptions() {
 
     // Primary: Play / Resume / Open
     const std::string playLabel = suspended ? i18n.tr("cards.resume", "Resume")
-                                : (card.isHomebrew ? i18n.tr("cards.open", "Open") : i18n.tr("cards.play", "Play"));
+                                : ((card.isHomebrew || card.system) ? i18n.tr("cards.open", "Open")
+                                                                     : i18n.tr("cards.play", "Play"));
     add(playLabel, "play", [this]() {
         closeCardOptions();
         activateSelected();
     }, false, true);
+
+    // HomeNX: each kind of card has its own menu. An applet (Nintendo page
+    // tile) only moves, renames and goes on the panel button.
+    auto panelPin = [&]() {
+        const bool isPinned = (m_core.config().cards.panelTitleId == titleId);
+        if (!isPinned) {
+            add(i18n.tr("cards.panel_pin", "Put on panel button"), "copy", [this, titleId]() {
+                m_core.config().cards.panelTitleId = titleId;
+                m_core.config().cards.panelButtonEnabled = true;
+                saveConfig("cards panel shortcut");
+                closeCardOptions();
+                showToast(nxui::I18n::instance().tr("cards.panel_pinned_toast", "Placed on panel button"));
+            });
+        } else {
+            add(i18n.tr("cards.panel_unpin", "Remove from panel button"), "copy", [this]() {
+                m_core.config().cards.panelTitleId = 0;
+                saveConfig("cards panel shortcut");
+                closeCardOptions();
+                showToast(nxui::I18n::instance().tr("cards.panel_unpinned_toast", "Removed from panel button (News restored)"));
+            });
+        }
+    };
+    if (card.system) {
+        add(i18n.tr("cards.opt_move", "Move"), "arrows", [this]() {
+            closeCardOptions();
+            startMove();
+        });
+        add(i18n.tr("dialog.details_rename", "Rename"), "tag", [this]() {
+            closeCardOptions();
+            renameSelected();
+        });
+        panelPin();
+        m_cardOptSel = 0;
+        m_cardOptIn = 0.f;
+        m_popupBackdropValid = false;
+        m_cardOptOpen = true;
+        m_audio.playSfx(Sfx::ModalShow);
+        return;
+    }
 
     // Update (homebrew with known update)
     if (card.isHomebrew && homebrewHasUpdate(path, card.version)) {
@@ -859,97 +934,86 @@ void CardsHomeActivity::openCardOptions() {
     }
 #endif
 
-    // Move
+    // HomeNX order. Homebrew: Move, Rename, Panel button, Move to Games,
+    // Move to Media, New pictures, Card image, Background image, Show as
+    // card image, Delete. Games: Move, Rename, Move to Games/Homebrew (or
+    // Media), New pictures, Card image, Title image, Background, Achievements.
     add(i18n.tr("cards.opt_move", "Move"), "arrows", [this]() {
         closeCardOptions();
         startMove();
     });
-
-    // Rename
     add(i18n.tr("dialog.details_rename", "Rename"), "tag", [this]() {
         closeCardOptions();
         renameSelected();
     });
+    if (card.isHomebrew)
+        panelPin();
 
-    // Move to page
+    // Moving between pages: Media holds games and homebrew put there by hand.
     const bool media = m_page == AppConfig::CardsPrefs::kMedia;
-    if (card.isHomebrew) {
-        add(media ? i18n.tr("cards.opt_to_homebrew", "Move to Homebrew") : i18n.tr("cards.opt_to_media", "Move to Media"),
-            media ? "dots" : "music",
-            [this, titleId, media]() {
-                closeCardOptions();
-                auto& config = m_core.config();
-                if (!pages::setMedia(config.cards, titleId, !media))
-                    return;
-                if (!media && config.cards.pageHidden(AppConfig::CardsPrefs::kMedia))
-                    pages::togglePage(config.cards, AppConfig::CardsPrefs::kMedia);
-                saveConfig("cards media");
-                m_catalog.rebuild(config);
-                m_selected = std::clamp(m_selected, 0, std::max(0, m_catalog.count() - 1));
-                m_scroll = static_cast<float>(m_selected);
-                auto& t = nxui::I18n::instance();
-                showToast(media ? t.tr("cards.moved_homebrew", "Moved to Homebrew") : t.tr("cards.moved_media", "Moved to Media"));
-            });
+    auto movePage = [this, titleId](bool toMedia) {
+        closeCardOptions();
+        auto& config = m_core.config();
+        if (!pages::setMedia(config.cards, titleId, toMedia))
+            return;
+        if (toMedia && config.cards.pageHidden(AppConfig::CardsPrefs::kMedia))
+            pages::togglePage(config.cards, AppConfig::CardsPrefs::kMedia);
+        saveConfig("cards media");
+        m_catalog.rebuild(config);
+        m_selected = std::clamp(m_selected, 0, std::max(0, m_catalog.count() - 1));
+        m_scroll = static_cast<float>(m_selected);
+        auto& t = nxui::I18n::instance();
+        showToast(toMedia ? t.tr("cards.moved_media", "Moved to Media")
+                          : t.tr("cards.moved_back", "Moved back to its page"));
+    };
+    if (media) {
+        add(card.isHomebrew ? i18n.tr("cards.opt_to_homebrew", "Move to Homebrew")
+                            : i18n.tr("cards.opt_to_games", "Move to Games"),
+            card.isHomebrew ? "dots" : "play", [movePage]() { movePage(false); });
     } else {
-        add(media ? i18n.tr("cards.opt_to_games", "Move to Games") : i18n.tr("cards.opt_to_media", "Move to Media"),
-            media ? "play" : "music",
-            [this, titleId, media]() {
-                closeCardOptions();
-                auto& config = m_core.config();
-                if (!pages::setMedia(config.cards, titleId, !media))
-                    return;
-                if (!media && config.cards.pageHidden(AppConfig::CardsPrefs::kMedia))
-                    pages::togglePage(config.cards, AppConfig::CardsPrefs::kMedia);
-                saveConfig("cards media");
-                m_catalog.rebuild(config);
-                m_selected = std::clamp(m_selected, 0, std::max(0, m_catalog.count() - 1));
-                m_scroll = static_cast<float>(m_selected);
-                auto& t = nxui::I18n::instance();
-                showToast(media ? t.tr("cards.moved_games", "Moved to Games") : t.tr("cards.moved_media", "Moved to Media"));
-            });
+        add(i18n.tr("cards.opt_to_media", "Move to Media"), "music", [movePage]() { movePage(true); });
     }
 
-    // Put on panel button
-    if (!card.isHomebrew) {
-        const bool isPinned = (m_core.config().cards.panelTitleId == titleId);
-        if (!isPinned) {
-            add(i18n.tr("cards.panel_pin", "Put on panel button"), "copy", [this, titleId]() {
-                m_core.config().cards.panelTitleId = titleId;
-                m_core.config().cards.panelButtonEnabled = true;
-                saveConfig("cards panel shortcut");
-                closeCardOptions();
-                showToast(nxui::I18n::instance().tr("cards.panel_pinned_toast", "Placed on panel button"));
-            });
-        } else {
-            add(i18n.tr("cards.panel_unpin", "Remove from panel button"), "copy", [this]() {
-                m_core.config().cards.panelTitleId = 0;
-                saveConfig("cards panel shortcut");
-                closeCardOptions();
-                showToast(nxui::I18n::instance().tr("cards.panel_unpinned_toast", "Removed from panel button (News restored)"));
-            });
-        }
-    }
-
-    // Download new pictures
     add(i18n.tr("cards.opt_new_pictures", "Download new pictures"), "restart", [this, titleId, title]() {
         closeCardOptions();
         downloadSingleTitleArt(titleId, title);
     });
-
-    // Images
-    add(i18n.tr("cards.art_choices", "Images"), "copy", [this, titleId]() {
+    add(i18n.tr("cards.opt_card_image", "Card image"), "copy", [this, titleId, title]() {
         closeCardOptions();
-        openArtSheet(titleId);
+        openTitlePicker(titleId, title, SteamGridDbManager::ArtworkKind::Cover);
     });
-
-    // Background picture
+    if (!card.isHomebrew) {
+        add(i18n.tr("cards.opt_title_image", "Title image"), "tag", [this, titleId, title]() {
+            closeCardOptions();
+            openTitlePicker(titleId, title, SteamGridDbManager::ArtworkKind::Logo);
+        });
+    }
     add(i18n.tr("cards.bg_image", "Background picture"), "sun", [this, titleId, title]() {
         closeCardOptions();
         openTitlePicker(titleId, title, SteamGridDbManager::ArtworkKind::Hero);
     });
-
-    // Achievements
-    if (!card.isHomebrew) {
+    if (card.isHomebrew) {
+        // HomeNX "Show as card image": the homebrew icon fills the card
+        // instead of a cover (toggle of the per-title icon choice).
+        const bool iconCard = std::find(m_core.config().cards.iconTitles.begin(), m_core.config().cards.iconTitles.end(),
+                                        titleId) != m_core.config().cards.iconTitles.end();
+        add(iconCard ? i18n.tr("cards.opt_show_cover", "Show the cover on the card")
+                     : i18n.tr("cards.opt_show_icon", "Show icon as card image"),
+            "copy", [this, titleId, iconCard]() {
+                closeCardOptions();
+                auto& v = m_core.config().cards.iconTitles;
+                if (iconCard)
+                    v.erase(std::remove(v.begin(), v.end(), titleId), v.end());
+                else
+                    v.push_back(titleId);
+                m_art.releaseAll();
+                saveConfig("cards icon image");
+            });
+    } else {
+        add(i18n.tr("cards.art_choices", "Images"), "copy", [this, titleId]() {
+            closeCardOptions();
+            openArtSheet(titleId);
+        });
         add(i18n.tr("cards.menu_achievements", "Achievements"), "sun", [this, titleId]() {
             closeCardOptions();
             openAchievementsSheet(titleId);
@@ -1008,6 +1072,7 @@ void CardsHomeActivity::openCardOptions() {
 
     m_cardOptSel = 0;
     m_cardOptIn = 0.f;
+    m_popupBackdropValid = false;
     m_cardOptOpen = true;
     m_audio.playSfx(Sfx::ModalShow);
 }
@@ -1073,15 +1138,8 @@ void CardsHomeActivity::drawCardOptions(nxui::Renderer& ren) {
     m_cardOptIn = std::min(1.f, m_cardOptIn + 1.f / 10.f);
     const float a = 1.f - (1.f - m_cardOptIn) * (1.f - m_cardOptIn);
 
-    ren.drawRect({0.f, 0.f, 1280.f, 720.f}, {0.f, 0.f, 0.f, 0.55f * a});
-
     const nxui::Rect card = kOptCard;
-    ren.drawRoundedRect({card.x - 4.f, card.y + 12.f, card.width + 8.f, card.height + 6.f},
-                        {0.f, 0.f, 0.f, 0.35f * a}, 36.f);
-    ren.drawRoundedRect(card, {0.09f, 0.11f, 0.15f, 0.94f * a}, 32.f);
-    ren.drawRoundedRectOutline(card, {1.f, 1.f, 1.f, 0.15f * a}, 32.f, 1.5f);
-    ren.drawGradientRect({card.x + 2.f, card.y + 2.f, card.width - 4.f, 90.f},
-                         {1.f, 1.f, 1.f, 0.05f * a}, {1.f, 1.f, 1.f, 0.f});
+    drawGlassCard(ren, card, 32.f, a);
 
     const float dy = 0.f;
     const std::uint64_t id = m_cardOptTitleId;
@@ -1137,9 +1195,13 @@ void CardsHomeActivity::drawCardOptions(nxui::Renderer& ren) {
     }
     m_chrome.textMid(ren, sf, about, tx, card.y + 96.f, CardsChrome::kWhite.withAlpha(0.72f * a));
 
-    const std::string back = i18n.tr("cards.back", "B Voltar");
-    m_chrome.textMid(ren, sf, back, card.right() - sf.measure(back).x - 30.f, card.bottom() - 24.f,
-                     CardsChrome::kWhite.withAlpha(0.7f * a));
+    {
+        const std::vector<ui::glyph::ActionHint> hints = {
+            {ui::glyph::button(nxui::Button::A), i18n.tr("hint.select", "Select")},
+            {ui::glyph::button(nxui::Button::B), i18n.tr("hint.back", "Back")},
+        };
+        ui::glyph::drawHintBar(ren, m_fontIcons, sf, hints, card.right() - 24.f, card.bottom() - 12.f, a);
+    }
 
     for (std::size_t i = 0; i < m_cardOptItems.size(); ++i) {
         const auto& item = m_cardOptItems[i];
@@ -1353,7 +1415,7 @@ void CardsHomeActivity::requestText(const std::string& title, const std::string&
 }
 
 void CardsHomeActivity::renameSelected() {
-    if (m_selected < 0 || m_selected >= m_catalog.count() || m_catalog.at(m_selected).system)
+    if (m_selected < 0 || m_selected >= m_catalog.count())
         return;
     auto& i18n = nxui::I18n::instance();
     const std::uint64_t titleId = m_catalog.at(m_selected).app.titleId;
@@ -1376,16 +1438,60 @@ void CardsHomeActivity::renameSelected() {
 void CardsHomeActivity::openUsersSheet() {
     m_sheet.close();
 #ifdef SWITCHU_MENU
-    if (!m_userSelect)
-        return;
-    auto& i18n = nxui::I18n::instance();
+    // HomeNX's account picker (the one Classic uses): a row of avatar tiles,
+    // a name bubble, the details panel and the "+" tile.
+    if (!m_profiles) {
+        m_profiles = std::make_shared<ProfileCarouselScreen>();
+        m_profiles->setFont(&m_font);
+        m_profiles->setSmallFont(&m_fontSmall);
+        m_profiles->setTheme(&m_overlayTheme);
+        m_profiles->onNavigateSfx([this]() { m_audio.playSfx(Sfx::Navigate); });
+        m_profiles->onLockSfx([this]() { m_audio.playSfx(Sfx::ConfirmPositive); });
+        m_profiles->onCloseSfx([this]() { m_audio.playSfx(Sfx::ModalHide); });
+        m_profiles->onLockProfile([](std::optional<AccountUid>) {});
+        m_profiles->onOpenProfile([this](AccountUid uid) {
+            m_profiles->hide();
+            m_core.launcher().launchUserPage(uid);
+        });
+        m_profiles->onAddUser([this]() {
+            m_profiles->hide();
+            m_core.launcher().launchUserCreator();
+        });
+        m_profiles->onClosed([this]() { m_overlayLatch = true; });
+    }
+    std::vector<HomeProfile> list;
+    AccountUid uids[8] = {};
+    s32 count = 0;
+    if (R_SUCCEEDED(accountListAllUsers(uids, 8, &count))) {
+        for (int i = 0; i < count; ++i) {
+            AccountProfile profile{};
+            if (R_FAILED(accountGetProfile(&profile, uids[i]))) continue;
+            AccountProfileBase base{};
+            AccountUserData userData{};
+            if (R_SUCCEEDED(accountProfileGet(&profile, &userData, &base))) {
+                HomeProfile p;
+                p.uid = uids[i];
+                p.nickname = base.nickname;
+                u32 imgSize = 0;
+                if (R_SUCCEEDED(accountProfileGetImageSize(&profile, &imgSize)) && imgSize > 0) {
+                    std::vector<std::uint8_t> buf(imgSize);
+                    u32 real = 0;
+                    if (R_SUCCEEDED(accountProfileLoadImage(&profile, buf.data(), imgSize, &real)) && real > 0) {
+                        auto tex = std::make_shared<nxui::Texture>();
+                        if (tex->loadFromMemory(app().gpu(), app().renderer(), buf.data(), real))
+                            p.avatar = std::move(tex);
+                    }
+                }
+                list.push_back(std::move(p));
+            }
+            accountProfileClose(&profile);
+        }
+    }
+    const bool canAdd = list.size() < 8;
+    m_profiles->setProfiles(std::move(list), canAdd);
     m_audio.playSfx(Sfx::ModalShow);
-    m_userSelect->loadUsers(app().gpu(), app().renderer());
-    m_userSelect->showUserSwitcher(
-        [this](AccountUid picked) { m_core.launcher().launchUserPage(picked); },
-        [this]() { m_core.launcher().launchUserCreator(); },
-        i18n.tr("userselect.add_user", "Add user"));
-    focusManager().setFocus(m_userSelect.get());
+    m_profiles->show();
+    focusManager().setFocus(m_profiles.get());
 #endif
 }
 
@@ -1667,6 +1773,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
             r.label = i18n.tr(pageKey(page), pageFallback(page));
             r.detail = i18n.tr("cards.set_page_hint", "A: show or hide   Left/Right: order");
             r.value = [this, page]() { return onOff(!m_core.config().cards.pageHidden(page)); };
+            r.toggle = [this, page]() { return !m_core.config().cards.pageHidden(page); };
             r.onA = [this, page, reopen]() {
                 if (!pages::togglePage(m_core.config().cards, page)) {
                     showToast(nxui::I18n::instance().tr("cards.page_last", "One page always shows"));
@@ -1710,6 +1817,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         Row ask;
         ask.label = i18n.tr("cards.ask_user", "Ask who's playing");
         ask.value = [this]() { return onOff(m_core.config().cardsAskUser); };
+        ask.toggle = [this]() { return m_core.config().cardsAskUser; };
         ask.onChange = [this](int) {
             m_core.config().cardsAskUser = !m_core.config().cardsAskUser;
             saveConfig("cards ask user");
@@ -1837,6 +1945,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         Row bgm;
         bgm.label = i18n.tr("cards.set_bg_motion", "Background drift");
         bgm.value = [this]() { return onOff(m_core.config().cards.bgMotion); };
+        bgm.toggle = [this]() { return m_core.config().cards.bgMotion; };
         bgm.detail = i18n.tr("cards.set_bg_motion_desc", "The background art slowly zooms and pans");
         bgm.onChange = [this](int) {
             auto& c = m_core.config();
@@ -1848,6 +1957,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         Row mot;
         mot.label = i18n.tr("cards.set_motion", "Motion");
         mot.value = [this]() { return onOff(m_core.config().cards.motion); };
+        mot.toggle = [this]() { return m_core.config().cards.motion; };
         mot.detail = i18n.tr("cards.set_motion_desc", "Smooth sliding animations");
         mot.onChange = [this](int) {
             auto& c = m_core.config();
@@ -1872,6 +1982,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         Row clock;
         clock.label = i18n.tr("cards.set_clock24", "24-hour clock");
         clock.value = [this]() { return onOff(!m_core.config().clockUse12Hour); };
+        clock.toggle = [this]() { return !m_core.config().clockUse12Hour; };
         clock.onChange = [this](int) {
             auto& c = m_core.config();
             c.clockUse12Hour = !c.clockUse12Hour;
@@ -1883,6 +1994,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         Row freeRow;
         freeRow.label = i18n.tr("cards.set_show_free", "Free space in the bar");
         freeRow.value = [this]() { return onOff(m_core.config().cards.showFree); };
+        freeRow.toggle = [this]() { return m_core.config().cards.showFree; };
         freeRow.onChange = [this](int) {
             auto& c = m_core.config().cards;
             c.showFree = !c.showFree;
@@ -1893,6 +2005,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         Row tempRow;
         tempRow.label = i18n.tr("cards.set_show_temp", "Temperature in the bar");
         tempRow.value = [this]() { return onOff(m_core.config().cards.showTemp); };
+        tempRow.toggle = [this]() { return m_core.config().cards.showTemp; };
         tempRow.onChange = [this](int) {
             auto& c = m_core.config().cards;
             c.showTemp = !c.showTemp;
@@ -1907,6 +2020,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         Row music;
         music.label = i18n.tr("cards.set_music", "Music");
         music.value = [this]() { return onOff(m_core.config().musicEnabled); };
+        music.toggle = [this]() { return m_core.config().musicEnabled; };
         music.onChange = [this](int) {
             auto& c = m_core.config();
             c.musicEnabled = !c.musicEnabled;
@@ -1940,6 +2054,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         Row shuffle;
         shuffle.label = i18n.tr("cards.set_shuffle", "Shuffle");
         shuffle.value = [this]() { return onOff(m_core.config().cards.shuffle); };
+        shuffle.toggle = [this]() { return m_core.config().cards.shuffle; };
         shuffle.onChange = [this](int) {
             auto& c = m_core.config().cards;
             c.shuffle = !c.shuffle;
@@ -1947,10 +2062,17 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
             saveConfig("cards shuffle");
         };
         s.rows.push_back(std::move(shuffle));
+        Row repeat; // HomeNX "Repeat song"
+        repeat.label = i18n.tr("cards.set_repeat", "Repeat song");
+        repeat.detail = i18n.tr("cards.set_repeat_desc", "Play the same song again");
+        repeat.toggle = [this]() { return m_audio.isRepeat(); };
+        repeat.onChange = [this](int) { m_audio.setRepeat(!m_audio.isRepeat()); };
+        s.rows.push_back(std::move(repeat));
         Row sounds;
         sounds.label = i18n.tr("cards.set_sounds", "Sounds");
         sounds.detail = i18n.tr("cards.set_sounds_desc", "Interface sound effects");
         sounds.value = [this]() { return onOff(m_core.config().cards.sounds); };
+        sounds.toggle = [this]() { return m_core.config().cards.sounds; };
         sounds.onChange = [this](int) {
             auto& c = m_core.config();
             c.cards.sounds = !c.cards.sounds;
@@ -2004,6 +2126,67 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         lang.value = []() { return nxui::I18n::instance().activeLanguageTag(); };
         lang.enabled = false;
         s.rows.push_back(std::move(lang));
+#ifdef SWITCHU_MENU
+        // HomeNX: clock, sleep timers and auto-brightness live in Console too.
+        Row autoTime;
+        autoTime.label = i18n.tr("cards.set_auto_time", "Set the time automatically");
+        autoTime.detail = i18n.tr("cards.set_auto_time_desc", "From the internet");
+        autoTime.toggle = []() {
+            bool on = false;
+            return R_SUCCEEDED(setsysIsUserSystemClockAutomaticCorrectionEnabled(&on)) && on;
+        };
+        autoTime.onChange = [this](int) {
+            bool on = false;
+            setsysIsUserSystemClockAutomaticCorrectionEnabled(&on);
+            if (R_FAILED(switchu::menu::smi_cmd::setInternetTimeSync(!on)))
+                showToast(nxui::I18n::instance().tr("settings.system.time_change_failed",
+                                                    "The date and time setting could not be changed."));
+        };
+        s.rows.push_back(std::move(autoTime));
+        for (const bool docked : {false, true}) {
+            Row r;
+            r.label = docked ? i18n.tr("cards.set_sleep_tv", "Sleep on TV")
+                             : i18n.tr("cards.set_sleep_handheld", "Sleep in handheld mode");
+            r.detail = i18n.tr("cards.set_sleep_desc", "After this long without a press");
+            r.value = [docked]() {
+                auto& t = nxui::I18n::instance();
+                static const char* kHand[][2] = {{"settings.sleep.1min", "1 min"}, {"settings.sleep.3min", "3 min"},
+                                                 {"settings.sleep.5min", "5 min"}, {"settings.sleep.10min", "10 min"},
+                                                 {"settings.sleep.30min", "30 min"}, {"settings.sleep.never", "Never"}};
+                static const char* kDock[][2] = {{"settings.sleep.1h", "1 hour"}, {"settings.sleep.2h", "2 hours"},
+                                                 {"settings.sleep.3h", "3 hours"}, {"settings.sleep.6h", "6 hours"},
+                                                 {"settings.sleep.12h", "12 hours"}, {"settings.sleep.never", "Never"}};
+                SetSysSleepSettings st{};
+                if (R_FAILED(setsysGetSleepSettings(&st))) return std::string("-");
+                const int v = std::clamp(static_cast<int>(docked ? st.console_sleep_plan : st.handheld_sleep_plan), 0, 5);
+                const auto& e = docked ? kDock[v] : kHand[v];
+                return t.tr(e[0], e[1]);
+            };
+            r.onChange = [docked](int d) {
+                SetSysSleepSettings st{};
+                if (R_FAILED(setsysGetSleepSettings(&st))) return;
+                auto& plan = docked ? st.console_sleep_plan : st.handheld_sleep_plan;
+                plan = static_cast<decltype(st.console_sleep_plan)>((static_cast<int>(plan) + d + 6) % 6);
+                setsysSetSleepSettings(&st);
+            };
+            s.rows.push_back(std::move(r));
+        }
+        Row bright;
+        bright.label = i18n.tr("cards.set_auto_brightness", "Automatic brightness");
+        bright.detail = i18n.tr("cards.set_auto_brightness_desc", "In handheld mode it follows the room light");
+        bright.toggle = []() {
+            bool on = false;
+            return R_SUCCEEDED(lblIsAutoBrightnessControlEnabled(&on)) && on;
+        };
+        bright.onChange = [](int) {
+            bool on = false;
+            lblIsAutoBrightnessControlEnabled(&on);
+            if (on) lblDisableAutoBrightnessControl();
+            else lblEnableAutoBrightnessControl();
+            lblSaveCurrentSetting();
+        };
+        s.rows.push_back(std::move(bright));
+#endif
         all["console"] = std::move(s);
     }
     { // About, with the section order (C-UI-14).
@@ -2068,6 +2251,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         perf.label = i18n.tr("cards.set_perf_log", "Performance log");
         perf.detail = i18n.tr("cards.set_perf_log_desc", "Start-up times and slow frames in config/OmniLaunch/perf.log");
         perf.value = [this]() { return onOff(m_core.config().cards.perfLog); };
+        perf.toggle = [this]() { return m_core.config().cards.perfLog; };
         perf.onChange = [this](int) {
             auto& c = m_core.config().cards;
             c.perfLog = !c.perfLog;
@@ -2083,6 +2267,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         enabled.label = i18n.tr("cards.set_lock", "Lock screen");
         enabled.detail = i18n.tr("cards.set_lock_desc", "After sleep. A password always locks.");
         enabled.value = [this]() { return onOff(m_core.config().cards.lockScreen); };
+        enabled.toggle = [this]() { return m_core.config().cards.lockScreen; };
         enabled.onChange = [this](int) {
             auto& c = m_core.config().cards;
             c.lockScreen = !c.lockScreen;
@@ -2092,6 +2277,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         Row lockMusic;
         lockMusic.label = i18n.tr("cards.set_lock_music", "Music on the lock screen");
         lockMusic.value = [this]() { return onOff(m_core.config().cards.lockMusic); };
+        lockMusic.toggle = [this]() { return m_core.config().cards.lockMusic; };
         lockMusic.onChange = [this](int) {
             auto& c = m_core.config().cards;
             c.lockMusic = !c.lockMusic;

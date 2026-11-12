@@ -26,6 +26,7 @@ public:
         std::function<float()> progress;      // 0..1 bar under the label; empty = none
         std::string detail;                   // second line, dim
         bool enabled = true;
+        std::function<bool()> toggle;         // set: drawn as an on/off switch (HomeNX), not a value
     };
     struct Section {
         std::string title;

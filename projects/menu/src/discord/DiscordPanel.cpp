@@ -1,4 +1,5 @@
 #include "discord/DiscordPanel.hpp"
+#include "core/ButtonGlyph.hpp"
 #include "discord/DiscordApi.hpp"
 #include "discord/DiscordPresentation.hpp"
 #include "home/HomeCore.hpp"
@@ -111,12 +112,82 @@ inline std::string fit(nxui::Font* font, const std::string& text, float maxW, fl
     if (font->measure(text).x * scale <= maxW) return text;
     std::string s = text;
     while (!s.empty() && font->measure(s + "...").x * scale > maxW) {
-        s.pop_back();
+        // Cut whole UTF-8 letters, never half of one.
+        std::size_t cut = s.size() - 1;
+        while (cut > 0 && (static_cast<unsigned char>(s[cut]) & 0xC0) == 0x80) --cut;
+        s.erase(cut);
     }
-    return s.empty() ? text : s + "...";
+    return s.empty() ? std::string("...") : s + "...";
+}
+
+// One UTF-8 codepoint from [p, end); malformed bytes come back as U+FFFD.
+uint32_t nextCodepoint(const char*& p, const char* end) {
+    const auto b0 = static_cast<unsigned char>(*p++);
+    if (b0 < 0x80) return b0;
+    int extra = b0 >= 0xF0 ? 3 : b0 >= 0xE0 ? 2 : b0 >= 0xC0 ? 1 : -1;
+    if (extra < 0) return 0xFFFD;
+    uint32_t cp = b0 & (0x3F >> extra);
+    for (int i = 0; i < extra; ++i) {
+        if (p >= end || (static_cast<unsigned char>(*p) & 0xC0) != 0x80) return 0xFFFD;
+        cp = (cp << 6) | (static_cast<unsigned char>(*p++) & 0x3F);
+    }
+    return cp;
+}
+
+void appendCodepoint(std::string& out, uint32_t cp) {
+    if (cp < 0x80) {
+        out += static_cast<char>(cp);
+    } else if (cp < 0x800) {
+        out += static_cast<char>(0xC0 | (cp >> 6));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    } else if (cp < 0x10000) {
+        out += static_cast<char>(0xE0 | (cp >> 12));
+        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    } else {
+        out += static_cast<char>(0xF0 | (cp >> 18));
+        out += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    }
+}
+
+// Invisible joiners, variation selectors and skin-tone modifiers: emoji glue
+// with nothing to draw once the emoji itself is gone.
+bool invisibleMark(uint32_t cp) {
+    return (cp >= 0x200B && cp <= 0x200F) || (cp >= 0x2060 && cp <= 0x2064) ||
+           (cp >= 0xFE00 && cp <= 0xFE0F) || (cp >= 0x1F3FB && cp <= 0x1F3FF) ||
+           (cp >= 0xE0020 && cp <= 0xE007F) || cp == 0x20E3 || cp == 0xFEFF;
 }
 
 } // namespace
+
+// Server, channel and user names are full of emoji and decorative brackets the
+// menu font does not have; SDL_ttf would draw each as an empty box. Leave out
+// every letter the font cannot draw, and the spaces that leaves behind.
+std::string DiscordPanel::clean(const std::string& text) const {
+    if (!m_font || text.empty()) return text;
+    std::string out;
+    out.reserve(text.size());
+    const char* p = text.data();
+    const char* end = p + text.size();
+    while (p < end) {
+        const uint32_t cp = nextCodepoint(p, end);
+        if (cp == '\n') { out += '\n'; continue; }
+        if (cp < 0x20 || cp == 0xFFFD || invisibleMark(cp)) continue;
+        bool ok = cp < 0x80;
+        if (!ok) {
+            auto it = m_glyphs.find(cp);
+            if (it == m_glyphs.end()) it = m_glyphs.emplace(cp, m_font->hasGlyph(cp)).first;
+            ok = it->second;
+        }
+        if (!ok) continue;
+        if (cp == ' ' && (out.empty() || out.back() == ' ' || out.back() == '\n')) continue;
+        appendCodepoint(out, cp);
+    }
+    while (!out.empty() && (out.back() == ' ' || out.back() == '\n')) out.pop_back();
+    return out;
+}
 
 const nxui::Texture* DiscordPanel::requestImage(const std::string& url, int maxSide) const {
     if (url.empty() || !m_core) return nullptr;
@@ -171,6 +242,17 @@ void DiscordPanel::pumpImages(nxui::GpuDevice& gpu, nxui::Renderer& ren) const {
     }
 }
 
+// OmniLaunch's button capsule (glyph + translated label), right-aligned at rightX.
+void DiscordPanel::drawHint(nxui::Renderer& ren, nxui::Button btn, const std::string& label,
+                            float rightX, float y, float a, float* outW) {
+    if (!m_smallFont) return;
+    nxui::Font& icons = m_iconFont && m_iconFont->valid() ? *m_iconFont : *m_smallFont;
+    const ui::glyph::ActionHint h{ui::glyph::button(btn), label};
+    const float w = ui::glyph::capsuleWidth(icons, *m_smallFont, h.icon, h.label);
+    ui::glyph::drawCapsule(ren, icons, *m_smallFont, h, {rightX - w, y, w, 26.f}, a);
+    if (outW) *outW = w;
+}
+
 DiscordPanel::DiscordPanel() {
     setRect({0.f, 0.f, 1280.f, 720.f});
     setVisible(false);
@@ -212,7 +294,7 @@ void DiscordPanel::openChat(Snowflake channelId, Snowflake guildId, const std::s
     m_view = View::Chat;
     m_chatId = channelId;
     m_chatGuildId = guildId;
-    m_chatName = name;
+    m_chatName = clean(name);
     m_chatScroll = 0.f;
     if (m_service && m_core) {
         m_service->fetchMessagesAsync(*m_core, channelId);
@@ -387,7 +469,7 @@ void DiscordPanel::rebuildRows() {
         for (const auto& a : m_service->accounts().accounts()) {
             Row r;
             r.kind = Row::Account;
-            r.text = a.name();
+            r.text = clean(a.name());
             r.detail = "@" + a.username;
             r.avatarUrl = a.avatarUrl(64);
             r.status = "online";
@@ -398,14 +480,14 @@ void DiscordPanel::rebuildRows() {
 
         Row addQr;
         addQr.kind = Row::Button;
-        addQr.text = "+ Add another account (QR Code)";
+        addQr.text = T("discord_ui.add_qr", "Add another account (QR Code)");
         addQr.detail = T("discord_ui.qr_detail", "Fast login via Discord mobile app");
         addQr.action = 1;
         m_rows.push_back(std::move(addQr));
 
         Row addTok;
         addTok.kind = Row::Button;
-        addTok.text = "+ Add account via Token";
+        addTok.text = T("discord_ui.add_token", "Add account via Token");
         addTok.detail = T("discord_ui.token_detail", "Enter an account token manually via keyboard");
         addTok.action = 2;
         m_rows.push_back(std::move(addTok));
@@ -470,7 +552,8 @@ void DiscordPanel::rebuildRows() {
             for (const auto& d : m_service->dms()) {
                 Row r;
                 r.kind = Row::Dm;
-                r.text = d.name.empty() ? T("discord_ui.dm", "Direct Message") : d.name;
+                r.text = clean(d.name);
+                if (r.text.empty()) r.text = T("discord_ui.dm", "Direct Message");
                 r.avatarUrl = d.avatarUrl;
                 if (!d.recipientIds.empty()) {
                     r.status = m_service->presenceStatus(d.recipientIds[0]);
@@ -480,11 +563,11 @@ void DiscordPanel::rebuildRows() {
                 r.mentions = d.mentions;
                 r.unread = (d.unreadCount > 0 || d.mentions > 0);
                 if (d.recipientIds.size() > 1) {
-                    r.detail = std::to_string(d.recipientIds.size() + 1) + " membros";
+                    r.detail = std::to_string(d.recipientIds.size() + 1) + " " + T("discord_ui.members", "members");
                 } else if (r.status != "offline" && !r.status.empty()) {
-                    r.detail = (r.status == "online") ? "Online"
-                             : (r.status == "idle") ? "Ausente"
-                             : (r.status == "dnd") ? "Ocupado" : r.status;
+                    r.detail = (r.status == "online") ? T("discord_ui.status_online", "Online")
+                             : (r.status == "idle") ? T("discord_ui.status_idle", "Idle")
+                             : (r.status == "dnd") ? T("discord_ui.status_dnd", "Do Not Disturb") : r.status;
                 } else {
                     r.detail.clear();
                 }
@@ -513,13 +596,14 @@ void DiscordPanel::rebuildRows() {
                         if (c.type == ChannelType::GuildCategory) {
                             Row cat;
                             cat.kind = Row::Category;
-                            cat.text = c.name;
+                            cat.text = clean(c.name);
                             for (char& ch : cat.text) ch = (char)std::toupper((unsigned char)ch);
+                            if (cat.text.empty()) continue;
                             m_rows.push_back(std::move(cat));
                         } else if (c.type == ChannelType::GuildText || c.type == ChannelType::GuildAnnouncement) {
                             Row r;
                             r.kind = Row::Channel;
-                            r.text = "# " + c.name;
+                            r.text = clean(c.name);
                             r.id = c.id;
                             m_rows.push_back(std::move(r));
                         }
@@ -620,12 +704,19 @@ void DiscordPanel::onRender(nxui::Renderer& ren) {
             const auto& guilds = m_service->guilds();
             const std::size_t gIdx = static_cast<std::size_t>(m_railSel - 1);
             if (gIdx < guilds.size()) {
-                titleText = guilds[gIdx].name;
+                titleText = clean(guilds[gIdx].name);
             }
         }
     }
 
-    drawLabel(ren, m_font, listX + 20.f, p.y + 16.f, titleText, textNormal(a));
+    // Right side of the title bar: the button that leaves this view.
+    float hintW = 0.f;
+    const bool sub = m_view == View::Accounts ||
+                     (m_service && m_service->state() == DiscordService::State::QrLogin);
+    drawHint(ren, nxui::Button::B, sub ? T("hint.back", "Back") : T("hint.close", "Close"), p.right() - 12.f,
+             p.y + (kTopH - 26.f) * 0.5f, a, &hintW);
+    drawLabel(ren, m_font, listX + 18.f, p.y + 16.f, fit(m_font, titleText, listW - 40.f - hintW, 0.82f),
+              textNormal(a), 0.82f);
     ren.drawRect({listX, p.y + kTopH - 1.f, listW, 1.f}, {1.f, 1.f, 1.f, 0.08f * a});
 
     drawRows(ren, listArea, a);
@@ -771,13 +862,18 @@ void DiscordPanel::drawRows(nxui::Renderer& ren, const nxui::Rect& area, float a
         float h = 46.f;
         if (m_rows[i].kind == Row::Category) {
             h = 36.f;
+        } else if (m_rows[i].kind == Row::Channel) {
+            h = 40.f;
+        } else if (m_rows[i].kind == Row::Info) {
+            const auto lines = wrapLines(m_smallFont, m_rows[i].text, (area.width - 40.f) / 0.78f);
+            h = 16.f + 20.f * static_cast<float>(std::max<std::size_t>(1, lines.size()));
         } else if (m_rows[i].kind == Row::Dm || m_rows[i].kind == Row::Account) {
             h = 52.f;
         } else if (!m_rows[i].detail.empty()) {
             h = 58.f;
         }
         rowHeights[i] = h;
-        curTop += h + 6.f;
+        curTop += h + (m_rows[i].kind == Row::Channel ? 0.f : 6.f);
     }
     const float totalH = curTop;
     const float maxScroll = std::max(0.f, totalH - area.height + 10.f);
@@ -805,25 +901,46 @@ void DiscordPanel::drawRows(nxui::Renderer& ren, const nxui::Rect& area, float a
         const nxui::Rect rowRect{area.x + 8.f, y, area.width - 16.f, h};
         const bool focused = listFocused() && (m_sel == static_cast<int>(i));
 
-        if (r.kind == Row::Category) {
+        if (r.kind == Row::Category) { // small muted label, as Discord's category headers
             if (m_smallFont) {
-                drawLabel(ren, m_smallFont, rowRect.x + 10.f, y + 12.f, r.text, textMuted(a));
+                drawLabel(ren, m_smallFont, rowRect.x + 6.f, y + 14.f,
+                          fit(m_smallFont, r.text, rowRect.width - 12.f, 0.66f), textMuted(a), 0.66f);
             }
+            continue;
+        }
+
+        if (r.kind == Row::Channel) { // "#" glyph column + name, Discord style
+            if (focused) {
+                ren.drawRoundedRect({rowRect.x, y + 2.f, rowRect.width, h - 4.f}, bgSelected(a), 6.f);
+                ren.drawRoundedRectOutline({rowRect.x, y + 2.f, rowRect.width, h - 4.f}, {1.f, 1.f, 1.f, 0.18f * a}, 6.f, 1.f);
+            }
+            const float cy = y + h * 0.5f;
+            const nxui::Color ic = (focused || r.unread) ? textNormal(a) : textMuted(a);
+            drawLabel(ren, m_font, rowRect.x + 11.f, cy - 12.f, "#", ic, 0.78f);
+            const float tw = rowRect.width - 44.f - (r.mentions > 0 ? 36.f : 0.f);
+            drawLabel(ren, m_font, rowRect.x + 34.f, cy - 11.f, fit(m_font, r.text, tw, 0.7f), ic, 0.7f);
+            m_hits.push_back({static_cast<int>(i), rowRect});
             continue;
         }
 
         if (r.kind == Row::Info) {
             if (m_smallFont) {
-                drawLabel(ren, m_smallFont, rowRect.x + 12.f, y + 14.f, r.text, textMuted(a));
+                const auto lines = wrapLines(m_smallFont, r.text, (rowRect.width - 24.f) / 0.78f);
+                float ly = y + 8.f;
+                for (const auto& line : lines) {
+                    drawLabel(ren, m_smallFont, rowRect.x + 12.f, ly, line, textMuted(a), 0.78f);
+                    ly += 20.f;
+                }
             }
             continue;
         }
 
         if (r.kind == Row::Error) {
             ren.drawRoundedRect(rowRect, rgb(242, 63, 67, 0.15f * a), 8.f);
-            drawLabel(ren, m_font, rowRect.x + 12.f, y + 10.f, r.text, red(a));
+            drawLabel(ren, m_font, rowRect.x + 12.f, y + 8.f, fit(m_font, r.text, rowRect.width - 24.f, 0.76f), red(a), 0.76f);
             if (!r.detail.empty() && m_smallFont) {
-                drawLabel(ren, m_smallFont, rowRect.x + 12.f, y + 32.f, r.detail, textMuted(a));
+                drawLabel(ren, m_smallFont, rowRect.x + 12.f, y + 33.f,
+                          fit(m_smallFont, r.detail, rowRect.width - 24.f, 0.70f), textMuted(a), 0.70f);
             }
             continue;
         }
@@ -872,13 +989,17 @@ void DiscordPanel::drawRows(nxui::Renderer& ren, const nxui::Rect& area, float a
             ren.drawRoundedRectOutline(rowRect, {1.f, 1.f, 1.f, 0.18f * a}, 8.f, 1.f);
         }
 
+        const float bw = rowRect.width - 24.f;
         if (!r.detail.empty()) {
-            drawLabel(ren, m_font, rowRect.x + 12.f, y + 10.f, r.text, r.danger ? red(a) : textNormal(a));
+            drawLabel(ren, m_font, rowRect.x + 12.f, y + 8.f, fit(m_font, r.text, bw, 0.76f),
+                      r.danger ? red(a) : textNormal(a), 0.76f);
             if (m_smallFont) {
-                drawLabel(ren, m_smallFont, rowRect.x + 12.f, y + 34.f, r.detail, textMuted(a));
+                drawLabel(ren, m_smallFont, rowRect.x + 12.f, y + 33.f, fit(m_smallFont, r.detail, bw, 0.70f),
+                          textMuted(a), 0.70f);
             }
         } else {
-            drawLabel(ren, m_font, rowRect.x + 12.f, y + 12.f, r.text, r.danger ? red(a) : textNormal(a));
+            drawLabel(ren, m_font, rowRect.x + 12.f, y + 12.f, fit(m_font, r.text, bw, 0.76f),
+                      r.danger ? red(a) : textNormal(a), 0.76f);
         }
 
         m_hits.push_back({static_cast<int>(i), rowRect});
@@ -900,16 +1021,15 @@ void DiscordPanel::drawMe(nxui::Renderer& ren, const nxui::Rect& p, float a) {
     drawAvatar(ren, u.id != 0 ? u.avatarUrl(64) : "", name, ax, ay, av, a);
     drawStatus(ren, u.id != 0 ? "online" : "offline", ax + av - 4.f, ay + av - 4.f, 5.f, bgUser(a), a);
 
+    float chipW = 0.f;
+    drawHint(ren, nxui::Button::Y, T("discord_ui.switch", "Switch"), me.right() - 12.f,
+             me.y + (me.height - 26.f) * 0.5f, a, &chipW);
     const float tx = ax + av + 10.f;
-    drawLabel(ren, m_font, tx, me.y + 11.f, fit(m_font, name, me.width - tx - 85.f, 0.76f), textNormal(a), 0.76f);
+    const float tw = me.right() - 24.f - chipW - tx;
+    drawLabel(ren, m_font, tx, me.y + 11.f, fit(m_font, clean(name), tw, 0.76f), textNormal(a), 0.76f);
     if (m_smallFont) {
-        drawLabel(ren, m_smallFont, tx, me.y + 32.f, "Online", textMuted(a), 0.70f);
-    }
-    const nxui::Rect yBtn{me.right() - 80.f, me.y + 14.f, 70.f, 28.f};
-    ren.drawRoundedRect(yBtn, {1.f, 1.f, 1.f, 0.12f * a}, 14.f);
-    ren.drawRoundedRectOutline(yBtn, {1.f, 1.f, 1.f, 0.18f * a}, 14.f, 1.f);
-    if (m_smallFont) {
-        drawLabel(ren, m_smallFont, yBtn.x + 9.f, yBtn.y + 6.f, "Y Switch", textNormal(a), 0.66f);
+        drawLabel(ren, m_smallFont, tx, me.y + 34.f,
+                  fit(m_smallFont, T("discord_ui.status_online", "Online"), tw, 0.70f), textMuted(a), 0.70f);
     }
 }
 
@@ -956,21 +1076,23 @@ void DiscordPanel::drawQrView(nxui::Renderer& ren, const nxui::Rect& p, float a)
 }
 
 void DiscordPanel::drawChat(nxui::Renderer& ren, const nxui::Rect& p, float a) {
-    // Top bar
-    m_backHit = {p.x + 12.f, p.y + 12.f, 36.f, 36.f};
-    ren.drawRoundedRect(m_backHit, bgSelected(a), 18.f);
-    if (m_smallFont) {
-        drawLabel(ren, m_smallFont, m_backHit.x + 12.f, m_backHit.y + 8.f, "<", textNormal(a));
+    // Top bar: a back chevron, "#"/name, and the reply button capsule.
+    m_backHit = {p.x, p.y, 56.f, kTopH};
+    {
+        const float cx = p.x + 26.f, cy = p.y + kTopH * 0.5f;
+        ren.drawLine({cx + 4.f, cy - 8.f}, {cx - 4.f, cy}, textMuted(a), 2.5f);
+        ren.drawLine({cx - 4.f, cy}, {cx + 4.f, cy + 8.f}, textMuted(a), 2.5f);
     }
-    drawLabel(ren, m_font, p.x + 58.f, p.y + 16.f, m_chatName, textNormal(a));
-
-    const std::string replyHint = T("discord_ui.reply_hint", "X Responder");
-    if (m_smallFont) {
-        const float rw = m_smallFont->measure(replyHint).x;
-        const nxui::Rect replyBox{p.right() - rw - 28.f, p.y + 14.f, rw + 16.f, 30.f};
-        ren.drawRoundedRect(replyBox, bgSelected(a), 15.f);
-        drawLabel(ren, m_smallFont, replyBox.x + 8.f, replyBox.y + 6.f, replyHint, textMuted(a));
+    float replyW = 0.f;
+    drawHint(ren, nxui::Button::X, T("discord_ui.reply", "Reply"), p.right() - 12.f, p.y + (kTopH - 26.f) * 0.5f, a,
+             &replyW);
+    float tx = p.x + 46.f;
+    if (m_chatGuildId != 0) { // a server channel: "# name"
+        drawLabel(ren, m_font, tx + 2.f, p.y + 14.f, "#", textMuted(a), 0.86f);
+        tx += 24.f;
     }
+    drawLabel(ren, m_font, tx, p.y + 16.f, fit(m_font, m_chatName, p.right() - 24.f - replyW - tx, 0.80f),
+              textNormal(a), 0.80f);
     ren.drawRect({p.x, p.y + kTopH - 1.f, p.width, 1.f}, {1.f, 1.f, 1.f, 0.08f * a});
 
     // Message list area
@@ -982,22 +1104,37 @@ void DiscordPanel::drawChat(nxui::Renderer& ren, const nxui::Rect& p, float a) {
 
     if (msgs.empty()) {
         if (m_smallFont) {
-            drawLabel(ren, m_smallFont, p.x + 24.f, chatY + 24.f, T("discord_ui.no_messages", "Nenhuma mensagem ainda. Pressione A ou X para digitar!"), textMuted(a));
+            float ly = chatY + 24.f;
+            for (const auto& line : wrapLines(m_smallFont, T("discord_ui.no_messages", "No messages yet."),
+                                              (p.width - 48.f) / 0.8f)) {
+                drawLabel(ren, m_smallFont, p.x + 24.f, ly, line, textMuted(a), 0.8f);
+                ly += 22.f;
+            }
         }
     } else {
         struct MsgLayout {
             std::vector<std::string> lines;
             std::vector<std::string> images;
+            std::vector<std::pair<std::string, bool>> embedLines; // text, is title
+            std::string author;
             float height = 0.f;
         };
-        const float maxTextW = chatArea.width - 64.f;
+        const float maxTextW = chatArea.width - 70.f;
         std::vector<MsgLayout> layouts(msgs.size());
         float totalMsgH = 16.f;
         float curTop = 8.f;
         for (std::size_t i = 0; i < msgs.size(); ++i) {
             auto& lay = layouts[i];
             const auto& m = msgs[i];
-            lay.lines = wrapLines(m_smallFont, cleanText(messageText(m.content)), maxTextW);
+            lay.author = clean(m.author.displayName());
+            if (lay.author.empty()) lay.author = "?";
+            lay.lines = wrapLines(m_smallFont, clean(cleanText(messageText(m.content))), maxTextW);
+            for (const auto& emb : m.embeds) {
+                for (const auto& l : wrapLines(m_smallFont, clean(emb.title), maxTextW)) lay.embedLines.push_back({l, true});
+                auto desc = wrapLines(m_smallFont, clean(cleanText(emb.description)), maxTextW);
+                if (desc.size() > 4) { desc.resize(4); desc.back() = fit(m_smallFont, desc.back() + " ...", maxTextW); }
+                for (const auto& l : desc) lay.embedLines.push_back({l, false});
+            }
             for (const auto& img : m.images) {
                 lay.images.push_back(img.url);
             }
@@ -1007,12 +1144,10 @@ void DiscordPanel::drawChat(nxui::Renderer& ren, const nxui::Rect& p, float a) {
                 }
             }
             float h = 28.f;
-            h += static_cast<float>(std::max<std::size_t>(1, lay.lines.size())) * 20.f;
+            h += static_cast<float>(lay.lines.size()) * 20.f;
+            h += static_cast<float>(lay.embedLines.size()) * 20.f;
             h += static_cast<float>(lay.images.size()) * 156.f;
-            for (const auto& emb : m.embeds) {
-                if (!emb.title.empty()) h += 20.f;
-                if (!emb.description.empty()) h += 20.f;
-            }
+            h = std::max(h, 46.f);
             lay.height = h;
             totalMsgH += h + 8.f;
         }
@@ -1035,17 +1170,20 @@ void DiscordPanel::drawChat(nxui::Renderer& ren, const nxui::Rect& p, float a) {
                     ren.drawTextureRounded(avTex, avRect, 17.f, {1.f, 1.f, 1.f, a});
                 } else {
                     ren.drawCircle({avRect.x + 17.f, avRect.y + 17.f}, 17.f, blurple(a), 24);
-                    std::string init = m.author.displayName().substr(0, 1);
+                    std::string init = lay.author.substr(0, 1);
+                    if (!init.empty() && static_cast<unsigned char>(init[0]) >= 0x80) init = "?";
                     if (m_smallFont)
                         drawLabel(ren, m_smallFont, avRect.x + 12.f, avRect.y + 10.f, init, textNormal(a));
                 }
 
-                // Author name & time
-                drawLabel(ren, m_font, chatArea.x + 50.f, y + 2.f, m.author.displayName(), blurple(a));
-                if (m_smallFont && !m.timestamp.empty()) {
-                    float nw = m_font ? m_font->measure(m.author.displayName()).x : 80.f;
-                    std::string fts = formatDiscordTimestamp(m.timestamp);
-                    drawLabel(ren, m_smallFont, chatArea.x + 50.f + nw + 10.f, y + 6.f, fts, textMuted(a));
+                // Author name & time, kept inside the column.
+                const std::string fts = formatDiscordTimestamp(m.timestamp);
+                const float tsW = (m_smallFont && !fts.empty()) ? m_smallFont->measure(fts).x * 0.72f + 10.f : 0.f;
+                const std::string author = fit(m_font, lay.author, maxTextW - tsW, 0.78f);
+                drawLabel(ren, m_font, chatArea.x + 50.f, y + 2.f, author, blurple(a), 0.78f);
+                if (m_smallFont && !fts.empty()) {
+                    const float nw = m_font ? m_font->measure(author).x * 0.78f : 80.f;
+                    drawLabel(ren, m_smallFont, chatArea.x + 50.f + nw + 10.f, y + 6.f, fts, textMuted(a), 0.72f);
                 }
 
                 // Content lines
@@ -1057,16 +1195,14 @@ void DiscordPanel::drawChat(nxui::Renderer& ren, const nxui::Rect& p, float a) {
                     ly += 20.f;
                 }
 
-                // Render embeds if present
-                for (const auto& emb : m.embeds) {
-                    if (!emb.title.empty()) {
-                        drawLabel(ren, m_smallFont, chatArea.x + 50.f, ly, emb.title, blurple(a));
-                        ly += 20.f;
-                    }
-                    if (!emb.description.empty()) {
-                        drawLabel(ren, m_smallFont, chatArea.x + 50.f, ly, fit(m_smallFont, emb.description, maxTextW), textMuted(a));
-                        ly += 20.f;
-                    }
+                // Embeds: title in blurple, description muted, both wrapped.
+                if (!lay.embedLines.empty()) {
+                    const float eh = lay.embedLines.size() * 20.f;
+                    ren.drawRoundedRect({chatArea.x + 46.f, ly, 3.f, eh}, blurple(a), 1.5f);
+                }
+                for (const auto& [line, title] : lay.embedLines) {
+                    drawLabel(ren, m_smallFont, chatArea.x + 56.f, ly, line, title ? blurple(a) : textMuted(a));
+                    ly += 20.f;
                 }
 
                 // Attachment images
@@ -1097,11 +1233,12 @@ void DiscordPanel::drawChat(nxui::Renderer& ren, const nxui::Rect& p, float a) {
     ren.drawRoundedRect(m_replyHit, bgTertiary(a), 8.f);
     ren.drawRoundedRectOutline(m_replyHit, {1.f, 1.f, 1.f, 0.12f * a}, 8.f, 1.f);
     if (m_smallFont) {
+        float capW = 0.f;
+        drawHint(ren, nxui::Button::A, T("discord_ui.write", "Write"), m_replyHit.right() - 9.f, m_replyHit.y + 9.f, a,
+                 &capW);
+        const std::string ph = T("discord_ui.message_to", "Message") + (m_chatGuildId != 0 ? " #" : " @") + m_chatName;
         drawLabel(ren, m_smallFont, m_replyHit.x + 14.f, m_replyHit.y + 12.f,
-                  T("discord_ui.type_hint", "Pressione (A) ou (X) para digitar uma mensagem..."), textMuted(a));
-        const nxui::Rect xKey{m_replyHit.right() - 32.f, m_replyHit.y + 10.f, 24.f, 24.f};
-        ren.drawRoundedRect(xKey, bgSelected(a), 12.f);
-        drawLabel(ren, m_smallFont, xKey.x + 7.f, xKey.y + 4.f, "X", textNormal(a));
+                  fit(m_smallFont, ph, m_replyHit.width - 36.f - capW, 0.78f), textMuted(a), 0.78f);
     }
 }
 

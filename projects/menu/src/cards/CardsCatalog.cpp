@@ -81,7 +81,7 @@ void CardsCatalog::setPage(int page, const AppConfig& config) {
             CardEntry c;
             c.system = true;
             c.app.titleId = pg::systemId(t.id);
-            c.app.title = i18n.tr(t.key, t.fallback);
+            c.app.title = config.customTitle(c.app.titleId, i18n.tr(t.key, t.fallback));
             c.app.kind = GridEntryKind::Application;
             c.app.userRequired = false;
             c.iconFile = m_assetsRoot + "/icons/" + t.icon;
@@ -100,6 +100,7 @@ void CardsCatalog::setPage(int page, const AppConfig& config) {
             c.app.title = hb.name.empty() ? std::filesystem::path(c.homebrewPath).stem().string() : std::move(hb.name);
             c.app.englishTitle = c.author;
             c.app.titleId = pg::homebrewId(c.homebrewPath);
+            c.app.title = config.customTitle(c.app.titleId, c.app.title);
             c.app.kind = GridEntryKind::Application;
             c.app.userRequired = false;
             adopt(c);
@@ -185,12 +186,23 @@ std::string lowered(const std::string& s) {
 
 void CardsCatalog::sort(const AppConfig& config) {
     namespace pg = cards::pages;
-    if (m_page == pg::Prefs::kNintendo)
-        return; // fixed tile order
+    // Applets and homebrew moved by hand (+ > Move) keep that place: their
+    // synthetic ids (0xFF / 0xFE) share the "my order" list with games.
+    auto byHand = [this, &config]() {
+        const auto& own = config.cards.gamesOrder;
+        std::stable_sort(m_entries.begin(), m_entries.end(), [&own](const CardEntry& a, const CardEntry& b) {
+            return pg::rank(own, a.app.titleId) < pg::rank(own, b.app.titleId);
+        });
+    };
+    if (m_page == pg::Prefs::kNintendo) {
+        byHand(); // fixed tile order unless moved
+        return;
+    }
     if (m_page == pg::Prefs::kHomebrew) {
         std::stable_sort(m_entries.begin(), m_entries.end(), [](const CardEntry& a, const CardEntry& b) {
             return lowered(a.app.title) < lowered(b.app.title);
         });
+        byHand();
         return;
     }
     // Ties keep last-opened order, so "most played" with no figures yet and

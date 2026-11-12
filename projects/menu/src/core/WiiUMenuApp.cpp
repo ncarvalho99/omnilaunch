@@ -8018,6 +8018,9 @@ void WiiUMenuApp::setupLockScreen() {
     });
     m_lockScreen.onProgress([]() {});
     m_lockScreen.onUnlocked([this, &i18n]() {
+        // Covers the 0.26 s release fade plus a short window after it.
+        m_unlockInputGuard = 0.75f;
+        m_switchWaitRelease = true;
         if (m_config.musicEnabled && m_audioStarted)
             m_audio.play();
         m_audio.playSfx(Sfx::ModalHide);
@@ -8029,7 +8032,10 @@ void WiiUMenuApp::onUpdate(float dt) {
     // HomeNX D2: the switch decision is taken at the end of this update
     // (updateFrontendSwitch), after daemon notifications and the lock screen.
     // Here only the wait-for-release and fade-in of an incoming switch run.
-    if (m_switchWaitRelease && !home::anyInputHeld(app().input()))
+    if (m_unlockInputGuard > 0.f && !m_lockScreen.isLocked())
+        m_unlockInputGuard = std::max(0.f, m_unlockInputGuard - dt);
+    if (m_switchWaitRelease && !m_lockScreen.isLocked() && m_unlockInputGuard <= 0.f &&
+        !home::anyInputHeld(app().input()))
         m_switchWaitRelease = false;
     if (m_switchFadeIn > 0.f)
         m_switchFadeIn = std::max(0.f, m_switchFadeIn - dt / 0.25f);
