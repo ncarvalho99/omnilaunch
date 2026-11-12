@@ -1,4 +1,5 @@
 #include "discord/DiscordApi.hpp"
+#include "discord/DiscordPresentation.hpp"
 
 #include "core/DebugLog.hpp"
 #include "net/NetService.hpp"
@@ -155,11 +156,36 @@ bool parseMessagesJson(const std::string& json, std::vector<Message>& outMessage
         if (item.contains("author") && item["author"].is_object()) {
             parseUserJson(item["author"].dump(), m.author);
         }
+        auto addImage = [&](const nlohmann::json& image) {
+            if (!image.is_object() || m.images.size() >= 4) return;
+            auto url = str(image, "proxy_url");
+            if (!isDiscordImageUrl(url)) url = str(image, "url");
+            if (!isDiscordImageUrl(url)) return;
+            if (std::any_of(m.images.begin(), m.images.end(), [&](const MessageImage& i) { return i.url == url; })) return;
+            m.images.push_back({url, std::clamp(num<int>(image, "width", 0), 0, 16384),
+                                   std::clamp(num<int>(image, "height", 0), 0, 16384)});
+        };
         if (item.contains("attachments") && item["attachments"].is_array()) {
-            for (const auto& a : item["attachments"]) {
-                if (a.is_object() && a.contains("url")) {
-                    m.attachmentUrls.push_back(str(a, "url"));
-                }
+            for (const auto& attachment : item["attachments"]) {
+                if (!attachment.is_object()) continue;
+                const auto url = str(attachment, "url");
+                if (!url.empty() && m.attachmentUrls.size() < 10) m.attachmentUrls.push_back(url);
+                const auto mime = str(attachment, "content_type");
+                if (mime.rfind("image/", 0) == 0 || (num<int>(attachment, "width", 0) > 0 &&
+                                                   num<int>(attachment, "height", 0) > 0)) addImage(attachment);
+            }
+        }
+        if (item.contains("embeds") && item["embeds"].is_array()) {
+            for (const auto& embed : item["embeds"]) {
+                if (!embed.is_object() || m.embeds.size() >= 4) continue;
+                MessageEmbed e;
+                e.title = str(embed, "title");
+                e.description = str(embed, "description");
+                e.color = num<std::uint32_t>(embed, "color", 0) & 0xffffffu;
+                if (embed.contains("footer") && embed["footer"].is_object()) e.footer = str(embed["footer"], "text");
+                if (!e.title.empty() || !e.description.empty() || !e.footer.empty()) m.embeds.push_back(std::move(e));
+                if (embed.contains("image")) addImage(embed["image"]);
+                else if (embed.contains("thumbnail")) addImage(embed["thumbnail"]);
             }
         }
         if (m.id != 0) outMessages.push_back(std::move(m));
@@ -256,6 +282,8 @@ bool fetchMessages(net::NetService& net, const std::string& token, Snowflake cha
         outError = "Failed to parse messages";
         return false;
     }
+    // Discord returns messages newest-first; chronological order is needed for a top-to-bottom chat.
+    std::reverse(outMessages.begin(), outMessages.end());
     return true;
 }
 

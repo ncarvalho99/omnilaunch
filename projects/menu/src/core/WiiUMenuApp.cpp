@@ -1,4 +1,5 @@
 #include "WiiUMenuApp.hpp"
+#include "launcher/HekateReboot.hpp"
 #include "services/NtpClient.hpp"
 #include <cctype>
 #include <switchu/sd_commit.hpp>
@@ -1823,8 +1824,22 @@ void WiiUMenuApp::buildUserAvatarBar(bool loadImmediately) {
 }
 
 void WiiUMenuApp::appendAddUserButton() {
-    if (!m_userAvatarBar || m_pendingProfileUids.size() >= 8)
+    if (!m_userAvatarBar || m_pendingProfileUids.size() >= 8) {
+        if (m_userAvatarBar && !m_bell) {
+            m_bell = std::make_shared<NotificationBell>();
+            m_bell->setSize(56.f, 56.f);
+            m_bell->setFont(&m_fontSmall);
+            m_bell->setTheme(&m_theme);
+            m_bell->setUnread(notifications::unreadCount());
+            m_bell->setOnActivate([this]() {
+                openNotifications();
+            });
+            m_userAvatarBar->addChild(m_bell);
+            wireUserAvatarNavigation();
+            layoutTopHud();
+        }
         return;
+    }
     if (!m_userAvatarButtons.empty() && m_userAvatarButtons.back()->addUserMode())
         return;
 
@@ -1847,6 +1862,18 @@ void WiiUMenuApp::appendAddUserButton() {
     m_userAvatarButtons.push_back(add);
     m_userAvatarBar->addChild(add);
 
+    if (!m_bell) {
+        m_bell = std::make_shared<NotificationBell>();
+        m_bell->setSize(56.f, 56.f);
+        m_bell->setFont(&m_fontSmall);
+        m_bell->setTheme(&m_theme);
+        m_bell->setUnread(notifications::unreadCount());
+        m_bell->setOnActivate([this]() {
+            openNotifications();
+        });
+        m_userAvatarBar->addChild(m_bell);
+    }
+
     wireUserAvatarNavigation();
     layoutTopHud();
     DebugLog::log("[profiles] add-user tile appended count=%d",
@@ -1866,7 +1893,7 @@ void WiiUMenuApp::layoutTopHud() {
     constexpr float kClusterGap = 14.f;
 
     const bool line = isCarouselLayout();
-    const float count = static_cast<float>(m_userAvatarButtons.size());
+    const float count = static_cast<float>(m_userAvatarButtons.size() + (m_bell ? 1 : 0));
     const bool clusterShown = m_topCenterCluster && m_topCenterCluster->isVisible();
     const float clusterWidth = clusterShown ? m_topCenterCluster->rect().width : 0.f;
     const float spanX = SidebarManager::dynamicLineGapLeft() + kSpanInset;
@@ -1955,6 +1982,8 @@ void WiiUMenuApp::wireUserAvatarNavigation() {
         nxui::Widget* right = current;
         if (i + 1 < m_userAvatarButtons.size())
             right = m_userAvatarButtons[i + 1].get();
+        else if (m_bell)
+            right = m_bell.get();
         else if (m_screenSwapButton)
             right = m_screenSwapButton.get();
         else if (m_mediaCenterButton)
@@ -1968,6 +1997,24 @@ void WiiUMenuApp::wireUserAvatarNavigation() {
         current->removeAction(static_cast<uint64_t>(nxui::Button::LStickD));
         current->removeAction(static_cast<uint64_t>(nxui::Button::RStickD));
         current->addDirectionAction(nxui::FocusDirection::DOWN, returnToGrid);
+    }
+    if (m_bell) {
+        nxui::Widget* left = m_userAvatarButtons.empty() ? nullptr : m_userAvatarButtons.back().get();
+        nxui::Widget* right = nullptr;
+        if (m_screenSwapButton)
+            right = m_screenSwapButton.get();
+        else if (m_mediaCenterButton)
+            right = m_mediaCenterButton.get();
+        else if ((carousel || xmb || list) && !m_sidebar.rightButtons().empty())
+            right = m_sidebar.rightButtons().front().get();
+
+        m_bell->setCustomNavigation(nxui::FocusDirection::LEFT, left);
+        m_bell->setCustomNavigation(nxui::FocusDirection::RIGHT, right);
+        m_bell->setCustomNavigation(nxui::FocusDirection::DOWN, nullptr);
+        m_bell->removeAction(static_cast<uint64_t>(nxui::Button::DDown));
+        m_bell->removeAction(static_cast<uint64_t>(nxui::Button::LStickD));
+        m_bell->removeAction(static_cast<uint64_t>(nxui::Button::RStickD));
+        m_bell->addDirectionAction(nxui::FocusDirection::DOWN, returnToGrid);
     }
     if (m_screenSwapButton) {
         nxui::Widget* left = m_userAvatarButtons.empty() ? nullptr : m_userAvatarButtons.back().get();
@@ -2073,11 +2120,9 @@ void WiiUMenuApp::loadNextUserAvatar() {
         }
     }
 
-    avatar->setOnActivate([this, uid]() {
+    avatar->setOnActivate([this]() {
         m_audio.playSfx(Sfx::Activate);
-#ifdef SWITCHU_MENU
-        m_launcher.launchUserPage(uid);
-#endif
+        openProfileCarousel();
     });
 
     accountProfileClose(&profile);
@@ -6937,6 +6982,29 @@ void WiiUMenuApp::buildGrid() {
 #ifdef SWITCHU_MENU
                     m_audio.playSfx(Sfx::ConfirmPositive);
                     m_launcher.reboot();
+#else
+                    m_audio.playSfx(Sfx::ConfirmPositive);
+                    app().requestExit();
+#endif
+                }, true},
+                {i18n.tr("power.hekate", "Reboot to Hekate"), [this]() {
+#ifdef SWITCHU_MENU
+                    std::string error;
+                    if (hekate::prepareMenuReboot(error)) {
+                        m_audio.playSfx(Sfx::ConfirmPositive);
+                        m_launcher.reboot();
+                    } else {
+                        auto& t = nxui::I18n::instance();
+                        m_audio.playSfx(Sfx::ModalShow);
+                        m_dialog->show(
+                            t.tr("power.hekate_failed_title", "Cannot restart to Hekate"),
+                            error,
+                            {{t.tr("button.ok", "OK"), []() {}, true}},
+                            0,
+                            {}
+                        );
+                        focusManager().setFocus(m_dialog.get());
+                    }
 #else
                     m_audio.playSfx(Sfx::ConfirmPositive);
                     app().requestExit();

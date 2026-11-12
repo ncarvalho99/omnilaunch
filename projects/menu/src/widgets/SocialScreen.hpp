@@ -185,6 +185,7 @@ private:
 
     bool m_active = false;
     bool m_frosted = true;
+    bool m_backdropCacheValid = false;
     float m_anim = 0.f;
     Zone m_zone = Zone::Tiles;
     Mode m_mode = Mode::Friends;

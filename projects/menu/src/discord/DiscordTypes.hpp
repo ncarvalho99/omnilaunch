@@ -126,6 +126,19 @@ struct Guild {
     }
 };
 
+struct MessageImage {
+    std::string url;
+    int width = 0;
+    int height = 0;
+};
+
+struct MessageEmbed {
+    std::string title;
+    std::string description;
+    std::string footer;
+    std::uint32_t color = 0;
+};
+
 struct Message {
     Snowflake id = 0;
     Snowflake channelId = 0;
@@ -133,6 +146,8 @@ struct Message {
     std::string content;
     std::string timestamp;
     std::vector<std::string> attachmentUrls;
+    std::vector<MessageImage> images;
+    std::vector<MessageEmbed> embeds;
     bool mentionsMe = false;
     bool mine = false;
 };

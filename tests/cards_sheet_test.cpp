@@ -1,11 +1,34 @@
 // Production CardsSheet input/lifecycle test with renderer/input-only fakes.
 #include "cards/CardsSheet.hpp"
+#include "cards/CardsDotsNavigation.hpp"
 #include <nxui/core/Input.hpp>
 #include <cassert>
 #include <cstdio>
 using namespace cards;
 int main() {
  CardsSheet sheet; nxui::Input in;
+ // Exercise the production dots input mapping, including ragged last rows.
+ int dotsRow=1, dotsCol=0;
+ in.down={nxui::Button::DRight};
+ assert(navigateDots(in,4,11,dotsRow,dotsCol) && dotsCol==1);
+ in.down={nxui::Button::DDown};
+ assert(navigateDots(in,4,11,dotsRow,dotsCol) && dotsRow==2);
+ in.down={nxui::Button::LStickR};
+ assert(navigateDots(in,4,11,dotsRow,dotsCol) && dotsCol==2);
+ assert(navigateDots(in,4,11,dotsRow,dotsCol) && dotsCol==3);
+ in.down={nxui::Button::DDown};
+ assert(navigateDots(in,4,11,dotsRow,dotsCol) && dotsRow==3 && dotsCol==2);
+ assert(!navigateDots(in,4,11,dotsRow,dotsCol));
+ in.down={nxui::Button::LStickU};
+ assert(navigateDots(in,4,11,dotsRow,dotsCol) && dotsRow==2);
+ dotsRow=1; dotsCol=3;
+ assert(navigateDots(in,2,11,dotsRow,dotsCol) && dotsRow==0 && dotsCol==1);
+ in.down={nxui::Button::DLeft};
+ assert(navigateDots(in,2,11,dotsRow,dotsCol) && dotsCol==0);
+ assert(!navigateDots(in,2,11,dotsRow,dotsCol));
+ in.down={nxui::Button::A};
+ assert(!navigateDots(in,2,11,dotsRow,dotsCol));
+
  CardsSheet::Row row; row.label="Initial";
  int activated=0, changed=0;
  row.onA=[&]{++activated; CardsSheet::Row replacement; replacement.label="Reopened";

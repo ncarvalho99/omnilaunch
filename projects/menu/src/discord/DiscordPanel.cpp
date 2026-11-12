@@ -1,5 +1,6 @@
 #include "discord/DiscordPanel.hpp"
 #include "discord/DiscordApi.hpp"
+#include "discord/DiscordPresentation.hpp"
 #include "home/HomeCore.hpp"
 #include "net/NetService.hpp"
 
@@ -508,7 +509,7 @@ void DiscordPanel::rebuildRows() {
                     loading.text = T("discord_ui.loading_channels", "Loading channels...");
                     m_rows.push_back(std::move(loading));
                 } else {
-                    for (const auto& c : g.channels) {
+                    for (const auto& c : orderedTextChannels(g.channels)) {
                         if (c.type == ChannelType::GuildCategory) {
                             Row cat;
                             cat.kind = Row::Category;
@@ -519,7 +520,6 @@ void DiscordPanel::rebuildRows() {
                             Row r;
                             r.kind = Row::Channel;
                             r.text = "# " + c.name;
-                            r.detail = c.topic;
                             r.id = c.id;
                             m_rows.push_back(std::move(r));
                         }
@@ -691,8 +691,17 @@ void DiscordPanel::drawRail(nxui::Renderer& ren, const nxui::Rect& p, float a) {
     if (dmFocused) {
         ren.drawRoundedRectOutline(dmHit, {1.f, 1.f, 1.f, 0.7f * a}, 16.f, 2.f);
     }
-    if (m_smallFont) {
-        drawLabel(ren, m_smallFont, cx - 12.f, y + 14.f, "DM", nxui::Color(1.f, 1.f, 1.f, a));
+    const nxui::Texture* logoTex = requestImage("https://cdn.discordapp.com/embed/avatars/0.png", 64);
+    if (!logoTex) logoTex = requestImage("romfs:/icons/cards/discord.png", 64);
+    if (logoTex && logoTex->valid()) {
+        ren.drawTextureRounded(logoTex, {dmHit.x + 8.f, dmHit.y + 8.f, 32.f, 32.f}, 12.f, nxui::Color::white().withAlpha(a));
+    } else {
+        const float r = 10.f;
+        ren.drawCircle({cx - 7.f, y + 24.f}, r, nxui::Color::white().withAlpha(a), 20);
+        ren.drawCircle({cx + 7.f, y + 24.f}, r, nxui::Color::white().withAlpha(a), 20);
+        ren.drawRoundedRect({cx - 14.f, y + 17.f, 28.f, 14.f}, nxui::Color::white().withAlpha(a), 4.f);
+        ren.drawCircle({cx - 6.f, y + 24.f}, 3.5f, dmSel ? blurple(a) : bgPrimary(a), 16);
+        ren.drawCircle({cx + 6.f, y + 24.f}, 3.5f, dmSel ? blurple(a) : bgPrimary(a), 16);
     }
     int totalDmMentions = 0;
     if (m_service) {
@@ -984,16 +993,26 @@ void DiscordPanel::drawChat(nxui::Renderer& ren, const nxui::Rect& p, float a) {
         const float maxTextW = chatArea.width - 64.f;
         std::vector<MsgLayout> layouts(msgs.size());
         float totalMsgH = 16.f;
+        float curTop = 8.f;
         for (std::size_t i = 0; i < msgs.size(); ++i) {
             auto& lay = layouts[i];
             const auto& m = msgs[i];
-            lay.lines = wrapLines(m_smallFont, cleanText(m.content), maxTextW);
-            for (const auto& att : m.attachmentUrls) {
-                lay.images.push_back(att);
+            lay.lines = wrapLines(m_smallFont, cleanText(messageText(m.content)), maxTextW);
+            for (const auto& img : m.images) {
+                lay.images.push_back(img.url);
+            }
+            if (lay.images.empty()) {
+                for (const auto& att : m.attachmentUrls) {
+                    if (isDiscordImageUrl(att)) lay.images.push_back(att);
+                }
             }
             float h = 28.f;
             h += static_cast<float>(std::max<std::size_t>(1, lay.lines.size())) * 20.f;
             h += static_cast<float>(lay.images.size()) * 156.f;
+            for (const auto& emb : m.embeds) {
+                if (!emb.title.empty()) h += 20.f;
+                if (!emb.description.empty()) h += 20.f;
+            }
             lay.height = h;
             totalMsgH += h + 8.f;
         }
@@ -1036,6 +1055,18 @@ void DiscordPanel::drawChat(nxui::Renderer& ren, const nxui::Rect& p, float a) {
                         drawLabel(ren, m_smallFont, chatArea.x + 50.f, ly, line, textNormal(a));
                     }
                     ly += 20.f;
+                }
+
+                // Render embeds if present
+                for (const auto& emb : m.embeds) {
+                    if (!emb.title.empty()) {
+                        drawLabel(ren, m_smallFont, chatArea.x + 50.f, ly, emb.title, blurple(a));
+                        ly += 20.f;
+                    }
+                    if (!emb.description.empty()) {
+                        drawLabel(ren, m_smallFont, chatArea.x + 50.f, ly, fit(m_smallFont, emb.description, maxTextW), textMuted(a));
+                        ly += 20.f;
+                    }
                 }
 
                 // Attachment images

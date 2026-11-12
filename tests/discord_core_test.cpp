@@ -1,5 +1,6 @@
 #include "discord/DiscordAccounts.hpp"
 #include "discord/DiscordApi.hpp"
+#include "discord/DiscordPresentation.hpp"
 #include "discord/DiscordTypes.hpp"
 #include "net/NetService.hpp"
 
@@ -165,6 +166,21 @@ int main() {
     assert(api::parseMessagesJson(R"([{"id":"8001","channel_id":"4001","content":"hi","timestamp":null,
         "author":{"id":"5001","username":"pal","avatar":null},"attachments":[{"url":null}]}])", nullMsgs));
     assert(nullMsgs.size() == 1 && nullMsgs[0].author.username == "pal");
+
+    // 7. Presentation utilities
+    assert(isDiscordImageUrl("https://cdn.discordapp.com/attachments/1/2/pic.png"));
+    assert(!isDiscordImageUrl("https://example.com/malicious.png"));
+    assert(messageText("Read [rules](https://discord.com/rules) and **enjoy**") == "Read rules and enjoy");
+
+    std::vector<Channel> rawChannels;
+    rawChannels.push_back({10, ChannelType::GuildText, 1, "chat", "", 100, 2});
+    rawChannels.push_back({100, ChannelType::GuildCategory, 1, "GENERAL", "", 0, 1});
+    rawChannels.push_back({20, ChannelType::GuildText, 1, "announcements", "", 0, 0});
+    const auto sortedChannels = orderedTextChannels(rawChannels);
+    assert(sortedChannels.size() == 3);
+    assert(sortedChannels[0].id == 20); // Uncategorised text first
+    assert(sortedChannels[1].id == 100); // Category header
+    assert(sortedChannels[2].id == 10);  // Text inside category
 
     std::vector<Account> nullAccs;
     std::string nullCur;

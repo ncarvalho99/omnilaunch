@@ -307,6 +307,7 @@ void SocialScreen::show(AccountUid uid, std::string name, std::shared_ptr<nxui::
     m_uid = uid;
     m_myName = std::move(name);
     m_myAvatar = std::move(avatar);
+    m_backdropCacheValid = false;
     m_active = true;
     m_zone = Zone::Tiles;
     m_mode = Mode::Friends;
@@ -1865,10 +1866,25 @@ void SocialScreen::onRender(nxui::Renderer& ren) {
     const nxui::Color muted = m_theme->textSecondary.withAlpha(a);
     const nxui::Color accent = m_theme->cursorNormal;
 
-    ren.drawRect({0.f, 0.f, 1280.f, 720.f}, nxui::Color(0.f, 0.f, 0.f, (m_frosted ? 0.45f : 0.4f) * a));
     const nxui::Rect p = panelRect();
-    const bool frosted = m_frosted && ren.gpu().offscreenReady();
-    if (frosted) ren.drawOffscreenRounded(0, p, 28.f, nxui::Color::white().withAlpha(a));
+    bool frosted = false;
+#ifdef SWITCHU_MENU
+    if (m_frosted && ren.gpu().offscreenReady()) {
+        // Capture before dimming or drawing this panel. OFF_SCENE is the live,
+        // unblurred half-resolution scene, not a frosted overlay backdrop.
+        if (!m_backdropCacheValid) {
+            ren.captureToOffscreenSharp();
+            ren.applyBlur(4.f, 2);
+            ren.copyOffscreen(nxui::GpuDevice::OFF_SHARP_A, nxui::GpuDevice::OFF_DIALOG);
+            m_backdropCacheValid = true;
+        }
+        frosted = true;
+    }
+#endif
+    ren.drawRect({0.f, 0.f, 1280.f, 720.f}, nxui::Color(0.f, 0.f, 0.f, (m_frosted ? 0.45f : 0.4f) * a));
+#ifdef SWITCHU_MENU
+    if (frosted) ren.drawOffscreenRounded(nxui::GpuDevice::OFF_DIALOG, p, 28.f, nxui::Color::white().withAlpha(a));
+#endif
     ren.drawRoundedRect(p, m_theme->panelBase.withAlpha((frosted ? 0.35f : 0.88f) * a), 28.f);
     if (frosted) // the light along the top, as CardsNX's sheets
         ren.drawGradientRect({p.x + 2.f, p.y + 2.f, p.width - 4.f, 90.f}, nxui::Color(1.f, 1.f, 1.f, 0.06f * a),

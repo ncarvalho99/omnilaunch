@@ -7,6 +7,7 @@
 #include "cards/CardsArtSources.hpp"
 #include "cards/CardsHomeActivity.hpp"
 #include "cards/CardsPages.hpp"
+#include "cards/CardsDotsNavigation.hpp"
 #include "core/DebugLog.hpp"
 #include "core/ButtonGlyph.hpp"
 #include "bluetooth/BluetoothManager.hpp"
@@ -397,10 +398,6 @@ bool CardsHomeActivity::handleDotsInput(nxui::Input& in) {
     using B = nxui::Button;
     const auto shown = pages::shown(m_core.config().cards);
     const int tiles = static_cast<int>(m_dotsTiles.size());
-    const int rows = 1 + (tiles + kDotsCols - 1) / kDotsCols;
-    auto colsIn = [&](int row) {
-        return row == 0 ? static_cast<int>(shown.size()) : std::min(kDotsCols, tiles - (row - 1) * kDotsCols);
-    };
     const nxui::Rect p = dotsPanelRect(m_dotsTiles.size());
     if (in.touchDown() || in.touchUp()) {
         const float x = in.touchX(), y = in.touchY();
@@ -443,9 +440,14 @@ bool CardsHomeActivity::handleDotsInput(nxui::Input& in) {
         m_audio.playSfx(Sfx::ModalHide);
         return true;
     }
+    if (navigateDots(in, static_cast<int>(shown.size()), tiles, m_dotsRow, m_dotsCol)) {
+        m_audio.playSfx(Sfx::Navigate);
+        return true;
+    }
     if (!in.isDown(B::A))
         return true;
     m_dotsOpen = false;
+    m_waitRelease = true;
     m_audio.playSfx(Sfx::Activate);
     if (m_dotsRow == 0) {
         if (m_dotsCol >= 0 && m_dotsCol < static_cast<int>(shown.size()))

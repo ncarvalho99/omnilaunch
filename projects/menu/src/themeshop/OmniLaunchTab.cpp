@@ -124,6 +124,17 @@ ThemeShopScreen::Tab OmniLaunchTab::build(ThemeShopScreen& screen) {
         };
         t.items.push_back(std::move(it));
     }
+    {
+        SettingItem it;
+        it.label = i18n.tr("settings.omnilaunch.look_software", "Procurar novos softwares");
+        it.description = i18n.tr("settings.omnilaunch.look_software_desc",
+            "Lê novamente o que está instalado para títulos ou atalhos que ainda não aparecem no menu.");
+        it.type = ItemType::Action;
+        it.onChange = [&screen](SettingItem&) {
+            if (screen.m_reloadCatalogCb) screen.m_reloadCatalogCb();
+        };
+        t.items.push_back(std::move(it));
+    }
 #endif
 
     return t;
