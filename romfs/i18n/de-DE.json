@@ -210,6 +210,18 @@
     "sort_playtime": "Meistgespielt"
   },
   "settings": {
+    "omnilaunch": {
+      "order": "Seitenleisten-Tasten",
+      "order_desc": "Wähle die Taste für diesen Platz; sie tauscht mit der Taste, die dort war.",
+      "left": "Links",
+      "right": "Rechts",
+      "hb_app": "Sphaira als Anwendung",
+      "hb_app_desc": "Ein: Sphaira und Homebrew erhalten den vollen Speicher, indem sie ein Spiel ausleihen. Aus: Sie öffnen sich über das Album mit weniger Speicher.",
+      "ask_user": "Fragen, wer spielt",
+      "ask_user_desc": "Beim Starten eines Spiels werden zuerst die Benutzer angezeigt, wie im HOME-Menü von Nintendo.",
+      "lock": "Sperrbildschirm",
+      "lock_desc": "Uhrzeit und Datum beim Starten oder Aufwecken der Konsole. A öffnet HOME."
+    },
     "layout": {
       "grid": "Raster",
       "dynamic_line": "Dynamische Zeile",

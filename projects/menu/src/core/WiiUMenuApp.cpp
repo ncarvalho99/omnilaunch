@@ -8862,8 +8862,13 @@ void WiiUMenuApp::onUpdate(float dt) {
     // focused icon's action binding.
     if (!lockScreenUp &&
         app().input().isDown(nxui::Button::Plus) &&
-        !app().input().isDown(nxui::Button::Minus) &&
+        // Held, not just pressed this frame: Minus then Plus is the accessibility
+        // combo, which must not also open the options.
+        !app().input().isHeld(nxui::Button::Minus) &&
         m_navigator.route() == switchu::navigation::Route::Home &&
+        // Any overlay that owns input (Discord, notifications, profiles, Social,
+        // News, Activity Log, Quick Settings...) keeps Plus to itself.
+        focusRoot() == &rootBox() &&
         !m_editMode &&
         !(m_contextMenu && m_contextMenu->isActive()) &&
         !(m_dialog && m_dialog->isActive()) &&
@@ -8914,8 +8919,9 @@ void WiiUMenuApp::onUpdate(float dt) {
 
     if (!lockScreenUp &&
         app().input().isDown(viewBtn) &&
-        !app().input().isDown(nxui::Button::Plus) &&
+        !app().input().isHeld(nxui::Button::Plus) && // Plus+Minus is the accessibility combo
         m_navigator.route() == switchu::navigation::Route::Home &&
+        focusRoot() == &rootBox() && // no view switch under an open overlay
         !m_editMode &&
         m_openFolderId == 0 &&
         !(m_quickSettings && m_quickSettings->isActive()) &&

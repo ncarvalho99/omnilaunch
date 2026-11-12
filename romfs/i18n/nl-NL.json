@@ -210,6 +210,18 @@
     "sort_playtime": "Meest gespeeld"
   },
   "settings": {
+    "omnilaunch": {
+      "order": "Zijbalkknoppen",
+      "order_desc": "Kies de knop voor deze plek; hij ruilt met de knop die er stond.",
+      "left": "Links",
+      "right": "Rechts",
+      "hb_app": "Sphaira als applicatie",
+      "hb_app_desc": "Aan: Sphaira en homebrew krijgen al het geheugen door een game te lenen. Uit: ze openen via het Album met minder geheugen.",
+      "ask_user": "Vragen wie er speelt",
+      "ask_user_desc": "Bij het starten van een game worden eerst de gebruikers getoond, zoals in Nintendo's HOME.",
+      "lock": "Vergrendelscherm",
+      "lock_desc": "De tijd en datum bij het opstarten of wekken van de console. A opent HOME."
+    },
     "layout": {
       "grid": "Raster",
       "dynamic_line": "Dynamische Lijn",

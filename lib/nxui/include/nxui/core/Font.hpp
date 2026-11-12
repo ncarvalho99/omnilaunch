@@ -17,6 +17,9 @@ class Font {
 public:
     Font() = default;
     ~Font();
+    // Owns a TTF_Font and the bytes it reads from: never copied.
+    Font(const Font&) = delete;
+    Font& operator=(const Font&) = delete;
 
     bool load(GpuDevice& gpu, Renderer& ren,
               const std::string& path, int ptSize);

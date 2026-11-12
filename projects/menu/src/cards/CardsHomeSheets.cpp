@@ -675,8 +675,7 @@ void CardsHomeActivity::openBrowser() {
         DebugLog::log("[cards] browser nro missing at %s", pages::kBundledBrowserNro);
         return;
     }
-    const std::uint64_t id = pages::homebrewId(path);
-    if (isRunningCard(id)) {
+    if (isRunningCard(pages::systemId(pages::SystemTile::Browser))) {
         resumeSuspended();
         return;
     }

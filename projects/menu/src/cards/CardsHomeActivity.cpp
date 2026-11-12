@@ -1677,7 +1677,13 @@ std::uint64_t CardsHomeActivity::runningCardId() const {
     if (suspended == 0)
         return 0;
     const std::string nro = m_core.launcher().runningHomebrew();
-    return nro.empty() ? suspended : pages::homebrewId(nro);
+    if (nro.empty())
+        return suspended;
+    // The bundled browser is shown as the Nintendo-page Browser tile, not as
+    // a homebrew card: report that tile so its glow and X-to-close work.
+    if (nro == pages::kBundledBrowserNro || nro == pages::kUserBrowserNro)
+        return pages::systemId(pages::SystemTile::Browser);
+    return pages::homebrewId(nro);
 }
 
 void CardsHomeActivity::confirmCloseSuspended() {

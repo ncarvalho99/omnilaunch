@@ -69,6 +69,10 @@ void TabbedOverlayScreen::rebuildCurrentTab() {
 }
 
 void TabbedOverlayScreen::refreshCurrentTabWidgets() {
+    // A selector's onChange may call this while its dropdown is still open;
+    // the dropdown indexes rows of the widgets about to be rebuilt.
+    if (m_dropdownOpen || m_dropdownClosing)
+        closeDropdown(false);
     if (usesCustomContentLayout()) {
         rebuildContentItems();
         return;

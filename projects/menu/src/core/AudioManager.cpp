@@ -290,7 +290,12 @@ void AudioManager::playCurrentTrackLocked() {
     m_trackFinished.store(false);
     m_trackStart = std::chrono::steady_clock::now();
     m_pausedTotal = 0.0;
-    m_trackDuration = mp3Seconds(track.path);
+    // One small header read per file, then remembered: track changes do not
+    // touch the card again for a song already measured.
+    auto known = m_durationCache.find(track.path);
+    if (known == m_durationCache.end())
+        known = m_durationCache.emplace(track.path, mp3Seconds(track.path)).first;
+    m_trackDuration = known->second;
 }
 
 void AudioManager::play() {

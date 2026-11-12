@@ -34,6 +34,8 @@ bool Font::load(GpuDevice& gpu, Renderer& ren,
     SDL_RWops* rw = SDL_RWFromConstMem(data.data(), static_cast<int>(data.size()));
     TTF_Font* newFont = rw ? TTF_OpenFontRW(rw, 1, ptSize) : nullptr;
     if (!newFont) {
+        // SDL_ttf closes the stream itself on failure when freesrc is set
+        // (SDL_ttf 2.0.15+), so it is not closed again here.
         std::fprintf(stderr, "[Font] TTF_OpenFontRW failed: %s\n", TTF_GetError());
         return false;
     }

@@ -210,6 +210,18 @@
     "sort_playtime": "Plus joués"
   },
   "settings": {
+    "omnilaunch": {
+      "order": "Boutons de la barre latérale",
+      "order_desc": "Choisissez le bouton de cet emplacement ; il s'échange avec celui qui s'y trouvait.",
+      "left": "Gauche",
+      "right": "Droite",
+      "hb_app": "Sphaira en tant qu'application",
+      "hb_app_desc": "Activé : Sphaira et les homebrews obtiennent toute la mémoire en empruntant un jeu. Désactivé : ils s'ouvrent via l'Album avec moins de mémoire.",
+      "ask_user": "Demander qui joue",
+      "ask_user_desc": "Lancer un jeu affiche d'abord les utilisateurs, comme le HOME de Nintendo.",
+      "lock": "Écran de verrouillage",
+      "lock_desc": "L'heure et la date au démarrage ou au réveil de la console. A ouvre le HOME."
+    },
     "layout": {
       "grid": "Grille",
       "dynamic_line": "Ligne Dynamique",

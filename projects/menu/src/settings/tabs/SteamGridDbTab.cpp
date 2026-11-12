@@ -87,23 +87,35 @@ SettingsScreen::Tab settings::tabs::SteamGridDbTab::build(SettingsScreen& screen
 
     tab.onUpdate = [](SettingsScreen::Tab& current, TabbedOverlayScreen& base) {
         auto& owner = static_cast<SettingsScreen&>(base);
-        if (current.items.size() < 7) return;
+        // Rows are found by label, not by position, so adding a row cannot
+        // make this write into the wrong one.
+        auto& i18n = nxui::I18n::instance();
+        auto row = [&current](const std::string& label) -> decltype(&current.items[0]) {
+            for (auto& item : current.items)
+                if (item.label == label) return &item;
+            return nullptr;
+        };
 
         // The tab may be built before the owner pushes its state: mirror it.
         const bool flags[4] = {owner.m_steamGridDbEnabled, owner.m_steamGridDbShowInGrid,
                                owner.m_steamGridDbShowInDynamicLine, owner.m_steamGridDbShowInFolders};
+        const std::string labels[4] = {
+            i18n.tr("settings.steamgriddb.enabled", "Display SteamGridDB artwork"),
+            i18n.tr("settings.steamgriddb.show_grid", "Show on grid menu"),
+            i18n.tr("settings.steamgriddb.show_line", "Show on single-row menu"),
+            i18n.tr("settings.steamgriddb.show_folders", "Show inside folders")};
         for (int i = 0; i < 4; ++i) {
-            auto& row = current.items[static_cast<std::size_t>(1 + i)];
-            if (row.boolVal != flags[i]) {
-                row.boolVal = flags[i];
-                row.anim01 = flags[i] ? 1.f : 0.f;
+            auto* toggle = row(labels[i]);
+            if (toggle && toggle->boolVal != flags[i]) {
+                toggle->boolVal = flags[i];
+                toggle->anim01 = flags[i] ? 1.f : 0.f;
             }
         }
-        auto& key = current.items[5]; // section, enable, 3 view toggles, key
-        key.description = owner.m_steamGridDbHasApiKey
-            ? nxui::I18n::instance().tr("settings.steamgriddb.api_key_set", "Configured (hidden)")
-            : nxui::I18n::instance().tr("settings.steamgriddb.api_key_optional",
-                  "Optional. Heroes and icons work without it; logos need one.");
+        if (auto* key = row(i18n.tr("settings.steamgriddb.api_key", "API key")))
+            key->description = owner.m_steamGridDbHasApiKey
+                ? i18n.tr("settings.steamgriddb.api_key_set", "Configured (hidden)")
+                : i18n.tr("settings.steamgriddb.api_key_optional",
+                          "Optional. Heroes and icons work without it; logos need one.");
     };
 
     return tab;
