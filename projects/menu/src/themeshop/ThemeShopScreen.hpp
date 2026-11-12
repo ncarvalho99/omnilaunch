@@ -24,6 +24,7 @@ class SteamGridDbTab;
 class OptionsTab;
 class UpdateTab;
 class UninstallTab;
+class OmniLaunchTab;
 }
 
 namespace nxui {
@@ -78,6 +79,13 @@ public:
     void onReleaseNotes(std::function<void()> cb) { m_releaseNotesCb = std::move(cb); }
     void onMusicVolumeChange(FloatCb cb) { m_musicVolumeCb = std::move(cb); }
     void onSfxVolumeChange(FloatCb cb)   { m_sfxVolumeCb = std::move(cb); }
+
+    using SidebarOrderCb = std::function<void(const std::vector<int>&)>;
+    void onSidebarOrderChange(SidebarOrderCb cb) { m_sidebarOrderCb = std::move(cb); }
+    void setSidebarOrderState(const std::vector<int>& order, const std::vector<std::string>& names) {
+        m_sidebarOrder = order;
+        m_sidebarNames = names;
+    }
     // The three appearance controls also live under Settings > Display. They
     // are repeated here because this is the screen someone is on while judging
     // how a theme looks, and walking back out to change them breaks that.
@@ -257,6 +265,11 @@ private:
     friend class themeshop::tabs::UpdateTab;
     friend class themeshop::tabs::UninstallTab;
     friend class themeshop::tabs::SteamGridDbTab;
+    friend class themeshop::tabs::OmniLaunchTab;
+
+    std::vector<int> m_sidebarOrder;
+    std::vector<std::string> m_sidebarNames;
+    SidebarOrderCb m_sidebarOrderCb;
 
     enum class PreviewPhase {
         Idle,

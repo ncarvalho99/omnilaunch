@@ -50,6 +50,11 @@ ListDetailScreen::ListDetailScreen()
     : TabbedOverlayScreen(ScreenMode::GameOptions) {
     constexpr float width = 1160.f;
     setRect({(1280.f - width) * 0.5f, 32.f, width, 656.f});
+    setupActions();
+}
+
+void ListDetailScreen::setupActions() {
+    TabbedOverlayScreen::setupActions();
     addAction(static_cast<uint64_t>(nxui::Button::ZL), [this]() { scrollBy(-kScrollStep); });
     addAction(static_cast<uint64_t>(nxui::Button::ZR), [this]() { scrollBy(kScrollStep); });
     addAction(static_cast<uint64_t>(nxui::Button::RStickU), [this]() { scrollBy(-kScrollStep * 0.6f); });
@@ -169,6 +174,15 @@ void ListDetailScreen::onContentUpdate(float dt) {
             e.image = load();
             if (e.image) m_layoutTab = -2; // lay out again with the picture
         }
+    }
+    if (m_active && isVisible() && m_input) {
+        float speed = 0.f;
+        if (m_input->isHeld(nxui::Button::ZR) || m_input->isHeld(nxui::Button::R) || m_input->isHeld(nxui::Button::RStickD))
+            speed += 600.f;
+        if (m_input->isHeld(nxui::Button::ZL) || m_input->isHeld(nxui::Button::L) || m_input->isHeld(nxui::Button::RStickU))
+            speed -= 600.f;
+        if (speed != 0.f)
+            scrollBy(speed * dt);
     }
     m_scroll += (m_scrollGoal - m_scroll) * std::min(1.f, dt * 14.f);
 }

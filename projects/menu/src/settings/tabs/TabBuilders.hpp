@@ -64,9 +64,4 @@ public:
     static SettingsScreen::Tab build(SettingsScreen& screen);
 };
 
-class HomeNXTab {
-public:
-    static SettingsScreen::Tab build(SettingsScreen& screen);
-};
-
 }

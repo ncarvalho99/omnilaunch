@@ -330,25 +330,6 @@ void WiiUMenuApp::createSettings() {
     m_settings->setSteamGridDbState(m_config.steamGridDbEnabled,
                                     !m_config.steamGridDbApiKey.empty());
 
-    const std::vector<std::string> sidebarNames = {
-        "Sphaira",
-        "Discord",
-        "News",
-        "Nextendo",
-        "Settings",
-        "Cards",
-        "Controllers",
-        "Social",
-        "ThemeShop",
-        "Power"
-    };
-    m_settings->setSidebarOrderState(m_config.sidebarOrder, sidebarNames);
-    m_settings->onSidebarOrderChange([this](const std::vector<int>& order) {
-        m_config.sidebarOrder = order;
-        m_config.save();
-        rebuildSidebar();
-    });
-
     m_settings->onNavigateSfx([this]() { m_audio.playSfx(Sfx::Navigate); });
     m_settings->onActivateSfx([this]() { m_audio.playSfx(Sfx::Activate); });
     m_settings->onCloseSfx([this]() { m_audio.playSfx(Sfx::ModalHide); });
@@ -1479,6 +1460,25 @@ void WiiUMenuApp::createThemeShop() {
     m_themeShop->setAccessibilityVoiceEnabled(m_config.accessibilityEnabled);
     m_themeShop->setAccessibilitySpeechPreferences(m_config.accessibilitySpeakHints,
                                                    m_config.accessibilitySpeakPosition);
+
+    const std::vector<std::string> sidebarNames = {
+        "Sphaira",
+        "Discord",
+        "News",
+        "Nextendo",
+        "Settings",
+        "Cards",
+        "Controllers",
+        "Social",
+        "ThemeShop",
+        "Power"
+    };
+    m_themeShop->setSidebarOrderState(m_config.sidebarOrder, sidebarNames);
+    m_themeShop->onSidebarOrderChange([this](const std::vector<int>& order) {
+        m_config.sidebarOrder = order;
+        m_config.save();
+        rebuildSidebar();
+    });
 
     m_themeShop->onMusicEnabledChange([this](bool enabled) {
         if (enabled) m_audio.play(); else m_audio.stop();
@@ -3312,6 +3312,7 @@ void WiiUMenuApp::openNews() {
     m_audio.playSfx(Sfx::ModalShow);
     if (!m_newsScreen) {
         m_newsScreen = std::make_shared<ListDetailScreen>();
+        m_newsScreen->setInput(&app().input());
         m_newsScreen->setFont(&m_fontNormal);
         m_newsScreen->setSmallFont(&m_fontSmall);
         m_newsScreen->setTheme(&m_theme);

@@ -88,10 +88,20 @@ bool parseChannelsJson(const std::string& json, std::vector<Channel>& outChannel
         c.parentId = snowflake(item, "parent_id");
         c.position = num<int>(item, "position", 0);
         c.lastMessageId = snowflake(item, "last_message_id");
+        c.mentions = num<int>(item, "mention_count", 0);
         if (item.contains("recipients") && item["recipients"].is_array()) {
             for (const auto& r : item["recipients"]) {
                 if (r.is_object()) {
-                    c.recipientIds.push_back(snowflake(r, "id"));
+                    Snowflake rId = snowflake(r, "id");
+                    c.recipientIds.push_back(rId);
+                    if (c.avatarUrl.empty()) {
+                        std::string av = str(r, "avatar");
+                        if (!av.empty()) {
+                            c.avatarUrl = "https://cdn.discordapp.com/avatars/" + snowflakeToString(rId) + "/" + av + ".png?size=64";
+                        } else {
+                            c.avatarUrl = "https://cdn.discordapp.com/embed/avatars/" + std::to_string((rId >> 22) % 6) + ".png";
+                        }
+                    }
                     if (c.name.empty()) {
                         std::string gName;
                         if (r.contains("global_name") && r["global_name"].is_string()) {
@@ -122,6 +132,7 @@ bool parseGuildsJson(const std::string& json, std::vector<Guild>& outGuilds) {
         g.name = str(item, "name");
         g.icon = str(item, "icon");
         g.description = str(item, "description");
+        g.mentions = num<int>(item, "mention_count", 0);
         if (item.contains("channels") && item["channels"].is_array()) {
             parseChannelsJson(item["channels"].dump(), g.channels);
         }

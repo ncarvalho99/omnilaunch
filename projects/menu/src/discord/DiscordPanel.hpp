@@ -70,6 +70,11 @@ private:
         bool unread = false;
         bool primary = false;
         bool danger = false;
+        std::string avatarUrl;
+        std::string status;
+        int mentions = 0;
+        bool voice = false;
+        bool current = false;
     };
 
     void bindInput();
@@ -89,6 +94,10 @@ private:
     void drawChat(nxui::Renderer& ren, const nxui::Rect& area, float a);
     void drawMe(nxui::Renderer& ren, const nxui::Rect& area, float a);
     void drawQrView(nxui::Renderer& ren, const nxui::Rect& area, float a);
+    void drawAvatar(nxui::Renderer& ren, const std::string& url, const std::string& name,
+                    float x, float y, float size, float a);
+    void drawStatus(nxui::Renderer& ren, const std::string& s, float cx, float cy, float r,
+                    const nxui::Color& ring, float a);
 
     DiscordService* m_service = nullptr;
     home::HomeCore* m_core = nullptr;

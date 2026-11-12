@@ -54,13 +54,6 @@ public:
     void onShutdownRequest(VoidCb cb)   { m_shutdownCb = std::move(cb); }
     void onRebootRequest(VoidCb cb)     { m_rebootCb = std::move(cb); }
 
-    using SidebarOrderCb = std::function<void(const std::vector<int>&)>;
-    void onSidebarOrderChange(SidebarOrderCb cb) { m_sidebarOrderCb = std::move(cb); }
-    void setSidebarOrderState(const std::vector<int>& order, const std::vector<std::string>& names) {
-        m_sidebarOrder = order;
-        m_sidebarNames = names;
-    }
-
     // Lets a tab immediately reflect a system change that also affects one
     // of its sibling toggles without rebuilding widgets during input dispatch.
     void setCachedToggleState(const std::string& label, bool value) {
@@ -133,7 +126,6 @@ private:
     friend class settings::tabs::SleepTab;
     friend class settings::tabs::StorageTab;
     friend class settings::tabs::AboutTab;
-    friend class settings::tabs::HomeNXTab;
 
     BoolCb m_wireframeCb;
     IntCb m_gridColumnsCb;
@@ -161,9 +153,6 @@ private:
     VoidCb m_sleepCb;
     VoidCb m_shutdownCb;
     VoidCb m_rebootCb;
-    std::vector<int> m_sidebarOrder;
-    std::vector<std::string> m_sidebarNames;
-    SidebarOrderCb m_sidebarOrderCb;
 
     bool m_wireframeEnabled = false;
     int m_gridColumns = 5;

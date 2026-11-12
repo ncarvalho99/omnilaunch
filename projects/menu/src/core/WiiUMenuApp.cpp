@@ -7383,11 +7383,25 @@ void WiiUMenuApp::rebuildSidebar() {
     m_leftSidebar->clearChildren();
     m_rightSidebar->clearChildren();
     m_sidebar.build(app().gpu(), app().renderer(), SD_ASSETS, m_sidebarActions, m_config.sidebarOrder);
+    const bool dynamicLine = isCarouselLayout();
+    m_sidebar.setDynamicLineLayout(dynamicLine);
     m_sidebar.reloadAssets(app().gpu(), app().renderer(), SD_ASSETS,
                            resolveThemeAssetPath(m_effectivePreset, m_effectivePreset.icons.basePath));
     for (auto& btn : m_sidebar.leftButtons()) m_leftSidebar->addChild(btn);
     for (auto& btn : m_sidebar.rightButtons()) m_rightSidebar->addChild(btn);
+    if (m_grid) {
+        std::vector<nxui::Widget*> leftTargets;
+        std::vector<nxui::Widget*> rightTargets;
+        leftTargets.reserve(m_sidebar.leftButtons().size());
+        rightTargets.reserve(m_sidebar.rightButtons().size());
+        for (const auto& button : m_sidebar.leftButtons())
+            leftTargets.push_back(button.get());
+        for (const auto& button : m_sidebar.rightButtons())
+            rightTargets.push_back(button.get());
+        m_grid->setGridSideTargets(std::move(leftTargets), std::move(rightTargets));
+    }
     m_sidebar.applyTheme(m_theme);
+    layoutTopHud();
 }
 
 std::string WiiUMenuApp::resolveSoundPresetId(const std::string& preset) const {

@@ -70,6 +70,7 @@ public:
     const User& currentUser() const { return m_currentUser; }
     const std::vector<Channel>& dms() const { return m_dms; }
     const std::vector<Guild>& guilds() const { return m_guilds; }
+    std::string presenceStatus(Snowflake userId) const;
 
     std::vector<Message> messages(Snowflake channelId) const;
     void sendMessage(home::HomeCore& core, Snowflake channelId, const std::string& text);
@@ -102,6 +103,7 @@ private:
     std::vector<Channel> m_dms;
     std::vector<Guild> m_guilds;
     std::map<Snowflake, std::vector<Message>> m_messages;
+    std::map<Snowflake, std::string> m_presences;
 
     Alert m_pendingAlert;
     bool m_hasAlert = false;

@@ -26,13 +26,11 @@ class SleepTab;
 class ThemeShopInstalledTab;
 class ThemeShopCommunityTab;
 class AboutTab;
-class HomeNXTab;
 }
 
 class TabbedOverlayScreen : public nxui::GlassWidget {
 public:
     friend class settings::tabs::SystemTab;
-    friend class settings::tabs::HomeNXTab;
 
     enum class ScreenMode {
         Settings,
@@ -233,7 +231,7 @@ protected:
     void onContentUpdate(float dt) override;
 
 protected:
-    void setupActions();
+    virtual void setupActions();
     void onPressB();
     void onPressA();
     void onPressX();

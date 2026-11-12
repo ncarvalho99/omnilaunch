@@ -89,6 +89,9 @@ private:
     void loadAvatar();
     void activateTop();
     void openCardOptions();
+    void closeCardOptions();
+    bool handleCardOptionsInput(nxui::Input& in);
+    void drawCardOptions(nxui::Renderer& ren);
     void openHomebrewOptions();
     void openSortSheet();
     void openSettingsSheet();
@@ -256,6 +259,25 @@ private:
     bool m_powerOpen = false;
     float m_powerIn = 0.f;
     int m_powerSel = 0;
+    // Dedicated card options modal (+)
+    struct CardOptionItem {
+        std::string label;
+        const char* icon = nullptr;
+        std::function<void()> run;
+        bool danger = false;
+        bool primary = false;
+    };
+    bool m_cardOptOpen = false;
+    float m_cardOptIn = 0.f;
+    int m_cardOptSel = 0;
+    std::vector<CardOptionItem> m_cardOptItems;
+    int m_cardOptIndex = -1;
+    std::uint64_t m_cardOptTitleId = 0;
+    std::string m_cardOptTitle;
+    std::string m_cardOptVersion;
+    std::string m_cardOptAuthor;
+    bool m_cardOptIsHomebrew = false;
+    bool m_cardOptSystem = false;
     // This activation was a fast return: no automatic welcome tour.
     bool m_tutorialBlocked = false;
 

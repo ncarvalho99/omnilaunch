@@ -25,9 +25,9 @@ inline std::string T(const char* key, const char* fallback) {
 }
 
 inline void drawLabel(nxui::Renderer& ren, nxui::Font* font, float x, float y,
-                      const std::string& text, const nxui::Color& color) {
+                      const std::string& text, const nxui::Color& color, float scale = 1.0f) {
     if (font && !text.empty()) {
-        ren.drawText(text, {x, y}, font, color);
+        ren.drawText(text, {x, y}, font, color, scale);
     }
 }
 
@@ -103,6 +103,16 @@ static std::vector<std::string> wrapLines(nxui::Font* font, const std::string& t
         if (!current.empty()) lines.push_back(current);
     }
     return lines;
+}
+
+inline std::string fit(nxui::Font* font, const std::string& text, float maxW, float scale = 1.0f) {
+    if (!font || text.empty()) return text;
+    if (font->measure(text).x * scale <= maxW) return text;
+    std::string s = text;
+    while (!s.empty() && font->measure(s + "...").x * scale > maxW) {
+        s.pop_back();
+    }
+    return s.empty() ? text : s + "...";
 }
 
 } // namespace
@@ -378,6 +388,8 @@ void DiscordPanel::rebuildRows() {
             r.kind = Row::Account;
             r.text = a.name();
             r.detail = "@" + a.username;
+            r.avatarUrl = a.avatarUrl(64);
+            r.status = "online";
             r.id = stringToSnowflake(a.id);
             r.selected = (a.id == m_service->accounts().currentId());
             m_rows.push_back(std::move(r));
@@ -458,7 +470,23 @@ void DiscordPanel::rebuildRows() {
                 Row r;
                 r.kind = Row::Dm;
                 r.text = d.name.empty() ? T("discord_ui.dm", "Direct Message") : d.name;
-                r.detail = d.topic.empty() ? T("discord_ui.dm", "Direct Message") : d.topic;
+                r.avatarUrl = d.avatarUrl;
+                if (!d.recipientIds.empty()) {
+                    r.status = m_service->presenceStatus(d.recipientIds[0]);
+                } else {
+                    r.status = "offline";
+                }
+                r.mentions = d.mentions;
+                r.unread = (d.unreadCount > 0 || d.mentions > 0);
+                if (d.recipientIds.size() > 1) {
+                    r.detail = std::to_string(d.recipientIds.size() + 1) + " membros";
+                } else if (r.status != "offline" && !r.status.empty()) {
+                    r.detail = (r.status == "online") ? "Online"
+                             : (r.status == "idle") ? "Ausente"
+                             : (r.status == "dnd") ? "Ocupado" : r.status;
+                } else {
+                    r.detail.clear();
+                }
                 r.id = d.id;
                 m_rows.push_back(std::move(r));
             }
@@ -607,6 +635,43 @@ void DiscordPanel::onRender(nxui::Renderer& ren) {
     }
 }
 
+void DiscordPanel::drawAvatar(nxui::Renderer& ren, const std::string& url, const std::string& name,
+                              float x, float y, float size, float a) {
+    if (!url.empty()) {
+        const nxui::Texture* t = requestImage(url, static_cast<int>(size));
+        if (t && t->valid()) {
+            ren.drawTextureRounded(t, {x, y, size, size}, size * 0.5f, nxui::Color::white().withAlpha(a));
+            return;
+        }
+    }
+    static const int kColors[5][3] = {{88, 101, 242}, {116, 127, 141}, {59, 165, 93}, {250, 166, 26}, {237, 66, 69}};
+    const auto* c = kColors[std::hash<std::string>{}(name) % 5];
+    ren.drawCircle({x + size * 0.5f, y + size * 0.5f}, size * 0.5f, rgb(c[0], c[1], c[2], a), 32);
+    if (name.empty() || !m_font) return;
+    std::string letter = name.substr(0, 1);
+    if (!letter.empty() && letter[0] >= 'a' && letter[0] <= 'z') letter[0] -= 32;
+    const float s = size / 48.f;
+    const nxui::Vec2 m = m_font->measure(letter);
+    drawLabel(ren, m_font, x + (size - m.x * s) * 0.5f, y + (size - m.y * s) * 0.5f, letter, nxui::Color::white().withAlpha(a), s);
+}
+
+void DiscordPanel::drawStatus(nxui::Renderer& ren, const std::string& s, float cx, float cy, float r,
+                              const nxui::Color& ring, float a) {
+    ren.drawCircle({cx, cy}, r + 2.5f, ring, 24);
+    if (s == "online") {
+        ren.drawCircle({cx, cy}, r, green(a), 24);
+    } else if (s == "idle") {
+        ren.drawCircle({cx, cy}, r, rgb(240, 178, 50, a), 24);
+        ren.drawCircle({cx - r * 0.4f, cy - r * 0.4f}, r * 0.6f, ring, 20);
+    } else if (s == "dnd") {
+        ren.drawCircle({cx, cy}, r, red(a), 24);
+        ren.drawRoundedRect({cx - r * 0.6f, cy - r * 0.2f, r * 1.2f, r * 0.4f}, ring, r * 0.2f);
+    } else {
+        ren.drawCircle({cx, cy}, r, rgb(128, 132, 142, a), 24);
+        ren.drawCircle({cx, cy}, r * 0.5f, ring, 20);
+    }
+}
+
 void DiscordPanel::drawRail(nxui::Renderer& ren, const nxui::Rect& p, float a) {
     const nxui::Rect rail{p.x, p.y, kRailW, p.height - kMeH};
     ren.drawRoundedRect(rail, bgTertiary(a), 18.f);
@@ -628,6 +693,19 @@ void DiscordPanel::drawRail(nxui::Renderer& ren, const nxui::Rect& p, float a) {
     }
     if (m_smallFont) {
         drawLabel(ren, m_smallFont, cx - 12.f, y + 14.f, "DM", nxui::Color(1.f, 1.f, 1.f, a));
+    }
+    int totalDmMentions = 0;
+    if (m_service) {
+        for (const auto& dm : m_service->dms()) totalDmMentions += dm.mentions;
+    }
+    if (totalDmMentions > 0) {
+        const std::string n = totalDmMentions > 99 ? "99+" : std::to_string(totalDmMentions);
+        const float nw = m_smallFont ? m_smallFont->measure(n).x * 0.7f : 14.f;
+        const float bw = std::max(20.f, nw + 10.f);
+        ren.drawRoundedRect({dmHit.right() - bw * 0.5f, dmHit.y - 4.f, bw, 18.f}, red(a), 9.f);
+        if (m_smallFont) {
+            drawLabel(ren, m_smallFont, dmHit.right() - bw * 0.5f + (bw - nw) * 0.5f, dmHit.y - 2.f, n, nxui::Color(1.f, 1.f, 1.f, a), 0.7f);
+        }
     }
     m_railHits.push_back({0, dmHit});
     y += 56.f;
@@ -655,6 +733,15 @@ void DiscordPanel::drawRail(nxui::Renderer& ren, const nxui::Rect& p, float a) {
                 const float textW = m_smallFont->measure(inits).x;
                 drawLabel(ren, m_smallFont, cx - textW * 0.5f, y + 14.f, inits, nxui::Color(1.f, 1.f, 1.f, a));
             }
+            if (guilds[i].mentions > 0) {
+                const std::string n = guilds[i].mentions > 99 ? "99+" : std::to_string(guilds[i].mentions);
+                const float nw = m_smallFont ? m_smallFont->measure(n).x * 0.7f : 14.f;
+                const float bw = std::max(20.f, nw + 10.f);
+                ren.drawRoundedRect({gHit.right() - bw * 0.5f, gHit.y - 4.f, bw, 18.f}, red(a), 9.f);
+                if (m_smallFont) {
+                    drawLabel(ren, m_smallFont, gHit.right() - bw * 0.5f + (bw - nw) * 0.5f, gHit.y - 2.f, n, nxui::Color(1.f, 1.f, 1.f, a), 0.7f);
+                }
+            }
             m_railHits.push_back({static_cast<int>(i + 1), gHit});
             y += 56.f;
         }
@@ -675,8 +762,10 @@ void DiscordPanel::drawRows(nxui::Renderer& ren, const nxui::Rect& area, float a
         float h = 46.f;
         if (m_rows[i].kind == Row::Category) {
             h = 36.f;
+        } else if (m_rows[i].kind == Row::Dm || m_rows[i].kind == Row::Account) {
+            h = 52.f;
         } else if (!m_rows[i].detail.empty()) {
-            h = 60.f;
+            h = 58.f;
         }
         rowHeights[i] = h;
         curTop += h + 6.f;
@@ -730,6 +819,45 @@ void DiscordPanel::drawRows(nxui::Renderer& ren, const nxui::Rect& area, float a
             continue;
         }
 
+        if (r.kind == Row::Dm || r.kind == Row::Account) {
+            if (focused || r.selected) {
+                ren.drawRoundedRect(rowRect, bgSelected(a), 8.f);
+                ren.drawRoundedRectOutline(rowRect, {1.f, 1.f, 1.f, 0.18f * a}, 8.f, 1.f);
+            }
+            const float av = 36.f;
+            const float ax = rowRect.x + 8.f;
+            const float ay = rowRect.y + (rowRect.height - av) * 0.5f;
+            drawAvatar(ren, r.avatarUrl, r.text, ax, ay, av, a);
+            if (!r.status.empty())
+                drawStatus(ren, r.status, ax + av - 4.f, ay + av - 4.f, 5.f, (focused || r.selected) ? bgSelected(a) : bgSecondary(a), a);
+            const float tx = ax + av + 10.f;
+            const float badgeW = (r.mentions > 0 ? 38.f : 8.f);
+            const float textW = rowRect.width - (tx - rowRect.x) - badgeW;
+            if (!r.detail.empty()) {
+                drawLabel(ren, m_font, tx, rowRect.y + 7.f, fit(m_font, r.text, textW, 0.76f), textNormal(a), 0.76f);
+                if (m_smallFont) {
+                    drawLabel(ren, m_smallFont, tx, rowRect.y + 28.f, fit(m_smallFont, r.detail, textW, 0.70f), textMuted(a), 0.70f);
+                }
+            } else {
+                drawLabel(ren, m_font, tx, rowRect.y + 16.f, fit(m_font, r.text, textW, 0.76f), textNormal(a), 0.76f);
+            }
+            if (r.mentions > 0) {
+                const std::string n = r.mentions > 99 ? "99+" : std::to_string(r.mentions);
+                const float nw = m_smallFont ? m_smallFont->measure(n).x * 0.7f : 14.f;
+                const float bw = std::max(20.f, nw + 10.f);
+                const float cy = rowRect.y + rowRect.height * 0.5f;
+                ren.drawRoundedRect({rowRect.right() - 8.f - bw, cy - 10.f, bw, 20.f}, red(a), 10.f);
+                if (m_smallFont) {
+                    drawLabel(ren, m_smallFont, rowRect.right() - 8.f - bw + (bw - nw) * 0.5f, cy - 8.f, n, nxui::Color::white().withAlpha(a), 0.7f);
+                }
+            } else if (r.unread) {
+                const float cy = rowRect.y + rowRect.height * 0.5f;
+                ren.drawRoundedRect({area.x + 2.f, cy - 4.f, 4.f, 8.f}, nxui::Color::white().withAlpha(a), 2.f);
+            }
+            m_hits.push_back({static_cast<int>(i), rowRect});
+            continue;
+        }
+
         if (focused || r.selected) {
             ren.drawRoundedRect(rowRect, r.danger ? rgb(242, 63, 67, 0.25f * a) : bgSelected(a), 8.f);
             ren.drawRoundedRectOutline(rowRect, {1.f, 1.f, 1.f, 0.18f * a}, 8.f, 1.f);
@@ -756,17 +884,23 @@ void DiscordPanel::drawMe(nxui::Renderer& ren, const nxui::Rect& p, float a) {
 
     const auto u = m_service ? m_service->currentUser() : User{};
     const std::string name = u.id != 0 ? u.displayName() : T("discord_ui.signed_in", "Signed in");
-    const std::string tag = u.id != 0 ? "@" + u.username : "";
 
-    // Avatar circle
-    const float cx = me.x + 32.f, cy = me.y + me.height * 0.5f;
-    ren.drawCircle({cx, cy}, 18.f, blurple(a), 24);
-    // Online dot
-    ren.drawCircle({cx + 12.f, cy + 12.f}, 5.f, green(a), 16);
+    const float av = 36.f;
+    const float ax = me.x + 12.f;
+    const float ay = me.y + (me.height - av) * 0.5f;
+    drawAvatar(ren, u.id != 0 ? u.avatarUrl(64) : "", name, ax, ay, av, a);
+    drawStatus(ren, u.id != 0 ? "online" : "offline", ax + av - 4.f, ay + av - 4.f, 5.f, bgUser(a), a);
 
-    drawLabel(ren, m_font, me.x + 62.f, me.y + 12.f, name, textNormal(a));
+    const float tx = ax + av + 10.f;
+    drawLabel(ren, m_font, tx, me.y + 11.f, fit(m_font, name, me.width - tx - 85.f, 0.76f), textNormal(a), 0.76f);
     if (m_smallFont) {
-        drawLabel(ren, m_smallFont, me.x + 62.f, me.y + 36.f, tag + T("discord_ui.y_accounts", "  (Y: Accounts)"), textMuted(a));
+        drawLabel(ren, m_smallFont, tx, me.y + 32.f, "Online", textMuted(a), 0.70f);
+    }
+    const nxui::Rect yBtn{me.right() - 80.f, me.y + 14.f, 70.f, 28.f};
+    ren.drawRoundedRect(yBtn, {1.f, 1.f, 1.f, 0.12f * a}, 14.f);
+    ren.drawRoundedRectOutline(yBtn, {1.f, 1.f, 1.f, 0.18f * a}, 14.f, 1.f);
+    if (m_smallFont) {
+        drawLabel(ren, m_smallFont, yBtn.x + 9.f, yBtn.y + 6.f, "Y Switch", textNormal(a), 0.66f);
     }
 }
 

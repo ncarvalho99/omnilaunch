@@ -31,11 +31,14 @@ public:
 
     ListDetailScreen();
 
+    void setInput(nxui::Input* input) { m_input = input; }
+
     // With no entries the right side shows emptyTitle / emptyMessage.
     void setEntries(std::vector<Entry> entries, std::string emptyTitle, std::string emptyMessage);
     void scrollPreview(float dy) { scrollBy(dy); }
 
 protected:
+    void setupActions() override;
     void buildTabs() override;
     float overlayTabWidth() const override { return 330.f; }
     bool usesCustomContentLayout() const override { return true; }
@@ -73,4 +76,5 @@ private:
     float m_viewHeight = 0.f;
     float m_scroll = 0.f;
     float m_scrollGoal = 0.f;
+    nxui::Input* m_input = nullptr;
 };

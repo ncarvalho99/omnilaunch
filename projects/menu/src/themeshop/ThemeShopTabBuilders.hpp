@@ -34,6 +34,11 @@ public:
     static ThemeShopScreen::Tab build(ThemeShopScreen& screen);
 };
 
+class OmniLaunchTab {
+public:
+    static ThemeShopScreen::Tab build(ThemeShopScreen& screen);
+};
+
 class UpdateTab {
 public:
     static ThemeShopScreen::Tab build(ThemeShopScreen& screen);

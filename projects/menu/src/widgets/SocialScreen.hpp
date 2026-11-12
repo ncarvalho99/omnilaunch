@@ -184,7 +184,7 @@ private:
     std::map<std::uint64_t, std::string> m_titles;
 
     bool m_active = false;
-    bool m_frosted = false;
+    bool m_frosted = true;
     float m_anim = 0.f;
     Zone m_zone = Zone::Tiles;
     Mode m_mode = Mode::Friends;

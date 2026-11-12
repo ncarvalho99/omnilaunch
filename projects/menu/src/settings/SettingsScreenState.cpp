@@ -25,8 +25,6 @@ void SettingsScreen::buildTabs() {
     m_tabs.push_back(settings::tabs::SleepTab::build(*this));
     DebugLog::log("[settings]   AboutTab...");
     m_tabs.push_back(settings::tabs::AboutTab::build(*this));
-    DebugLog::log("[settings]   HomeNXTab...");
-    m_tabs.push_back(settings::tabs::HomeNXTab::build(*this));
     DebugLog::log("[settings] buildTabs() done (%d tabs)", (int)m_tabs.size());
 
     m_cachedTabContentWidgets.clear();

@@ -964,6 +964,12 @@ void CardsHomeActivity::onUpdate(float dt) {
         // and, after arriving by a switch, until the confirming press is released.
         if (m_switchFade >= 0.f || m_leaving) {
             // no input
+        } else if (m_powerOpen) {
+            handlePowerInput(app().input());
+        } else if (m_dotsOpen) {
+            handleDotsInput(app().input());
+        } else if (m_cardOptOpen) {
+            handleCardOptionsInput(app().input());
         } else if (m_waitRelease) {
             if (!home::anyInputHeld(app().input()))
                 m_waitRelease = false;
@@ -986,10 +992,6 @@ void CardsHomeActivity::onUpdate(float dt) {
                     m_core.config().cards.tutorialDone = true;
                     saveConfig("cards tutorial");
                 }
-            } else if (m_powerOpen) {
-                handlePowerInput(app().input());
-            } else if (m_dotsOpen) {
-                handleDotsInput(app().input());
             } else if (m_sheet.isOpen()) {
                 m_sheet.handleInput(app().input(), dt);
             } else if (m_musicSheet.isOpen()) {
@@ -2145,7 +2147,7 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
         const std::string zr = ui::glyph::button(nxui::Button::ZR);
         const float zw = m_fontIcons.measure(zl).x * 0.65f;
         const float lw = sf.measure(pageLabel).x;
-        const nxui::Rect cap{16.f, 78.f, zw * 2.f + lw + 36.f, 24.f};
+        const nxui::Rect cap{20.f, 102.f, zw * 2.f + lw + 36.f, 24.f};
         ren.drawRoundedRect(cap, {0.12f, 0.14f, 0.20f, 0.55f}, 12.f);
         ren.drawRoundedRectOutline(cap, {1.f, 1.f, 1.f, 0.18f}, 12.f, 1.f);
         const float iy = cap.y + (cap.height - m_fontIcons.measure(zl).y * 0.65f) * 0.5f;
@@ -2199,6 +2201,7 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
     drawMoveHint(ren);
     drawDots(ren);
     drawPower(ren);
+    drawCardOptions(ren);
     m_sheet.render(ren, m_chrome);
     m_musicSheet.render(ren, m_chrome, m_audio);
     m_newsSheet.render(ren, m_chrome, m_time);

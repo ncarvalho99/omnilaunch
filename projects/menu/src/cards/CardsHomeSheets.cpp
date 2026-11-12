@@ -70,7 +70,7 @@ std::string onOff(bool v) {
 } // namespace
 
 bool CardsHomeActivity::overlayActive() const {
-    return m_powerOpen || m_dotsOpen || (m_userSelect && m_userSelect->isActive()) || (m_text && m_text->isActive()) ||
+    return (m_userSelect && m_userSelect->isActive()) || (m_text && m_text->isActive()) ||
            (m_quick && m_quick->isActive()) || (m_deleteProgress && m_deleteProgress->isActive()) ||
            (m_picker && m_picker->isActive()) || (m_discordPanel && m_discordPanel->isActive());
 }
@@ -94,11 +94,50 @@ void CardsHomeActivity::openPowerMenu() {
 
 void CardsHomeActivity::closePowerMenu() {
     m_powerOpen = false;
+    m_waitRelease = true;
     m_audio.playSfx(Sfx::ModalHide);
 }
 
 bool CardsHomeActivity::handlePowerInput(nxui::Input& in) {
     using B = nxui::Button;
+    const nxui::Rect card{180.f, 190.f, 920.f, 340.f};
+    if (in.touchDown() || in.touchUp()) {
+        const float x = in.touchX(), y = in.touchY();
+        if (!card.contains(x, y)) {
+            closePowerMenu();
+            return true;
+        }
+        const float tileW = 196.f, tileH = 210.f;
+        const float startX = card.x + 40.f, startY = card.y + 88.f;
+        const float gap = (card.width - 80.f - tileW * 4.f) / 3.f;
+        for (int i = 0; i < 4; ++i) {
+            const nxui::Rect r{startX + static_cast<float>(i) * (tileW + gap), startY, tileW, tileH};
+            if (r.contains(x, y)) {
+                m_powerSel = i;
+                if (in.touchUp()) {
+                    closePowerMenu();
+                    m_audio.playSfx(Sfx::ConfirmPositive);
+                    if (i == 0) {
+#ifdef SWITCHU_MENU
+                        m_core.launcher().enterSleep();
+#endif
+                    } else if (i == 1) {
+#ifdef SWITCHU_MENU
+                        m_core.launcher().reboot();
+#endif
+                    } else if (i == 2) {
+#ifdef SWITCHU_MENU
+                        m_core.launcher().shutdown();
+#endif
+                    } else if (i == 3) {
+                        m_hekateQueued = true;
+                    }
+                    return true;
+                }
+            }
+        }
+        return true;
+    }
     if (in.isDown(B::B) || in.isDown(B::Plus)) {
         closePowerMenu();
         return true;
@@ -362,28 +401,47 @@ bool CardsHomeActivity::handleDotsInput(nxui::Input& in) {
     auto colsIn = [&](int row) {
         return row == 0 ? static_cast<int>(shown.size()) : std::min(kDotsCols, tiles - (row - 1) * kDotsCols);
     };
-    if (in.isDown(B::B) || in.isDown(B::Plus)) {
-        m_dotsOpen = false;
-        m_audio.playSfx(Sfx::ModalHide);
-        return true;
-    }
-    const bool up = in.isDown(B::DUp) || in.isDown(B::LStickU);
-    const bool down = in.isDown(B::DDown) || in.isDown(B::LStickD);
-    const bool left = in.isDown(B::DLeft) || in.isDown(B::LStickL);
-    const bool right = in.isDown(B::DRight) || in.isDown(B::LStickR);
-    if (up && m_dotsRow > 0) { --m_dotsRow; m_audio.playSfx(Sfx::Navigate); }
-    if (down && m_dotsRow < rows - 1) { ++m_dotsRow; m_audio.playSfx(Sfx::Navigate); }
-    m_dotsCol = std::clamp(m_dotsCol, 0, std::max(0, colsIn(m_dotsRow) - 1));
-    if (left && m_dotsCol > 0) { --m_dotsCol; m_audio.playSfx(Sfx::Navigate); }
-    if (right && m_dotsCol < colsIn(m_dotsRow) - 1) { ++m_dotsCol; m_audio.playSfx(Sfx::Navigate); }
-    if (in.touchDown()) {
+    const nxui::Rect p = dotsPanelRect(m_dotsTiles.size());
+    if (in.touchDown() || in.touchUp()) {
         const float x = in.touchX(), y = in.touchY();
-        const nxui::Rect p = dotsPanelRect(m_dotsTiles.size());
         if (!p.contains(x, y)) {
             m_dotsOpen = false;
+            m_waitRelease = true;
             m_audio.playSfx(Sfx::ModalHide);
             return true;
         }
+        if (in.touchUp()) {
+            const float chipW = (p.width - 24.f - 9.f * 3.f) / 4.f;
+            for (std::size_t c = 0; c < shown.size() && c < 4; ++c) {
+                const nxui::Rect chip{p.x + 17.f + static_cast<float>(c) * (chipW + 9.f), p.y + 47.f, chipW, 52.f};
+                if (chip.contains(x, y)) {
+                    m_dotsOpen = false;
+                    m_waitRelease = true;
+                    goToPage(shown[c], 0);
+                    m_audio.playSfx(Sfx::Activate);
+                    return true;
+                }
+            }
+            for (std::size_t i = 0; i < m_dotsTiles.size(); ++i) {
+                const int row = static_cast<int>(i) / kDotsCols, col = static_cast<int>(i) % kDotsCols;
+                const nxui::Rect t{p.x + 17.f + col * (kDotsTile + kDotsGap), p.y + 113.f + row * (kDotsTile + kDotsGap),
+                                   kDotsTile, kDotsTile};
+                if (t.contains(x, y)) {
+                    m_dotsOpen = false;
+                    m_waitRelease = true;
+                    m_audio.playSfx(Sfx::Activate);
+                    if (m_dotsTiles[i].run) m_dotsTiles[i].run();
+                    return true;
+                }
+            }
+        }
+        return true;
+    }
+    if (in.isDown(B::B) || in.isDown(B::Plus)) {
+        m_dotsOpen = false;
+        m_waitRelease = true;
+        m_audio.playSfx(Sfx::ModalHide);
+        return true;
     }
     if (!in.isDown(B::A))
         return true;
@@ -709,8 +767,34 @@ void CardsHomeActivity::drawMoveHint(nxui::Renderer& ren) {
     m_chrome.textMid(ren, f, hint, box.x + 24.f, box.y + 22.f, CardsChrome::kWhite);
 }
 
-// ── Card options (E4 safe part, C-UI-3) ─────────────────────────────────────
-// Delete with confirmation is E4 (batch 2); downloads are G4.
+// ── Card options (HomeNX build 185 parity modal, C-UI-3) ───────────────────
+namespace {
+const nxui::Rect kOptCard{176.f, 84.f, 928.f, 552.f};
+constexpr float kOptRowsY = 136.f;
+
+nxui::Rect cardOptionRow(std::size_t n, std::size_t i, float dy) {
+    const float tx = kOptCard.x + 32.f + 260.f + 36.f;
+    const float maxW = kOptCard.x + kOptCard.width - 32.f - tx;
+    const float top = kOptCard.y + kOptRowsY + dy;
+    if (i == 0) return {tx, top, maxW, 52.f};
+    const std::size_t k = i - 1;
+    const std::size_t rows = std::max<std::size_t>(1, (n - 1 + 1) / 2);
+    const float pitch = std::min(54.f, (kOptCard.height - kOptRowsY - 40.f - 60.f) / static_cast<float>(rows));
+    const float cw = (maxW - 12.f) * 0.5f;
+    return {tx + (cw + 12.f) * static_cast<float>(k % 2), top + 60.f + pitch * static_cast<float>(k / 2), cw, pitch - 8.f};
+}
+} // namespace
+
+void CardsHomeActivity::closeCardOptions() {
+    m_cardOptOpen = false;
+    m_waitRelease = true;
+    m_audio.playSfx(Sfx::ModalHide);
+}
+
+void CardsHomeActivity::openHomebrewOptions() {
+    openCardOptions();
+}
+
 void CardsHomeActivity::openCardOptions() {
     if (m_selected < 0 || m_selected >= m_catalog.count())
         return;
@@ -722,199 +806,374 @@ void CardsHomeActivity::openCardOptions() {
     }
     const std::uint64_t titleId = card.app.titleId;
     const std::string title = card.app.title;
-    if (card.isHomebrew) {
-        openHomebrewOptions();
-        return;
-    }
-    m_audio.playSfx(Sfx::ModalShow);
-    std::vector<CardsSheet::Row> rows;
-    auto add = [&rows](std::string label, std::function<void()> fn, std::string detail = {}) {
-        CardsSheet::Row r;
-        r.label = std::move(label);
-        r.onA = std::move(fn);
-        r.detail = std::move(detail);
-        rows.push_back(std::move(r));
+    const std::string path = card.homebrewPath;
+    m_cardOptIndex = m_selected;
+    m_cardOptTitleId = titleId;
+    m_cardOptTitle = title;
+    m_cardOptVersion = card.version;
+    m_cardOptAuthor = card.author;
+    m_cardOptIsHomebrew = card.isHomebrew;
+    m_cardOptSystem = card.system;
+    m_cardOptItems.clear();
+
+    auto add = [this](std::string label, const char* icon, std::function<void()> fn, bool danger = false, bool primary = false) {
+        CardOptionItem item;
+        item.label = std::move(label);
+        item.icon = icon;
+        item.run = std::move(fn);
+        item.danger = danger;
+        item.primary = primary;
+        m_cardOptItems.push_back(std::move(item));
     };
+
 #ifdef SWITCHU_MENU
     const bool suspended = isRunningCard(titleId);
 #else
     const bool suspended = false;
 #endif
-    add(suspended ? i18n.tr("cards.resume", "Resume") : i18n.tr("cards.play", "Play"), [this]() {
-        m_sheet.close();
-        activateSelected();
-    });
-    add(i18n.tr("cards.opt_move", "Move"), [this]() {
-        m_sheet.close();
-        startMove();
-    });
-    add(i18n.tr("dialog.details_rename", "Rename"), [this]() {
-        m_sheet.close();
-        renameSelected();
-    });
-    const bool media = m_page == AppConfig::CardsPrefs::kMedia;
-    add(media ? i18n.tr("cards.opt_to_games", "Move to Games") : i18n.tr("cards.opt_to_media", "Move to Media"),
-        [this, titleId, media]() {
-            m_sheet.close();
-            auto& config = m_core.config();
-            if (!pages::setMedia(config.cards, titleId, !media))
-                return;
-            if (!media && config.cards.pageHidden(AppConfig::CardsPrefs::kMedia))
-                pages::togglePage(config.cards, AppConfig::CardsPrefs::kMedia);
-            saveConfig("cards media");
-            m_catalog.rebuild(config);
-            m_selected = std::clamp(m_selected, 0, std::max(0, m_catalog.count() - 1));
-            m_scroll = static_cast<float>(m_selected);
-            auto& t = nxui::I18n::instance();
-            showToast(media ? t.tr("cards.moved_games", "Moved to Games") : t.tr("cards.moved_media", "Moved to Media"));
-        });
-    const bool isPinned = (m_core.config().cards.panelTitleId == titleId);
-    if (!isPinned) {
-        add(i18n.tr("cards.panel_pin", "Put on panel button"), [this, titleId]() {
-            m_core.config().cards.panelTitleId = titleId;
-            m_core.config().cards.panelButtonEnabled = true;
-            saveConfig("cards panel shortcut");
-            m_sheet.close();
-            showToast(nxui::I18n::instance().tr("cards.panel_pinned_toast", "Placed on panel button"));
-        });
-    } else {
-        add(i18n.tr("cards.panel_unpin", "Remove from panel button"), [this]() {
-            m_core.config().cards.panelTitleId = 0;
-            saveConfig("cards panel shortcut");
-            m_sheet.close();
-            showToast(nxui::I18n::instance().tr("cards.panel_unpinned_toast", "Removed from panel button (News restored)"));
-        });
-    }
-    add(i18n.tr("cards.opt_new_pictures", "Download new pictures"), [this, titleId, title]() {
-        m_sheet.close();
-        downloadSingleTitleArt(titleId, title);
-    });
-    add(i18n.tr("cards.art_choices", "Images"), [this, titleId]() { openArtSheet(titleId); });
-    add(i18n.tr("cards.menu_achievements", "Achievements"), [this, titleId]() { openAchievementsSheet(titleId); });
-    char id[24];
-    std::snprintf(id, sizeof(id), "%016llX", static_cast<unsigned long long>(titleId));
-    add(i18n.tr("game.title_id", "Title ID"), {}, id);
-#ifdef SWITCHU_MENU
-    if (suspended) {
-        add(i18n.tr("cards.close_software", "Close software"), [this]() {
-            m_sheet.close();
-            m_closeConfirmQueued = true;
-        });
-    }
-    // E4. A game card title cannot be deleted from the console, and the
-    // running title has to be closed first (ns refuses it while it runs).
-    if (card.app.isGameCard()) {
-        add(i18n.tr("game.delete_software", "Delete Software"), {},
-            i18n.tr("game.delete_gamecard_unavailable",
-                    "Game card software cannot be deleted from the console."));
-        rows.back().enabled = false;
-    } else if (suspended) {
-        add(i18n.tr("game.delete_software", "Delete Software"), {},
-            i18n.tr("cards.delete_close_first", "Close the software before deleting it."));
-        rows.back().enabled = false;
-    } else {
-        add(i18n.tr("game.delete_software", "Delete Software"), [this, titleId]() {
-                m_sheet.close();
-                m_deleteConfirmId = titleId;
-            },
-            i18n.tr("game.delete_software_desc", "Deletes the software from the console. Save data is not deleted."));
-    }
-#endif
-    m_sheet.open(title, {{std::string(), std::move(rows)}});
-}
 
-// ── Homebrew card options (E4 homebrew part, C-UI-3) ────────────────────────
-// Play/Resume, the update when one is known (G5), panel shortcut is not
-// offered (it opens Games/Media titles only), and delete of the .nro from the
-// SD card with confirmation. A homebrew that is open cannot be deleted.
-void CardsHomeActivity::openHomebrewOptions() {
-    if (m_selected < 0 || m_selected >= m_catalog.count())
-        return;
-    auto& i18n = nxui::I18n::instance();
-    const CardEntry& card = m_catalog.at(m_selected);
-    const std::string path = card.homebrewPath;
-    const std::string title = card.app.title;
-    const std::uint64_t id = card.app.titleId;
-#ifdef SWITCHU_MENU
-    const bool running = isRunningCard(id);
-#else
-    const bool running = false;
-#endif
-    m_audio.playSfx(Sfx::ModalShow);
-    std::vector<CardsSheet::Row> rows;
-    auto add = [&rows](std::string label, std::function<void()> fn, std::string detail = {}) {
-        CardsSheet::Row r;
-        r.label = std::move(label);
-        r.onA = std::move(fn);
-        r.detail = std::move(detail);
-        rows.push_back(std::move(r));
-    };
-    add(running ? i18n.tr("cards.resume", "Resume") : i18n.tr("cards.open", "Open"), [this]() {
-        m_sheet.close();
+    // Primary: Play / Resume / Open
+    const std::string playLabel = suspended ? i18n.tr("cards.resume", "Resume")
+                                : (card.isHomebrew ? i18n.tr("cards.open", "Open") : i18n.tr("cards.play", "Play"));
+    add(playLabel, "play", [this]() {
+        closeCardOptions();
         activateSelected();
-    });
-    if (homebrewHasUpdate(path, card.version)) {
-        add(i18n.tr("cards.hb_update_one", "Update"), [this, path]() {
-            m_sheet.close();
+    }, false, true);
+
+    // Update (homebrew with known update)
+    if (card.isHomebrew && homebrewHasUpdate(path, card.version)) {
+        add(i18n.tr("cards.hb_update_one", "Update"), "restart", [this, path]() {
+            closeCardOptions();
             installHomebrewUpdates({path});
         });
     }
-    CardsSheet::Row info;
-    info.label = card.author.empty() ? title : title + " - " + card.author;
-    info.value = [v = card.version]() { return v; };
-    info.detail = path;
-    info.enabled = false;
-    rows.push_back(std::move(info));
+
 #ifdef SWITCHU_MENU
-    if (running) {
-        add(i18n.tr("cards.close_software", "Close software"), [this]() {
-            m_sheet.close();
+    if (suspended) {
+        add(i18n.tr("cards.close_software", "Close software"), "power", [this]() {
+            closeCardOptions();
             m_closeConfirmQueued = true;
-        });
-        add(i18n.tr("cards.hb_delete", "Delete from the SD card"), {},
-            i18n.tr("cards.delete_close_first", "Close the software before deleting it."));
-        rows.back().enabled = false;
-    } else {
-        add(i18n.tr("cards.hb_delete", "Delete from the SD card"), [this, path, title, id]() {
-            m_sheet.close();
-            if (!m_userSelect)
-                return;
-            auto& t = nxui::I18n::instance();
-            m_audio.playSfx(Sfx::ModalShow);
-            m_userSelect->show(
-                t.tr("cards.hb_delete_title", "Delete homebrew?"),
-                title + "\n" + path,
-                {{t.tr("button.cancel", "Cancel"), []() {}, true},
-                 {t.tr("cards.hb_delete_confirm", "Delete"), [this, path, title, id]() {
-                      // The updater may be swapping this very file.
-                      if (m_hbFuture.valid() &&
-                          m_hbFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
-                          showToast(nxui::I18n::instance().tr("cards.hb_delete_busy",
-                                                              "Wait for the homebrew update to finish"));
-                          return;
-                      }
-                      std::error_code ec;
-                      const bool ok = std::filesystem::remove(path, ec) && !ec;
-                      switchu::commitSdCard("cards homebrew delete");
-                      DebugLog::log("[cards] homebrew delete %s: %s", path.c_str(), ok ? "ok" : "failed");
-                      auto& tt = nxui::I18n::instance();
-                      if (!ok) {
-                          showToast(tt.tr("cards.hb_delete_failed", "The homebrew could not be deleted"));
-                          return;
-                      }
-                      if (m_core.config().cards.panelTitleId == id)
-                          m_core.config().cards.panelTitleId = 0;
-                      m_catalog.setPage(m_page, m_core.config());
-                      m_selected = std::clamp(m_selected, 0, std::max(0, m_catalog.count() - 1));
-                      m_scroll = static_cast<float>(m_selected);
-                      showToast(tt.tr("cards.hb_deleted", "Deleted") + ": " + title);
-                  }, true}},
-                0, {});
-            focusManager().setFocus(m_userSelect.get());
-        }, i18n.tr("cards.hb_delete_desc", "Removes the .nro file. Its saves and settings stay."));
+        }, true);
     }
 #endif
-    m_sheet.open(title, {{std::string(), std::move(rows)}});
+
+    // Move
+    add(i18n.tr("cards.opt_move", "Move"), "arrows", [this]() {
+        closeCardOptions();
+        startMove();
+    });
+
+    // Rename
+    add(i18n.tr("dialog.details_rename", "Rename"), "tag", [this]() {
+        closeCardOptions();
+        renameSelected();
+    });
+
+    // Move to page
+    const bool media = m_page == AppConfig::CardsPrefs::kMedia;
+    if (card.isHomebrew) {
+        add(media ? i18n.tr("cards.opt_to_homebrew", "Move to Homebrew") : i18n.tr("cards.opt_to_media", "Move to Media"),
+            media ? "dots" : "music",
+            [this, titleId, media]() {
+                closeCardOptions();
+                auto& config = m_core.config();
+                if (!pages::setMedia(config.cards, titleId, !media))
+                    return;
+                if (!media && config.cards.pageHidden(AppConfig::CardsPrefs::kMedia))
+                    pages::togglePage(config.cards, AppConfig::CardsPrefs::kMedia);
+                saveConfig("cards media");
+                m_catalog.rebuild(config);
+                m_selected = std::clamp(m_selected, 0, std::max(0, m_catalog.count() - 1));
+                m_scroll = static_cast<float>(m_selected);
+                auto& t = nxui::I18n::instance();
+                showToast(media ? t.tr("cards.moved_homebrew", "Moved to Homebrew") : t.tr("cards.moved_media", "Moved to Media"));
+            });
+    } else {
+        add(media ? i18n.tr("cards.opt_to_games", "Move to Games") : i18n.tr("cards.opt_to_media", "Move to Media"),
+            media ? "play" : "music",
+            [this, titleId, media]() {
+                closeCardOptions();
+                auto& config = m_core.config();
+                if (!pages::setMedia(config.cards, titleId, !media))
+                    return;
+                if (!media && config.cards.pageHidden(AppConfig::CardsPrefs::kMedia))
+                    pages::togglePage(config.cards, AppConfig::CardsPrefs::kMedia);
+                saveConfig("cards media");
+                m_catalog.rebuild(config);
+                m_selected = std::clamp(m_selected, 0, std::max(0, m_catalog.count() - 1));
+                m_scroll = static_cast<float>(m_selected);
+                auto& t = nxui::I18n::instance();
+                showToast(media ? t.tr("cards.moved_games", "Moved to Games") : t.tr("cards.moved_media", "Moved to Media"));
+            });
+    }
+
+    // Put on panel button
+    if (!card.isHomebrew) {
+        const bool isPinned = (m_core.config().cards.panelTitleId == titleId);
+        if (!isPinned) {
+            add(i18n.tr("cards.panel_pin", "Put on panel button"), "copy", [this, titleId]() {
+                m_core.config().cards.panelTitleId = titleId;
+                m_core.config().cards.panelButtonEnabled = true;
+                saveConfig("cards panel shortcut");
+                closeCardOptions();
+                showToast(nxui::I18n::instance().tr("cards.panel_pinned_toast", "Placed on panel button"));
+            });
+        } else {
+            add(i18n.tr("cards.panel_unpin", "Remove from panel button"), "copy", [this]() {
+                m_core.config().cards.panelTitleId = 0;
+                saveConfig("cards panel shortcut");
+                closeCardOptions();
+                showToast(nxui::I18n::instance().tr("cards.panel_unpinned_toast", "Removed from panel button (News restored)"));
+            });
+        }
+    }
+
+    // Download new pictures
+    add(i18n.tr("cards.opt_new_pictures", "Download new pictures"), "restart", [this, titleId, title]() {
+        closeCardOptions();
+        downloadSingleTitleArt(titleId, title);
+    });
+
+    // Images
+    add(i18n.tr("cards.art_choices", "Images"), "copy", [this, titleId]() {
+        closeCardOptions();
+        openArtSheet(titleId);
+    });
+
+    // Background picture
+    add(i18n.tr("cards.bg_image", "Background picture"), "sun", [this, titleId, title]() {
+        closeCardOptions();
+        openTitlePicker(titleId, title, SteamGridDbManager::ArtworkKind::Hero);
+    });
+
+    // Achievements
+    if (!card.isHomebrew) {
+        add(i18n.tr("cards.menu_achievements", "Achievements"), "sun", [this, titleId]() {
+            closeCardOptions();
+            openAchievementsSheet(titleId);
+        });
+    }
+
+    // Delete
+#ifdef SWITCHU_MENU
+    if (card.isHomebrew) {
+        if (!suspended) {
+            add(i18n.tr("cards.hb_delete", "Delete"), "trash", [this, path, title, titleId]() {
+                closeCardOptions();
+                if (!m_userSelect) return;
+                auto& t = nxui::I18n::instance();
+                m_audio.playSfx(Sfx::ModalShow);
+                m_userSelect->show(
+                    t.tr("cards.hb_delete_title", "Delete homebrew?"),
+                    title + "\n" + path,
+                    {{t.tr("button.cancel", "Cancel"), []() {}, true},
+                     {t.tr("cards.hb_delete_confirm", "Delete"), [this, path, title, titleId]() {
+                          if (m_hbFuture.valid() &&
+                              m_hbFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+                              showToast(nxui::I18n::instance().tr("cards.hb_delete_busy",
+                                                                  "Wait for the homebrew update to finish"));
+                              return;
+                          }
+                          std::error_code ec;
+                          const bool ok = std::filesystem::remove(path, ec) && !ec;
+                          switchu::commitSdCard("cards homebrew delete");
+                          DebugLog::log("[cards] homebrew delete %s: %s", path.c_str(), ok ? "ok" : "failed");
+                          auto& tt = nxui::I18n::instance();
+                          if (!ok) {
+                              showToast(tt.tr("cards.hb_delete_failed", "The homebrew could not be deleted"));
+                              return;
+                          }
+                          if (m_core.config().cards.panelTitleId == titleId)
+                              m_core.config().cards.panelTitleId = 0;
+                          m_catalog.setPage(m_page, m_core.config());
+                          m_selected = std::clamp(m_selected, 0, std::max(0, m_catalog.count() - 1));
+                          m_scroll = static_cast<float>(m_selected);
+                          showToast(tt.tr("cards.hb_deleted", "Deleted") + ": " + title);
+                     }, true}},
+                    0, {});
+                focusManager().setFocus(m_userSelect.get());
+            }, true);
+        }
+    } else if (!card.app.isGameCard()) {
+        if (!suspended) {
+            add(i18n.tr("game.delete_software", "Delete"), "trash", [this, titleId]() {
+                closeCardOptions();
+                m_deleteConfirmId = titleId;
+            }, true);
+        }
+    }
+#endif
+
+    m_cardOptSel = 0;
+    m_cardOptIn = 0.f;
+    m_cardOptOpen = true;
+    m_audio.playSfx(Sfx::ModalShow);
+}
+
+bool CardsHomeActivity::handleCardOptionsInput(nxui::Input& in) {
+    if (!m_cardOptOpen) return false;
+    using B = nxui::Button;
+    const int n = static_cast<int>(m_cardOptItems.size());
+    if (in.touchDown() || in.touchUp()) {
+        const float x = in.touchX(), y = in.touchY();
+        if (!kOptCard.contains(x, y)) {
+            closeCardOptions();
+            return true;
+        }
+        if (in.touchUp()) {
+            for (std::size_t i = 0; i < m_cardOptItems.size(); ++i) {
+                const nxui::Rect r = cardOptionRow(m_cardOptItems.size(), i, 0.f);
+                if (r.contains(x, y)) {
+                    m_cardOptSel = static_cast<int>(i);
+                    auto run = m_cardOptItems[i].run;
+                    closeCardOptions();
+                    if (run) run();
+                    return true;
+                }
+            }
+        }
+        return true;
+    }
+    const bool up = in.isDown(B::DUp) || in.isDown(B::LStickU);
+    const bool down = in.isDown(B::DDown) || in.isDown(B::LStickD);
+    const bool left = in.isDown(B::DLeft) || in.isDown(B::LStickL);
+    const bool right = in.isDown(B::DRight) || in.isDown(B::LStickR);
+    int s = m_cardOptSel;
+    if (s == 0) {
+        if (down && n > 1) s = 1;
+    } else {
+        const int k = s - 1;
+        if (left && k % 2 == 1) s -= 1;
+        else if (right && k % 2 == 0 && s + 1 < n) s += 1;
+        else if (up) s = (k < 2) ? 0 : s - 2;
+        else if (down && s + 2 < n) s += 2;
+        else if (down && k % 2 == 1 && s + 1 < n) s += 1;
+    }
+    if (s != m_cardOptSel) {
+        m_cardOptSel = s;
+        m_audio.playSfx(Sfx::Navigate);
+    }
+    if (in.isDown(B::B) || in.isDown(B::Plus)) {
+        closeCardOptions();
+        return true;
+    }
+    if (in.isDown(B::A) && m_cardOptSel >= 0 && m_cardOptSel < n) {
+        auto run = m_cardOptItems[static_cast<std::size_t>(m_cardOptSel)].run;
+        closeCardOptions();
+        if (run) run();
+        return true;
+    }
+    return true;
+}
+
+void CardsHomeActivity::drawCardOptions(nxui::Renderer& ren) {
+    if (!m_cardOptOpen) return;
+    m_cardOptIn = std::min(1.f, m_cardOptIn + 1.f / 10.f);
+    const float a = 1.f - (1.f - m_cardOptIn) * (1.f - m_cardOptIn);
+
+    ren.drawRect({0.f, 0.f, 1280.f, 720.f}, {0.f, 0.f, 0.f, 0.55f * a});
+
+    const nxui::Rect card = kOptCard;
+    ren.drawRoundedRect({card.x - 4.f, card.y + 12.f, card.width + 8.f, card.height + 6.f},
+                        {0.f, 0.f, 0.f, 0.35f * a}, 36.f);
+    ren.drawRoundedRect(card, {0.09f, 0.11f, 0.15f, 0.94f * a}, 32.f);
+    ren.drawRoundedRectOutline(card, {1.f, 1.f, 1.f, 0.15f * a}, 32.f, 1.5f);
+    ren.drawGradientRect({card.x + 2.f, card.y + 2.f, card.width - 4.f, 90.f},
+                         {1.f, 1.f, 1.f, 0.05f * a}, {1.f, 1.f, 1.f, 0.f});
+
+    const float dy = 0.f;
+    const std::uint64_t id = m_cardOptTitleId;
+
+    const nxui::Rect art{card.x + 32.f, card.y + 50.f, 260.f, 368.f};
+    ren.drawRoundedRect({art.x - 3.f, art.y + 8.f, art.width + 6.f, art.height + 6.f},
+                        {0.f, 0.f, 0.f, 0.32f * a}, 27.f);
+    const nxui::Texture* cover = (m_cardOptSystem) ? nullptr : m_art.cover(id);
+    if (cover) {
+        CardsChrome::drawCover(ren, cover, art, 24.f, CardsChrome::kWhite.withAlpha(a));
+    } else {
+        ren.drawRoundedRect(art, {0.28f, 0.31f, 0.40f, 0.88f * a}, 24.f);
+        if (m_cardOptIndex >= 0 && m_cardOptIndex < m_catalog.count()) {
+            const auto& c = m_catalog.at(m_cardOptIndex);
+            if (c.icon && c.icon->valid()) {
+                const float side = 170.f;
+                const nxui::Rect ic{art.x + (art.width - side) * 0.5f, art.y + (art.height - side) * 0.42f, side, side};
+                ren.drawTextureRounded(c.icon.get(), ic, 24.f, CardsChrome::kWhite.withAlpha(a));
+            }
+        }
+    }
+
+    auto& tf = m_chrome.titleFont();
+    auto& lf = m_chrome.labelFont();
+    auto& sf = m_chrome.smallFont();
+    auto& i18n = nxui::I18n::instance();
+
+    const float tx = art.x + art.width + 36.f;
+    const float maxW = card.x + card.width - 32.f - tx;
+    const std::string nameFit = m_chrome.fit(tf, m_cardOptTitle, maxW);
+    m_chrome.textMid(ren, tf, nameFit, tx, card.y + 60.f, CardsChrome::kWhite.withAlpha(a));
+
+    std::string about;
+    if (m_cardOptSystem) {
+        about = i18n.tr("cards.system_app", "System Application");
+    } else if (m_cardOptIsHomebrew) {
+        about = m_cardOptAuthor.empty() ? i18n.tr("cards.homebrew", "Homebrew") : m_cardOptAuthor;
+    } else {
+        const auto optPlayed = switchu::menu::playtime::query(id);
+        const std::uint64_t played = (optPlayed && *optPlayed > 0) ? *optPlayed : 0;
+        if (played > 0)
+            about = switchu::menu::playtime::format(played);
+        else
+            about = i18n.tr("cards.not_played", "Not played yet");
+        if (m_details.titleId == id && m_details.lastPlayed && *m_details.lastPlayed > 0) {
+            const std::string ago = lastPlayedText(*m_details.lastPlayed);
+            if (!ago.empty())
+                about += "    " + ago;
+        }
+    }
+    if (!m_cardOptVersion.empty()) {
+        about += (about.empty() ? "" : "   ") + m_cardOptVersion;
+    }
+    m_chrome.textMid(ren, sf, about, tx, card.y + 96.f, CardsChrome::kWhite.withAlpha(0.72f * a));
+
+    const std::string back = i18n.tr("cards.back", "B Voltar");
+    m_chrome.textMid(ren, sf, back, card.right() - sf.measure(back).x - 30.f, card.bottom() - 24.f,
+                     CardsChrome::kWhite.withAlpha(0.7f * a));
+
+    for (std::size_t i = 0; i < m_cardOptItems.size(); ++i) {
+        const auto& item = m_cardOptItems[i];
+        const nxui::Rect row = cardOptionRow(m_cardOptItems.size(), i, dy);
+        const bool chosen = (static_cast<int>(i) == m_cardOptSel);
+        const bool primary = item.primary;
+
+        if (primary) {
+            ren.drawRoundedRect(row, CardsChrome::kWhite.withAlpha((chosen ? 1.f : 0.88f) * a), row.height * 0.5f);
+            if (chosen)
+                ren.drawRoundedRectOutline({row.x - 3.f, row.y - 3.f, row.width + 6.f, row.height + 6.f},
+                                           CardsChrome::accent(a), row.height * 0.5f + 3.f, 2.5f);
+        } else {
+            ren.drawRoundedRect(row, {1.f, 1.f, 1.f, (chosen ? 0.18f : 0.08f) * a}, row.height * 0.5f);
+            if (chosen)
+                ren.drawRoundedRectOutline({row.x - 2.f, row.y - 2.f, row.width + 4.f, row.height + 4.f},
+                                           CardsChrome::accent(a), row.height * 0.5f + 2.f, 2.f);
+        }
+
+        const float cy = row.y + row.height * 0.5f;
+        const float d = row.height - 12.f;
+        const nxui::Color disc = primary ? nxui::Color(0.f, 0.f, 0.f, 0.85f * a)
+                               : item.danger ? nxui::Color(0.95f, 0.28f, 0.25f, 0.9f * a)
+                               : nxui::Color(0.25f, 0.28f, 0.35f, 0.75f * a);
+        ren.drawCircle({row.x + 10.f + d * 0.5f, cy}, d * 0.5f, disc, 32);
+        if (item.icon) {
+            m_chrome.icon(ren, item.icon, row.x + 10.f + d * 0.5f, cy, d * 0.55f, CardsChrome::kWhite.withAlpha(a));
+        }
+
+        const nxui::Color ink = primary ? nxui::Color(0.f, 0.f, 0.f, a)
+                              : item.danger ? nxui::Color(1.f, 0.45f, 0.42f, a)
+                              : CardsChrome::kWhite.withAlpha(a);
+        const float room = row.width - 24.f - d - 14.f;
+        const std::string lblFit = m_chrome.fit(lf, item.label, room);
+        m_chrome.textMid(ren, lf, lblFit, row.x + 18.f + d, cy, ink);
+    }
 }
 
 #ifdef SWITCHU_MENU

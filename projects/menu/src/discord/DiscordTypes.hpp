@@ -87,6 +87,10 @@ struct Channel {
     int position = 0;
     Snowflake lastMessageId = 0;
     std::vector<Snowflake> recipientIds;
+    std::string avatarUrl;
+    std::string status = "offline";
+    int unreadCount = 0;
+    int mentions = 0;
 };
 
 struct Guild {
@@ -95,6 +99,8 @@ struct Guild {
     std::string icon;
     std::string description;
     std::vector<Channel> channels;
+    int unreadCount = 0;
+    int mentions = 0;
 
     std::string iconUrl(int size = 128) const {
         if (!icon.empty()) {

@@ -129,9 +129,50 @@ void DiscordService::processEvent(const DiscordGateway::Event& ev) {
             if (d.contains("guilds") && d["guilds"].is_array()) {
                 api::parseGuildsJson(d["guilds"].dump(), m_guilds);
             }
+            if (d.contains("presences") && d["presences"].is_array()) {
+                for (const auto& p : d["presences"]) {
+                    if (p.is_object() && p.contains("user") && p["user"].is_object() && p.contains("status")) {
+                        const auto& uObj = p["user"];
+                        Snowflake uId = (uObj.contains("id") && uObj["id"].is_string())
+                            ? stringToSnowflake(uObj["id"].get<std::string>()) : 0;
+                        std::string st = (p.contains("status") && p["status"].is_string())
+                            ? p["status"].get<std::string>() : "";
+                        if (uId != 0 && !st.empty()) m_presences[uId] = st;
+                    }
+                }
+            }
+            if (d.contains("merged_presences") && d["merged_presences"].is_object()) {
+                const auto& mp = d["merged_presences"];
+                if (mp.contains("friends") && mp["friends"].is_array()) {
+                    for (const auto& p : mp["friends"]) {
+                        Snowflake uId = (p.is_object() && p.contains("user_id") && p["user_id"].is_string())
+                            ? stringToSnowflake(p["user_id"].get<std::string>()) : 0;
+                        std::string st = (p.is_object() && p.contains("status") && p["status"].is_string())
+                            ? p["status"].get<std::string>() : "";
+                        if (uId != 0 && !st.empty()) m_presences[uId] = st;
+                    }
+                }
+            }
             m_version++;
-            DebugLog::log("[discord] Gateway READY: user=%s dms=%zu guilds=%zu",
-                          m_currentUser.username.c_str(), m_dms.size(), m_guilds.size());
+            DebugLog::log("[discord] Gateway READY: user=%s dms=%zu guilds=%zu presences=%zu",
+                          m_currentUser.username.c_str(), m_dms.size(), m_guilds.size(), m_presences.size());
+        }
+    } else if (ev.name == "PRESENCE_UPDATE") {
+        const auto j = nlohmann::json::parse(ev.rawJson, nullptr, false);
+        if (j.is_object() && j.contains("d") && j["d"].is_object()) {
+            const auto& d = j["d"];
+            if (d.contains("user") && d["user"].is_object() && d.contains("status")) {
+                const auto& uObj = d["user"];
+                Snowflake uId = (uObj.contains("id") && uObj["id"].is_string())
+                    ? stringToSnowflake(uObj["id"].get<std::string>()) : 0;
+                std::string st = (d.contains("status") && d["status"].is_string())
+                    ? d["status"].get<std::string>() : "";
+                if (uId != 0 && !st.empty()) {
+                    std::lock_guard<std::mutex> lk(m_mu);
+                    m_presences[uId] = st;
+                    m_version++;
+                }
+            }
         }
     } else if (ev.name == "GUILD_CREATE") {
         const auto j = nlohmann::json::parse(ev.rawJson, nullptr, false);
@@ -178,12 +219,25 @@ void DiscordService::processEvent(const DiscordGateway::Event& ev) {
                         m_pendingAlert.text = m.content;
                         m_pendingAlert.avatarUrl = m.author.avatarUrl(64);
                         m_hasAlert = true;
+                        for (auto& dm : m_dms) {
+                            if (dm.id == chanId) {
+                                dm.unreadCount++;
+                                dm.mentions++;
+                                break;
+                            }
+                        }
                     }
                     m_version++;
                 }
             }
         }
     }
+}
+
+std::string DiscordService::presenceStatus(Snowflake userId) const {
+    std::lock_guard<std::mutex> lk(m_mu);
+    auto it = m_presences.find(userId);
+    return (it != m_presences.end() && !it->second.empty()) ? it->second : "offline";
 }
 
 void DiscordService::startQrLogin(home::HomeCore& core) {
