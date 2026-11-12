@@ -1,8 +1,11 @@
 #pragma once
 #include <cstdio>
 #include <cstdarg>
+#include <chrono>
+#include <condition_variable>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <switch.h>
 #include <switchu/log_utils.hpp>
 
@@ -99,6 +102,57 @@ public:
         }
     }
 
+    // Moves the periodic SD writes off the caller's thread: a worker wakes
+    // every `periodMs` and drains lines buffered for a second or more, so the
+    // menu's frame no longer waits on the card for its timed log flush
+    // (HomeNX writes its log from a thread for the same reason). flush() and
+    // logCommit() stay synchronous for crash paths.
+    static void startBackgroundFlush(int periodMs = 500) {
+        auto& self = inst();
+        std::lock_guard<std::mutex> wl(self.m_writerMutex);
+        if (self.m_writer.joinable())
+            return;
+        self.m_writerStop = false;
+        {
+            std::lock_guard<std::mutex> sinkLock(self.m_mutex);
+            self.m_sink.set_deferred(true);
+        }
+        self.m_writer = std::thread([&self, periodMs]() {
+            std::unique_lock<std::mutex> lock(self.m_writerMutex);
+            while (!self.m_writerStop) {
+                self.m_writerCv.wait_for(lock, std::chrono::milliseconds(periodMs));
+                if (self.m_writerStop)
+                    break;
+                lock.unlock();
+                {
+                    std::lock_guard<std::mutex> sinkLock(self.m_mutex);
+                    self.m_sink.flush_if_stale(1);
+                }
+                lock.lock();
+            }
+        });
+    }
+
+    static void stopBackgroundFlush() {
+        auto& self = inst();
+        {
+            std::lock_guard<std::mutex> wl(self.m_writerMutex);
+            self.m_writerStop = true;
+        }
+        self.m_writerCv.notify_all();
+        if (self.m_writer.joinable())
+            self.m_writer.join();
+        std::lock_guard<std::mutex> sinkLock(self.m_mutex);
+        self.m_sink.set_deferred(false);
+        self.m_sink.flush();
+    }
+
+    static bool backgroundFlushActive() {
+        auto& self = inst();
+        std::lock_guard<std::mutex> wl(self.m_writerMutex);
+        return self.m_writer.joinable() && !self.m_writerStop;
+    }
+
     static void log(const char* fmt, ...) {
         char buf[512];
         va_list args;
@@ -122,6 +176,15 @@ public:
 
 private:
     static FileLog& inst() { static FileLog s; return s; }
+    ~FileLog() {
+        {
+            std::lock_guard<std::mutex> wl(m_writerMutex);
+            m_writerStop = true;
+        }
+        m_writerCv.notify_all();
+        if (m_writer.joinable())
+            m_writer.join();
+    }
 
     static void close_current_file(FileLog& self) {
         if (!self.m_sink.is_open())
@@ -135,6 +198,10 @@ private:
 
     std::mutex m_mutex;
     log_detail::buffered_sink m_sink;
+    std::mutex m_writerMutex;
+    std::condition_variable m_writerCv;
+    std::thread m_writer;
+    bool m_writerStop = false;
     // Startup is unbuffered; the main loop relaxes this once it is running.
     bool m_immediate = true;
 };

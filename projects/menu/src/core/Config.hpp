@@ -29,6 +29,8 @@ struct AppConfig {
     std::string actionHintStyle = "capsules";
     std::vector<int> sidebarOrder = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
     std::string uiLanguageOverride = "auto";
+    // USB file transfer (MTP) while HOME is open; off releases the USB port.
+    bool mtpEnabled = true;
     std::string soundPreset = "wiiu";
     bool  defaultProfileEnabled = false;
     std::string defaultProfileUid;

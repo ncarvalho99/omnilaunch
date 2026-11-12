@@ -155,9 +155,14 @@ public:
             m_pending_since = std::time(nullptr);
         m_pending.append(line);
         m_pending.push_back('\n');
-        if (m_pending.size() >= flush_threshold_bytes)
+        if (m_pending.size() >= (m_deferred ? deferred_cap_bytes : flush_threshold_bytes))
             flush();
     }
+
+    // With a background flusher draining the buffer, the logging thread only
+    // writes itself when the buffer grows past a much larger cap.
+    static constexpr size_t deferred_cap_bytes = 64 * 1024;
+    void set_deferred(bool deferred) { m_deferred = deferred; }
 
     // For long-lived processes that never close the sink (the daemon), so a
     // handful of buffered lines don't sit unwritten indefinitely.
@@ -187,6 +192,7 @@ private:
     std::ofstream m_file;
     std::string m_pending;
     std::time_t m_pending_since = 0;
+    bool m_deferred = false;
 };
 
 // Archives the current log and says whether the new one starts empty.

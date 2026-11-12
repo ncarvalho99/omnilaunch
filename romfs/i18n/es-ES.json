@@ -1507,6 +1507,7 @@
     "set_mtp_on": "Connected",
     "set_mtp_ready": "Ready",
     "set_language": "Language",
+    "set_language_desc2": "Izquierda/Derecha cambia el idioma de OmniLaunch",
     "set_language_desc": "Change it in Classic HOME settings",
     "set_system_version": "System version",
     "set_free_sd": "Free on the SD card",

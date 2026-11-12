@@ -86,6 +86,8 @@ void mtpStop() {
     DebugLog::log("[mtp] thread joined and closed");
 }
 
+bool mtpRunning() { return g_started; }
+
 bool mtpConnected() {
     UsbState st = UsbState_Detached;
     const bool c = g_serving && R_SUCCEEDED(usbDsGetState(&st)) && st == UsbState_Configured;
@@ -119,6 +121,7 @@ namespace switchu::usb {
 void mtpStart() {}
 void mtpStop() {}
 bool mtpConnected() { return false; }
+bool mtpRunning() { return false; }
 void mtpGetStatus(MtpStatus& out) { out = {}; }
 
 } // namespace switchu::usb

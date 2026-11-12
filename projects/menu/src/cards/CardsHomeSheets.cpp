@@ -2147,22 +2147,61 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         Row mtp;
         mtp.label = i18n.tr("cards.set_mtp", "Connect to a computer");
         mtp.detail = i18n.tr("cards.set_mtp_desc", "Plug in a USB cable: the SD card shows up as a drive (MTP)");
-        mtp.value = []() {
-#ifdef SWITCHU_MENU
+        mtp.value = [this]() {
             auto& t = nxui::I18n::instance();
+            if (!m_core.config().mtpEnabled)
+                return onOff(false);
+#ifdef SWITCHU_MENU
             return switchu::usb::mtpConnected() ? t.tr("cards.set_mtp_on", "Connected")
                                                 : t.tr("cards.set_mtp_ready", "Ready");
 #else
             return std::string();
 #endif
         };
-        mtp.enabled = false;
+        mtp.toggle = [this]() { return m_core.config().mtpEnabled; };
+        mtp.onChange = [this](int) {
+            auto& c = m_core.config();
+            c.mtpEnabled = !c.mtpEnabled;
+#ifdef SWITCHU_MENU
+            // Start/stop the responder now; the setting also decides it at
+            // every HOME start. Stopping joins the thread (short).
+            if (c.mtpEnabled)
+                switchu::usb::mtpStart();
+            else
+                switchu::usb::mtpStop();
+#endif
+            saveConfig("cards mtp");
+        };
         s.rows.push_back(std::move(mtp));
         Row lang;
         lang.label = i18n.tr("cards.set_language", "Language");
-        lang.detail = i18n.tr("cards.set_language_desc", "Change it in Classic HOME settings");
-        lang.value = []() { return nxui::I18n::instance().activeLanguageTag(); };
-        lang.enabled = false;
+        lang.detail = i18n.tr("cards.set_language_desc2", "Left/Right to change the OmniLaunch language");
+        lang.value = [this]() {
+            auto& t = nxui::I18n::instance();
+            const std::string& tag = m_core.config().uiLanguageOverride;
+            if (tag.empty() || tag == "auto")
+                return t.tr("common.auto", "Auto") + " (" + t.activeLanguageTag() + ")";
+            return t.tr("languages." + tag, tag);
+        };
+        lang.onChange = [this, reopen](int dir) {
+            const std::vector<std::string> tags = nxui::I18n::supportedLanguageTags();
+            if (tags.empty())
+                return;
+            auto& c = m_core.config();
+            auto it = std::find(tags.begin(), tags.end(), c.uiLanguageOverride.empty() ? "auto" : c.uiLanguageOverride);
+            int idx = it == tags.end() ? 0 : static_cast<int>(it - tags.begin());
+            const int n = static_cast<int>(tags.size());
+            idx = ((idx + (dir < 0 ? -1 : 1)) % n + n) % n;
+            c.uiLanguageOverride = tags[static_cast<std::size_t>(idx)];
+            auto& i18n = nxui::I18n::instance();
+            if (c.uiLanguageOverride == "auto")
+                i18n.setLanguageAuto();
+            else
+                i18n.setLanguage(c.uiLanguageOverride);
+            m_core.audioServices().configureAccessibility(c, i18n.activeLanguageTag());
+            saveConfig("cards language");
+            reopen(); // every label of the sheet in the new language
+        };
         s.rows.push_back(std::move(lang));
 #ifdef SWITCHU_MENU
         // HomeNX: clock, sleep timers and auto-brightness live in Console too.

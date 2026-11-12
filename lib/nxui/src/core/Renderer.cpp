@@ -29,7 +29,10 @@ Renderer::Renderer(GpuDevice& gpu) : m_gpu(gpu) {
     m_vtxShadow.resize(kVtxShadowCap);
     resetLiquidGlassSettings();
 }
-Renderer::~Renderer() {}
+Renderer::~Renderer() {
+    // Teardown has drained the GPU (Application::shutdown) before this runs.
+    m_retired.clear();
+}
 
 void Renderer::resetLiquidGlassSettings() {
     m_liquidGlassSettings = LiquidGlassSettings{};
@@ -211,8 +214,38 @@ void Renderer::releaseTextureSlot(int slot) {
 }
 
 void Renderer::reclaimReleasedTextureSlotsAfterIdle() {
-    // Texture retirement in this fork already waits for GPU idle before the
-    // descriptor slot and backing memory are released.
+    // Called after the caller's waitIdle(): nothing in flight, free them all.
+    releaseRetiredTextures(true);
+}
+
+void Renderer::retireTexture(int slot, dk::UniqueMemBlock&& block, uint32_t size) {
+    RetiredTexture r;
+    r.slot = slot;
+    r.block = std::move(block);
+    r.size = size;
+    // NUM_FB frames can be queued; one more as a guard.
+    r.freeFrame = m_frameSerial + GpuDevice::NUM_FB + 2;
+    m_retired.push_back(std::move(r));
+}
+
+void Renderer::releaseRetiredTextures(bool all) {
+    // A bounded number per frame: each block free is a kernel call. A large
+    // backlog (a text-cache trim) drains faster so the budget recovers.
+    int budget = all ? (1 << 30) : (m_retired.size() > 24 ? 24 : 8);
+    for (std::size_t i = 0; i < m_retired.size() && budget > 0;) {
+        if (all || m_retired[i].freeFrame <= m_frameSerial) {
+            --budget;
+            if (m_retired[i].slot > 0)
+                releaseTextureSlot(m_retired[i].slot);
+            if (m_retired[i].size > 0)
+                m_gpu.freeImageMemory(m_retired[i].size);
+            if (i + 1 != m_retired.size())
+                m_retired[i] = std::move(m_retired.back());
+            m_retired.pop_back(); // the MemBlock is destroyed here
+        } else {
+            ++i;
+        }
+    }
 }
 
 void Renderer::updateTexture(int slot, const dk::ImageView& view) {
@@ -305,6 +338,8 @@ void Renderer::beginFrame() {
     m_vtxBufferBound = false;
     m_clipStack.clear();
     ++m_frameSerial;
+    if (!m_retired.empty())
+        releaseRetiredTextures(false);
     if (m_journalEnabled) journalReset();
     // Normally the capture cannot outlive a frame: the framebuffer it copies is
     // redrawn every frame. An overlay that knows nothing behind it has changed

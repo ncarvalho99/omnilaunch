@@ -12,6 +12,11 @@ struct SettingsGlassTuning {
     // at 640x360, so the result was never going to look like the old one
     // regardless of iteration count.
     int blurIterations = 8;
+    // Upper bound on the full-resolution blur passes run on the opening frame
+    // (each pass is two 1280x720 draws). The radius widening in applyBlur
+    // turned 8 iterations into 12-24 passes, a 30-55 ms first frame; HomeNX
+    // opens its panels without this pass at all. 6 keeps the frosted look.
+    int maxOpenPasses = 6;
     float shaderBlurIntensity = 0.0f;
     float refractionIntensity = 0.035f;
     float glowIntensity = 0.14f;

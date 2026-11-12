@@ -17,6 +17,9 @@ void mtpStop();
 // Checks if the console is actively connected to a USB host.
 bool mtpConnected();
 
+// True while the responder thread runs (started and not stopped).
+bool mtpRunning();
+
 enum class MtpOp { None, Receive, Send, Delete };
 
 struct MtpStatus {

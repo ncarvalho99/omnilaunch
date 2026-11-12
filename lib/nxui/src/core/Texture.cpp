@@ -38,11 +38,23 @@ void Texture::retireGpuResources() {
     const bool holdsMemory = m_gpu && m_mem && m_allocSize > 0;
     if (m_slot < 0 && !holdsMemory)
         return;
+    // Normal path: defer instead of waiting. The renderer frees the slot and
+    // the block once the frames that may sample them have finished.
+    if (m_ren && m_gpu && !m_gpu->bulkTeardownActive()) {
+        m_ren->retireTexture(m_slot, static_cast<dk::UniqueMemBlock&&>(m_mem),
+                             holdsMemory ? m_allocSize : 0);
+        m_slot = -1;
+        m_allocSize = 0;
+        m_valid = false;
+        return;
+    }
     if (m_gpu && !m_gpu->bulkTeardownActive())
         m_gpu->waitIdle();
     releaseSlot();
     if (holdsMemory)
         m_gpu->freeImageMemory(m_allocSize);
+    m_allocSize = 0;
+    m_valid = false;
 }
 
 Texture::~Texture() {

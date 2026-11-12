@@ -239,6 +239,23 @@ float TabbedOverlayScreen::itemHeight(const SettingItem& it, float contentWidth)
     if (it.type == ItemType::Section) return kSectionHeight;
 
     const float textW = std::max(1.f, contentWidth - kContentCardInsetX * 2.f - 20.f);
+    if (!it.wrapLabel && it.description.empty())
+        return kRowHeight;
+
+    // drawContent asks for every row's height every frame; wrapping measures
+    // every growing prefix of the text. Remember the answer per font, width
+    // and text (HomeNX keeps the same cache in this function).
+    std::string key;
+    key.reserve(it.label.size() + it.description.size() + 48);
+    key.append(std::to_string(reinterpret_cast<std::uintptr_t>(m_font))).push_back('|');
+    key.append(std::to_string(m_font ? m_font->revision() : 0)).push_back('|');
+    key.append(std::to_string(m_smallFont ? m_smallFont->revision() : 0)).push_back('|');
+    key.append(std::to_string(static_cast<int>(textW))).push_back(it.wrapLabel ? 'w' : 'n');
+    key.append(it.label).push_back('\x1f');
+    key.append(it.description);
+    if (const auto hit = m_heightCache.find(key); hit != m_heightCache.end())
+        return hit->second;
+
     float height = kRowHeight;
 
     if (it.wrapLabel) {
@@ -264,6 +281,9 @@ float TabbedOverlayScreen::itemHeight(const SettingItem& it, float contentWidth)
         height = std::max(height,
                           labelBlock + probe.measureWrappedText(descW).y + 34.f);
     }
+    if (m_heightCache.size() > 2048)
+        m_heightCache.clear();
+    m_heightCache.emplace(std::move(key), height);
     return height;
 }
 
@@ -443,10 +463,9 @@ void TabbedOverlayScreen::rebuildContentItems() {
         return;
 
     if (m_tabIndex < 0 || m_tabIndex >= (int)m_tabs.size()) return;
+    ensureTabLoaded(m_tabIndex);
     auto& items = m_tabs[m_tabIndex].items;
     auto& cache = m_cachedTabContentWidgets[(size_t)m_tabIndex];
-    DebugLog::log("[settings] rebuildContent tab=%d items=%d cache=%s",
-                  m_tabIndex, (int)items.size(), cache.empty() ? "miss" : "hit");
 
     if (cache.empty()) {
         cache.reserve(items.size());
@@ -526,7 +545,16 @@ void TabbedOverlayScreen::onRender(nxui::Renderer& ren) {
             ren.copyOffscreen(nxui::GpuDevice::OFF_SHARP_A,
                               nxui::GpuDevice::OFF_SCENE_FROZEN);
             if (tuning.blurIterations > 0 && tuning.preBlurRadius > 0.001f) {
-                ren.applyBlur(tuning.preBlurRadius, tuning.blurIterations);
+                // Same spread as before, bought with fewer passes: the radius is
+                // kept at the renderer's 2.5 texel limit and the pass count is
+                // what applyBlur would have used, capped.
+                constexpr float kSpread = 2.5f;
+                const float r = std::min(tuning.preBlurRadius, kSpread);
+                const float widen = tuning.preBlurRadius / r;
+                const int passes = std::clamp(
+                    static_cast<int>(std::ceil(tuning.blurIterations * widen * widen / 2.f)),
+                    1, std::max(1, tuning.maxOpenPasses));
+                ren.applyBlur(r, passes);
             }
             ren.copyOffscreen(nxui::GpuDevice::OFF_SHARP_A, kSettingsBackdropCacheTarget);
             m_backdropCacheValid = true;

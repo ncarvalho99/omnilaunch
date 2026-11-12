@@ -156,7 +156,7 @@ void TabbedOverlayScreen::warmup() {
 
     rebuildTabBar();
 
-    if (!usesCustomContentLayout()) {
+    if (!usesCustomContentLayout() && !lazyTabs()) {
         for (int tabIndex = 0; tabIndex < (int)m_tabs.size(); ++tabIndex) {
             const uint64_t tickTab = armGetSystemTick();
             m_tabIndex = tabIndex;

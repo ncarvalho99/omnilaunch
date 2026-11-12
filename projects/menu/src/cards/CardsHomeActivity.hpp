@@ -209,6 +209,7 @@ private:
     // so the press that confirmed the switch does nothing here.
     bool m_waitRelease = false;
     float m_fadeIn = 1.f;  // 1 -> 0 over the first frames after a switch
+    int m_logImmediateFrames = 300; // unbuffered log for the first frames
     // Background cross-fade.
     std::uint64_t m_bgId = 0;
     std::uint64_t m_bgPrevId = 0;

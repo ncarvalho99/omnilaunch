@@ -321,6 +321,11 @@ public:
     void releaseTextureSlot(int slot);
     void updateTexture(int slot, const dk::ImageView& view);
     void reclaimReleasedTextureSlotsAfterIdle();
+    // Hands a destroyed texture's slot and pixels to the renderer, which frees
+    // them once no frame in flight can still sample them (a few frames later),
+    // instead of stalling the CPU on gpu.waitIdle(). Approach from HomeNX
+    // lib/nxui Renderer::retireImageMemory @ 0448cd4 (GPL-3.0, ad3333m).
+    void retireTexture(int slot, dk::UniqueMemBlock&& block, uint32_t size);
 #endif
     void bindTexture(int slot);
     void resetTextureSlots();
@@ -482,6 +487,16 @@ private:
     // Texture descriptor tracking
     int m_nextDescSlot = 0;
     std::vector<int> m_freeDescSlots;
+#ifdef NXUI_BACKEND_DEKO3D
+    struct RetiredTexture {
+        int slot = -1;
+        dk::UniqueMemBlock block;
+        uint32_t size = 0;
+        uint64_t freeFrame = 0;
+    };
+    std::vector<RetiredTexture> m_retired;
+    void releaseRetiredTextures(bool all);
+#endif
     static constexpr int WHITE_TEX_SLOT = 0;
 
     // Offscreen target descriptor slots

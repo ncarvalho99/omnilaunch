@@ -327,9 +327,7 @@ void WiiUMenuApp::createSettings() {
                                             m_config.accessibilitySpeechRate);
     m_settings->setAccessibilitySpeechPreferences(m_config.accessibilitySpeakHints,
                                                   m_config.accessibilitySpeakPosition);
-    m_settings->setSteamGridDbViewFlags(m_config.steamGridDbShowInGrid, m_config.steamGridDbShowInDynamicLine, m_config.steamGridDbShowInFolders);
-    m_settings->setSteamGridDbState(m_config.steamGridDbEnabled,
-                                    !m_config.steamGridDbApiKey.empty());
+
 
     m_settings->onNavigateSfx([this]() { m_audio.playSfx(Sfx::Navigate); });
     m_settings->onActivateSfx([this]() { m_audio.playSfx(Sfx::Activate); });
@@ -515,22 +513,7 @@ void WiiUMenuApp::createSettings() {
         m_pendingNetConnect = true;
         m_settings->hide();
     });
-    m_settings->onSteamGridDbViewFlagsChange([this](bool grid, bool line, bool folders) {
-        m_config.steamGridDbShowInGrid = grid;
-        m_config.steamGridDbShowInDynamicLine = line;
-        m_config.steamGridDbShowInFolders = folders;
-        m_config.save();
-        m_steamGridDbShownState = -1;
-        syncSteamGridDbVisibility();
-    });
-    m_settings->onSteamGridDbEnabledChange([this](bool enabled) {
-        m_config.steamGridDbEnabled = enabled;
-        m_steamGridDbShownState = -1;
-        syncSteamGridDbVisibility();
-    });
-    m_settings->onSteamGridDbApiKeyRequest([this]() {
-        editSteamGridDbApiKey();
-    });
+
     m_settings->onRotateLogsRequest([this]() {
         auto& i18n = nxui::I18n::instance();
         const Result rc = m_launcher.rotateLogs();
@@ -566,9 +549,7 @@ void WiiUMenuApp::createSettings() {
                     m_settings->rebuildCurrentTab();
             });
     });
-    m_settings->onSteamGridDbScrapeRequest([this]() {
-        startSteamGridDbScrape();
-    });
+
     m_settings->onControllerPairing([this]() {
         if (m_settings) m_settings->hide();
         m_launcher.launchControllerPairing();

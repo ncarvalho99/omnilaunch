@@ -34,10 +34,6 @@ public:
     static SettingsScreen::Tab build(SettingsScreen& screen);
 };
 
-class SteamGridDbTab {
-public:
-    static SettingsScreen::Tab build(SettingsScreen& screen);
-};
 
 class ControllersTab {
 public:

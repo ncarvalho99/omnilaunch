@@ -95,12 +95,34 @@ bool CardsMusicSheet::handleInput(nxui::Input& in, AudioManager& audio, AppConfi
         close();
         return true;
     }
+    if (handleTouch(in, audio, config))
+        return true;
 
     const int songs = static_cast<int>(audio.trackCount());
     const bool left = in.isDown(B::DLeft) || in.isDown(B::LStickL);
     const bool right = in.isDown(B::DRight) || in.isDown(B::LStickR);
     const bool up = in.isDown(B::DUp) || in.isDown(B::LStickU);
     const bool down = in.isDown(B::DDown) || in.isDown(B::LStickD);
+    const bool heldLeft = in.isHeld(B::DLeft) || in.isHeld(B::LStickL);
+    const bool heldRight = in.isHeld(B::DRight) || in.isHeld(B::LStickR);
+    const bool heldUp = in.isHeld(B::DUp) || in.isHeld(B::LStickU);
+    const bool heldDown = in.isHeld(B::DDown) || in.isHeld(B::LStickD);
+
+    // Held directions repeat (volume sweep, long playlists), as in CardsNX.
+    constexpr float kDelay = 0.38f, kRate = 0.07f;
+    const int dir = heldLeft == heldRight ? 0 : (heldLeft ? -1 : 1);
+    const int vdir = heldUp == heldDown ? 0 : (heldUp ? -1 : 1);
+    bool repeatH = false, repeatV = false;
+    if (dir != 0 && dir == m_repeatDir && !left && !right) {
+        m_repeatTimer -= 1.f / 60.f;
+        if (m_repeatTimer <= 0.f) { m_repeatTimer = kRate; repeatH = true; }
+    } else if (vdir != 0 && vdir * 2 == m_repeatDir && !up && !down) {
+        m_repeatTimer -= 1.f / 60.f;
+        if (m_repeatTimer <= 0.f) { m_repeatTimer = kRate; repeatV = true; }
+    }
+    if (left || right) { m_repeatDir = left ? -1 : 1; m_repeatTimer = kDelay; }
+    else if (up || down) { m_repeatDir = up ? -2 : 2; m_repeatTimer = kDelay; }
+    else if (dir == 0 && vdir == 0) m_repeatDir = 0;
 
     if (m_zone == 0) {
         if (left && m_col > 0) --m_col;
@@ -110,14 +132,16 @@ bool CardsMusicSheet::handleInput(nxui::Input& in, AudioManager& audio, AppConfi
         if (in.isDown(B::A)) controlAction(m_col, audio, config);
     } else if (m_zone == 1) {
         if (up) m_zone = 0;
-        if (left || right) {
-            const float v = std::clamp(config.musicVolume + (right ? 0.05f : -0.05f), 0.f, 1.f);
+        const int step = (left || (repeatH && dir < 0)) ? -1 : (right || (repeatH && dir > 0)) ? 1 : 0;
+        if (step != 0) {
+            const float v = std::clamp(config.musicVolume + 0.05f * static_cast<float>(step), 0.f, 1.f);
             config.musicVolume = v;
             audio.setVolume(v);
         }
     } else {
-        if (up && m_row > 0) --m_row;
-        else if (down && m_row + 1 < songs) ++m_row;
+        const int step = (up || (repeatV && vdir < 0)) ? -1 : (down || (repeatV && vdir > 0)) ? 1 : 0;
+        if (step < 0 && m_row > 0) --m_row;
+        else if (step > 0 && m_row + 1 < songs) ++m_row;
         else if (left) m_zone = 0;
         if (in.isDown(B::A) && m_row >= 0 && m_row < songs) {
             config.musicEnabled = true;
@@ -127,6 +151,51 @@ bool CardsMusicSheet::handleInput(nxui::Input& in, AudioManager& audio, AppConfi
     return true;
 }
 
+// Touch, as CardsNX: drag along the volume, tap a button or a song, tap
+// outside the card to close.
+bool CardsMusicSheet::handleTouch(nxui::Input& in, AudioManager& audio, AppConfig& config) {
+    const float x = in.touchX(), y = in.touchY();
+    const nxui::Rect vol = volumeBar(0.f);
+    if (in.isTouching() && (m_volDrag || (x >= vol.x - 10.f && x <= vol.x + vol.width + 10.f && std::abs(y - vol.y - 4.f) < 22.f))) {
+        m_volDrag = true;
+        m_zone = 1;
+        const float v = std::clamp((x - vol.x) / vol.width, 0.f, 1.f);
+        config.musicVolume = v;
+        audio.setVolume(v);
+        return true;
+    }
+    if (!in.touchUp())
+        return in.isTouching();
+    if (m_volDrag) {
+        m_volDrag = false;
+        return true;
+    }
+    for (int i = 0; i < 5; ++i) {
+        const nxui::Vec2 c = buttonPos(i, 0.f);
+        if (std::hypot(x - c.x, y - c.y) < (i == 2 ? 36.f : 28.f)) {
+            m_zone = 0;
+            m_col = i;
+            controlAction(i, audio, config);
+            return true;
+        }
+    }
+    const int songs = static_cast<int>(audio.trackCount());
+    if (x >= kListX && x <= kListX + kListW && y >= kListTop && y <= kListBottom) {
+        const int row = static_cast<int>((y - kListTop + m_listScroll) / kRowH);
+        if (row >= 0 && row < songs) {
+            m_zone = 2;
+            m_row = row;
+            config.musicEnabled = true;
+            audio.playTrack(row);
+        }
+        return true;
+    }
+    if (!kCard.contains(x, y)) {
+        close();
+        return true;
+    }
+    return true;
+}
 void CardsMusicSheet::update(float dt, const AudioManager& audio) {
     if (!m_open)
         return;

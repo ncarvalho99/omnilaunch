@@ -1,4 +1,5 @@
 #pragma once
+#include <unordered_map>
 #include <nxui/core/Types.hpp>
 #include <nxui/core/Font.hpp>
 #include <nxui/core/Input.hpp>
@@ -197,6 +198,11 @@ public:
 
 protected:
     virtual void buildTabs() = 0;
+    // Lazy screens build a tab's items on first view (off the UI thread);
+    // called before a tab's widgets are built. Default: tabs are eager.
+    virtual void ensureTabLoaded(int tabIndex) { (void)tabIndex; }
+    // Eager screens warm every tab's widgets; lazy ones only the current one.
+    virtual bool lazyTabs() const { return false; }
     virtual bool usesCustomContentLayout() const { return false; }
     // Full-screen custom views such as a game dossier can own the tab rail as
     // well as the normal content column.  Other overlays keep the stock rail.
@@ -372,4 +378,6 @@ protected:
     bool  m_touchScrolling = false;
     bool  m_touchDraggingSlider = false;
     bool  m_ignoreInitialTouchRelease = false;
+    // itemHeight() results keyed by fonts, width and text; see itemHeight.
+    mutable std::unordered_map<std::string, float> m_heightCache;
 };

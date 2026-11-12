@@ -126,6 +126,7 @@ bool AppConfig::load() {
             sidebarOrder = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
     }
     readJsonOpt(j, "uiLanguageOverride", uiLanguageOverride);
+    readJsonOpt(j, "mtpEnabled", mtpEnabled);
     readJsonOpt(j, "soundPreset", soundPreset);
     readJsonOpt(j, "defaultProfileEnabled", defaultProfileEnabled);
     readJsonOpt(j, "defaultProfileUid", defaultProfileUid);
@@ -386,6 +387,7 @@ bool AppConfig::save() const {
     j["viewSwitchButton"] = (viewSwitchButton == "Minus" || viewSwitchButton == "-") ? "Minus" : "R";
     j["sidebarOrder"] = sidebarOrder;
     j["uiLanguageOverride"] = uiLanguageOverride;
+    j["mtpEnabled"] = mtpEnabled;
     j["soundPreset"] = (m_safe && !m_touchedSound) ? m_savedSound : soundPreset;
     j["defaultProfileEnabled"] = defaultProfileEnabled;
     j["defaultProfileUid"] = defaultProfileEnabled ? defaultProfileUid : std::string();

@@ -805,6 +805,14 @@ void CardsHomeActivity::refreshCatalogue() {
 void CardsHomeActivity::onUpdate(float dt) {
     m_time += dt;
 #ifdef SWITCHU_MENU
+    // Startup logs line by line (a hang leaves a trace); once Cards has run
+    // a few seconds, buffer and let the background thread write the card.
+    // Without this every Cards log line was a synchronous SD write + commit.
+    if (m_logImmediateFrames > 0 && --m_logImmediateFrames == 0) {
+        DebugLog::log("[cards] run loop healthy, log buffering enabled");
+        switchu::FileLog::setImmediate(false);
+        switchu::FileLog::startBackgroundFlush();
+    }
     // onRender stops while the lock screen has the display off; restart the
     // frame-interval measurement instead of bridging the idle gap (D5 fix).
     if (m_lock.isLocked() || !app().renderEnabled())

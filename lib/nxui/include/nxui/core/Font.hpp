@@ -78,6 +78,10 @@ private:
     // On eviction, the Texture of the least-recently-used entry is reused
     // (its descriptor slot and MemBlock are recycled via loadFromPixels).
     static constexpr size_t kMaxCacheEntries = 384;
+    // New strings rasterized per ~16 ms window, shared by every font.
+    static constexpr int kMaxRastersPerFrame = 3;
+    static inline std::uint64_t s_rasterWindow = 0;
+    static inline int s_rastersInWindow = 0;
 
     struct CacheEntry {
         std::string key;

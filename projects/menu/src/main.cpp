@@ -266,6 +266,7 @@ extern "C" void __appInit(void) {
 
 extern "C" void __appExit(void) {
     switchu::menu::shutdownNsService();
+    switchu::FileLog::stopBackgroundFlush(); // join before the sink closes
     DebugLog::closeFileLog();
     switchu::FileLog::close();
 
@@ -434,8 +435,12 @@ int main(int argc, char* argv[]) {
             switchu::FileLog::flush();
         });
         if (app.initialize()) {
-            DebugLog::log("[menu] starting USB MTP server...");
-            switchu::usb::mtpStart();
+            if (homeCore.config().mtpEnabled) {
+                DebugLog::log("[menu] starting USB MTP server...");
+                switchu::usb::mtpStart();
+            } else {
+                DebugLog::log("[menu] USB MTP server off by setting");
+            }
             DebugLog::log("[menu] app.run...");
             app.run();
         } else {

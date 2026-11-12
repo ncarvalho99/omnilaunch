@@ -4,6 +4,7 @@
 #include <SDL2/SDL.h>
 #include <cstdio>
 #include <cstring>
+#include <chrono>
 #include <fstream>
 
 namespace nxui {
@@ -124,6 +125,30 @@ Texture* Font::getOrRender(GpuDevice& gpu, Renderer& ren, const std::string& tex
         return &it->second->tex;
     }
 
+    // Full: refuse instead of recycling the oldest texture in place. Reloading
+    // a texture in place waits for the GPU (it may be on screen this frame),
+    // so every new string past the cap stalled a frame. The owner trims the
+    // cache when asked; the string is drawn a frame or two later.
+    if (m_lruList.size() >= kMaxCacheEntries) {
+        m_maintenanceRequested = true;
+        return nullptr;
+    }
+    // A raster costs milliseconds on the render thread, and a screen change
+    // meets dozens of new strings in one frame: spread them, a few per frame,
+    // shared by every font (HomeNX lib/nxui Font.cpp @ 0448cd4, GPL-3.0).
+    {
+        const std::uint64_t now = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count());
+        if (now - s_rasterWindow > 16000) {
+            s_rasterWindow = now;
+            s_rastersInWindow = 0;
+        }
+        if (s_rastersInWindow >= kMaxRastersPerFrame)
+            return nullptr; // drawn on a following frame
+        ++s_rastersInWindow;
+    }
+
     // Render the string via SDL_ttf.
     SDL_Color white = {255, 255, 255, 255};
     SDL_Surface* surface = TTF_RenderUTF8_Blended(m_font, text.c_str(), white);
@@ -137,43 +162,19 @@ Texture* Font::getOrRender(GpuDevice& gpu, Renderer& ren, const std::string& tex
     const uint8_t* pixels = static_cast<const uint8_t*>(rgba->pixels);
     int w = rgba->w, h = rgba->h, pitch = rgba->pitch;
 
-    // Evict the LRU entry if needed.
-    if (m_lruList.size() >= kMaxCacheEntries) {
-        // Recycle the least-recently-used entry.
-        // Its Texture already has a descriptor slot and MemBlock;
-        // loadFromSurface → loadFromPixels will reuse them.
-        auto& victim = m_lruList.back();
-        m_lruMap.erase(victim.key);
-
-        victim.key = text;
-        victim.w = w;
-        victim.h = h;
-        if (!victim.tex.loadFromSurface(gpu, ren, pixels, w, h, pitch)) {
-            m_maintenanceRequested = true;
-            SDL_UnlockSurface(rgba);
-            SDL_FreeSurface(rgba);
-            return nullptr;
-        }
-
-        // Move recycled entry to front
-        m_lruList.splice(m_lruList.begin(), m_lruList, std::prev(m_lruList.end()));
-    } else {
-        // Fresh entry
-        m_lruList.emplace_front();
-        auto& entry = m_lruList.front();
-        entry.key = text;
-        entry.w = w;
-        entry.h = h;
-        if (!entry.tex.loadFromSurface(gpu, ren, pixels, w, h, pitch)) {
-            m_lruList.pop_front();
-            m_maintenanceRequested = true;
-            SDL_UnlockSurface(rgba);
-            SDL_FreeSurface(rgba);
-            return nullptr;
-        }
-        m_cacheBytes += entry.tex.allocationSize();
+    m_lruList.emplace_front();
+    auto& entry = m_lruList.front();
+    entry.key = text;
+    entry.w = w;
+    entry.h = h;
+    if (!entry.tex.loadFromSurface(gpu, ren, pixels, w, h, pitch)) {
+        m_lruList.pop_front();
+        m_maintenanceRequested = true;
+        SDL_UnlockSurface(rgba);
+        SDL_FreeSurface(rgba);
+        return nullptr;
     }
-
+    m_cacheBytes += entry.tex.allocationSize();
     SDL_UnlockSurface(rgba);
     SDL_FreeSurface(rgba);
 

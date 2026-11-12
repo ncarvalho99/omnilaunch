@@ -37,6 +37,7 @@ public:
 
 private:
     void controlAction(int col, AudioManager& audio, AppConfig& config);
+    bool handleTouch(nxui::Input& in, AudioManager& audio, AppConfig& config);
 
     bool m_open = false;
     float m_in = 0.f;
@@ -48,6 +49,9 @@ private:
     int m_row = 0;    // playlist row
     float m_listScroll = 0.f; // pixels, eased toward the chosen row
     float m_time = 0.f;
+    int m_repeatDir = 0;      // -1/+1 horizontal, -2/+2 vertical, 0 none
+    float m_repeatTimer = 0.f;
+    bool m_volDrag = false;
     mutable bool m_backdropCacheValid = false;
     std::function<void()> m_onClosed;
 };
