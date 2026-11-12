@@ -80,7 +80,7 @@ public:
     void setSfxVolume(float vol);
     float sfxVolume() const { return m_sfxVolume; }
 
-    static constexpr int kBands = 16;
+    static constexpr int kBands = 48; // HomeNX Music screen resolution
     void spectrum(float* out) const;
     float bassLevel() const;
 
@@ -108,6 +108,7 @@ private:
     std::chrono::steady_clock::time_point m_trackStart{};
     std::chrono::steady_clock::time_point m_pausedAt{};
     double m_pausedTotal = 0.0;
+    double m_trackDuration = 0.0; // seconds, 0 = unknown (read from the MP3 header)
     float m_volume  = 0.5f;
     float m_musicFade = 1.f;
     std::atomic<bool> m_playing{false};

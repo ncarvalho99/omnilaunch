@@ -3112,16 +3112,17 @@ void WiiUMenuApp::updateGridXmbContext() {
         return preferred.valid() ? &preferred : fallback;
     };
 
-    nxui::Texture* sidebarAlbum = (m_sidebar.leftButtons().size() > 0) ? m_sidebar.leftButtons()[0]->icon() : nullptr;
-    nxui::Texture* sidebarMii = (m_sidebar.leftButtons().size() > 1) ? m_sidebar.leftButtons()[1]->icon() : nullptr;
-    nxui::Texture* sidebarSettings = (m_sidebar.leftButtons().size() > 4) ? m_sidebar.leftButtons()[4]->icon()
-                                   : (m_sidebar.leftButtons().size() >= 3) ? m_sidebar.leftButtons()[2]->icon() : nullptr;
-    nxui::Texture* sidebarControllers = (m_sidebar.rightButtons().size() > 1) ? m_sidebar.rightButtons()[1]->icon()
-                                      : (!m_sidebar.rightButtons().empty()) ? m_sidebar.rightButtons()[0]->icon() : nullptr;
-    nxui::Texture* sidebarPower = (m_sidebar.rightButtons().size() > 4) ? m_sidebar.rightButtons()[4]->icon()
-                                : (m_sidebar.rightButtons().size() >= 2) ? m_sidebar.rightButtons()[1]->icon() : nullptr;
-    nxui::Texture* sidebarThemes = (m_sidebar.rightButtons().size() > 3) ? m_sidebar.rightButtons()[3]->icon()
-                                 : (m_sidebar.rightButtons().size() >= 3) ? m_sidebar.rightButtons()[2]->icon() : nullptr;
+    // Look the icons up by entry, not by slot: the sidebar order is user-set.
+    const auto sidebarIcon = [this](int id) -> nxui::Texture* {
+        AppletButton* button = m_sidebar.buttonForId(id);
+        return button ? button->icon() : nullptr;
+    };
+    nxui::Texture* sidebarAlbum = sidebarIcon(0);
+    nxui::Texture* sidebarMii = sidebarIcon(1);
+    nxui::Texture* sidebarSettings = sidebarIcon(4);
+    nxui::Texture* sidebarControllers = sidebarIcon(6);
+    nxui::Texture* sidebarPower = sidebarIcon(9);
+    nxui::Texture* sidebarThemes = sidebarIcon(8);
 
     ctx.texAlbum = pick(m_xmbAlbumTex, sidebarAlbum);
     ctx.texSettings = pick(m_xmbSettingsTex, sidebarSettings);
@@ -3173,7 +3174,7 @@ void WiiUMenuApp::updateGridXmbContext() {
             if (m_settings && m_settings->isActive()) m_settings->hide();
             m_themeShop->beginStateRefreshBatch();
             publishUpdateState();
-            refreshThemeShopState();
+            refreshThemeShopState(false);
             m_themeShop->endStateRefreshBatch();
             m_themeShop->setLayoutModeState(m_appLayoutMode);
             m_themeShop->show();
@@ -7028,7 +7029,7 @@ void WiiUMenuApp::buildGrid() {
             m_settings->hide();
         m_themeShop->beginStateRefreshBatch();
         publishUpdateState();
-        refreshThemeShopState();
+        refreshThemeShopState(false);
         m_themeShop->endStateRefreshBatch();
         // Capture only the first visible frames. The base overlay records the
         // backdrop, glass, content, and cursor command-build costs so the
@@ -7103,7 +7104,8 @@ void WiiUMenuApp::buildGrid() {
         app().gpu(), app().renderer(), &m_threadPool);
     m_steamGridDbBackdrop->setRect({0, 0, 1280, 720});
     m_steamGridDbBackdrop->setLayoutMode(m_appLayoutMode);
-    m_steamGridDbBackdrop->setEnabled(m_config.steamGridDbEnabled);
+    m_steamGridDbShownState = -1;
+    m_steamGridDbBackdrop->setEnabled(steamGridDbArtworkAllowedHere());
     m_steamGridDbBackdrop->setArtworkOpacityScale(m_config.steamGridDbOpacity);
 
     m_folderHeader = std::make_shared<nxui::GlassPanel>();
@@ -8039,6 +8041,7 @@ void WiiUMenuApp::onUpdate(float dt) {
         m_switchWaitRelease = false;
     if (m_switchFadeIn > 0.f)
         m_switchFadeIn = std::max(0.f, m_switchFadeIn - dt / 0.25f);
+    syncSteamGridDbVisibility();
     logControllerState(dt);
     m_homeCore.discord().update(m_homeCore);
     discord::Alert discordAlert;

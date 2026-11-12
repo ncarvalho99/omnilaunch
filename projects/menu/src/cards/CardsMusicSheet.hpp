@@ -6,7 +6,7 @@
 // - Controls: Shuffle, Previous, Play/Pause, Next, Repeat
 // - Volume slider
 // - Full playlist scroll
-// - Live 16-band spectrum visualizer (HomeNX onMixed FFT)
+// - Live 48-band spectrum visualizer (HomeNX onMixed FFT)
 // Decode remains off the UI thread via AudioManager / SDL_mixer.
 
 #include "cards/CardsChrome.hpp"
@@ -18,7 +18,7 @@
 #include <string>
 #include <vector>
 
-class AudioManager;
+#include "core/AudioManager.hpp"
 struct AppConfig;
 
 namespace cards {
@@ -42,11 +42,12 @@ private:
     float m_in = 0.f;
     float m_spin = 0.f;
     float m_bass = 0.f;
-    float m_viz[16]{};
+    float m_viz[AudioManager::kBands]{}; // eased bars
     int m_zone = 0;   // 0 controls, 1 volume, 2 playlist
     int m_col = 2;    // default Play/Pause
     int m_row = 0;    // playlist row
-    int m_scroll = 0;
+    float m_listScroll = 0.f; // pixels, eased toward the chosen row
+    float m_time = 0.f;
     mutable bool m_backdropCacheValid = false;
     std::function<void()> m_onClosed;
 };

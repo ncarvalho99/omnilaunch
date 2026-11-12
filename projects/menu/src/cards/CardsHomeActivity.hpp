@@ -124,6 +124,7 @@ private:
     void drawPanelButton(nxui::Renderer& ren, float cy);
     void drawMoveHint(nxui::Renderer& ren);
     void openSystemTile(std::uint64_t id);
+    void openBrowser();
     void startMove();
     void finishMove(bool keep);
     void handleMoveInput();

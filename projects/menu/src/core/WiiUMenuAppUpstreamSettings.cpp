@@ -249,6 +249,7 @@ void WiiUMenuApp::createSettings() {
                                             m_config.accessibilitySpeechRate);
     m_settings->setAccessibilitySpeechPreferences(m_config.accessibilitySpeakHints,
                                                   m_config.accessibilitySpeakPosition);
+    m_settings->setSteamGridDbViewFlags(m_config.steamGridDbShowInGrid, m_config.steamGridDbShowInDynamicLine, m_config.steamGridDbShowInFolders);
     m_settings->setSteamGridDbState(m_config.steamGridDbEnabled,
                                     !m_config.steamGridDbApiKey.empty());
 
@@ -416,12 +417,18 @@ void WiiUMenuApp::createSettings() {
         m_pendingNetConnect = true;
         m_settings->hide();
     });
+    m_settings->onSteamGridDbViewFlagsChange([this](bool grid, bool line, bool folders) {
+        m_config.steamGridDbShowInGrid = grid;
+        m_config.steamGridDbShowInDynamicLine = line;
+        m_config.steamGridDbShowInFolders = folders;
+        m_config.save();
+        m_steamGridDbShownState = -1;
+        syncSteamGridDbVisibility();
+    });
     m_settings->onSteamGridDbEnabledChange([this](bool enabled) {
         m_config.steamGridDbEnabled = enabled;
-        if (m_steamGridDbBackdrop) {
-            m_steamGridDbBackdrop->setEnabled(enabled);
-            if (enabled) showFocusedSteamGridDbArtwork(true);
-        }
+        m_steamGridDbShownState = -1;
+        syncSteamGridDbVisibility();
     });
     m_settings->onSteamGridDbApiKeyRequest([this]() {
         editSteamGridDbApiKey();
@@ -546,6 +553,7 @@ void WiiUMenuApp::editSteamGridDbApiKey() {
         m_config.steamGridDbApiKey = typed;
         m_config.save();
         if (m_themeShop) {
+            m_themeShop->setSteamGridDbViewFlags(m_config.steamGridDbShowInGrid, m_config.steamGridDbShowInDynamicLine, m_config.steamGridDbShowInFolders);
             m_themeShop->setSteamGridDbState(m_config.steamGridDbEnabled,
                                             !m_config.steamGridDbApiKey.empty());
             m_themeShop->refreshCurrentTabWidgets();
@@ -555,6 +563,7 @@ void WiiUMenuApp::editSteamGridDbApiKey() {
             focusManager().setFocus(m_themeShop.get());
         }
         if (m_settings) {
+            m_settings->setSteamGridDbViewFlags(m_config.steamGridDbShowInGrid, m_config.steamGridDbShowInDynamicLine, m_config.steamGridDbShowInFolders);
             m_settings->setSteamGridDbState(m_config.steamGridDbEnabled,
                                             !m_config.steamGridDbApiKey.empty());
             m_settings->refreshCurrentTabWidgets();
@@ -928,8 +937,32 @@ void WiiUMenuApp::syncSteamGridDb() {
     }
 }
 
+bool WiiUMenuApp::steamGridDbArtworkAllowedHere() const {
+    if (!m_config.steamGridDbEnabled)
+        return false;
+    if (m_openFolderId != 0)
+        return m_config.steamGridDbShowInFolders;
+    if (isCarouselLayout())
+        return m_config.steamGridDbShowInDynamicLine;
+    return m_config.steamGridDbShowInGrid;
+}
+
+// Applied once per frame but only acts when the answer changes (folder
+// opened/closed, view switched, a flag toggled), so it costs one compare.
+void WiiUMenuApp::syncSteamGridDbVisibility() {
+    if (!m_steamGridDbBackdrop)
+        return;
+    const int allowed = steamGridDbArtworkAllowedHere() ? 1 : 0;
+    if (allowed == m_steamGridDbShownState)
+        return;
+    m_steamGridDbShownState = allowed;
+    m_steamGridDbBackdrop->setEnabled(allowed != 0);
+    if (allowed)
+        showFocusedSteamGridDbArtwork(true);
+}
+
 void WiiUMenuApp::showFocusedSteamGridDbArtwork(bool forceReload) {
-    if (!m_steamGridDbBackdrop || !m_config.steamGridDbEnabled) return;
+    if (!m_steamGridDbBackdrop || !steamGridDbArtworkAllowedHere()) return;
     std::uint64_t titleId = 0;
     if (m_grid) {
         auto* current = m_grid->focusManager().current();

@@ -4,6 +4,7 @@
 #include <SDL2/SDL.h>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
 
 namespace nxui {
 
@@ -14,12 +15,30 @@ Font::~Font() {
 bool Font::load(GpuDevice& gpu, Renderer& ren,
                 const std::string& path, int ptSize)
 {
-    TTF_Font* newFont = TTF_OpenFont(path.c_str(), ptSize);
+    // Read the face into RAM once. Opened from the SD card, every new glyph
+    // read its tables from the card (a few ms each): the stutter when a
+    // window or tab showed text for the first time. Approach from HomeNX
+    // lib/nxui/src/core/Font.cpp @ 0448cd4 (GPL-3.0, ad3333m).
+    std::ifstream in(path, std::ios::binary | std::ios::ate);
+    if (!in) {
+        std::fprintf(stderr, "[Font] open failed: %s\n", path.c_str());
+        return false;
+    }
+    std::vector<std::uint8_t> data(static_cast<std::size_t>(in.tellg()));
+    in.seekg(0);
+    in.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(data.size()));
+    if (!in || data.empty()) {
+        std::fprintf(stderr, "[Font] read failed: %s\n", path.c_str());
+        return false;
+    }
+    SDL_RWops* rw = SDL_RWFromConstMem(data.data(), static_cast<int>(data.size()));
+    TTF_Font* newFont = rw ? TTF_OpenFontRW(rw, 1, ptSize) : nullptr;
     if (!newFont) {
-        std::fprintf(stderr, "[Font] TTF_OpenFont failed: %s\n", TTF_GetError());
+        std::fprintf(stderr, "[Font] TTF_OpenFontRW failed: %s\n", TTF_GetError());
         return false;
     }
     adopt(gpu, ren, newFont, ptSize);
+    m_fontData = std::move(data); // after adopt closed the previous face
     return true;
 }
 
@@ -39,6 +58,11 @@ bool Font::loadFromMemory(GpuDevice& gpu, Renderer& ren,
 void Font::adopt(GpuDevice& gpu, Renderer& ren, TTF_Font* newFont, int ptSize) {
     if (m_font)
         TTF_CloseFont(m_font);
+    m_fontData.clear(); // the closed face no longer reads it
+    // Unhinted glyphs rasterize about ten times faster in this FreeType build
+    // and look the same at UI sizes (HomeNX perf.log, build 176).
+    TTF_SetFontHinting(newFont, TTF_HINTING_NONE);
+    m_measureCache.clear();
 
     m_font = newFont;
     m_gpu = &gpu;
@@ -56,9 +80,18 @@ Vec2 Font::measure(const std::string& text) const {
     if (cached != m_lruMap.end())
         return {static_cast<float>(cached->second->w),
                 static_cast<float>(cached->second->h)};
+    const auto known = m_measureCache.find(text);
+    if (known != m_measureCache.end())
+        return known->second;
     int w = 0, h = 0;
     TTF_SizeUTF8(m_font, text.c_str(), &w, &h);
-    return {(float)w, (float)h};
+    const Vec2 size{(float)w, (float)h};
+    // Wrapped-text layout measures every growing prefix of a line, every
+    // frame; keep the answers. Bounded: cleared when it grows past the cap.
+    if (m_measureCache.size() >= kMeasureCacheMax)
+        m_measureCache.clear();
+    m_measureCache.emplace(text, size);
+    return size;
 }
 
 void Font::clearCache() {

@@ -611,6 +611,10 @@ void CardsHomeActivity::openSystemTile(std::uint64_t id) {
         openSettingsSheet();
         return;
     }
+    if (tile == T::Browser) {
+        openBrowser();
+        return;
+    }
     if (tile == T::Eshop || tile == T::SwitchOnline || tile == T::Friends) {
         auto& i18n = nxui::I18n::instance();
         m_audio.playSfx(Sfx::ModalShow);
@@ -649,6 +653,41 @@ void CardsHomeActivity::openSystemTile(std::uint64_t id) {
         default: m_launching = false; break;
         }
     });
+#endif
+}
+
+// The Browser tile opens BrowseNX (ad3333m) as a homebrew. CardsNX downloads
+// it from GitHub on first use; OmniLaunch ships it in its package, so it is
+// there from the first boot and needs no network.
+void CardsHomeActivity::openBrowser() {
+#ifdef SWITCHU_MENU
+    std::error_code ec;
+    std::string path;
+    for (const char* candidate : {pages::kBundledBrowserNro, pages::kUserBrowserNro})
+        if (std::filesystem::is_regular_file(candidate, ec)) {
+            path = candidate;
+            break;
+        }
+    if (path.empty()) {
+        m_audio.playSfx(Sfx::ModalShow);
+        showToast(nxui::I18n::instance().tr("cards.browser_missing",
+                                            "Browser missing: reinstall OmniLaunch to restore it."));
+        DebugLog::log("[cards] browser nro missing at %s", pages::kBundledBrowserNro);
+        return;
+    }
+    const std::uint64_t id = pages::homebrewId(path);
+    if (isRunningCard(id)) {
+        resumeSuspended();
+        return;
+    }
+    if (m_core.launcher().suspendedTitleId() != 0) {
+        m_audio.playSfx(Sfx::ModalShow);
+        showToast(nxui::I18n::instance().tr("cards.suspended_body",
+                                            "Close the suspended software first (X on its card)."));
+        return;
+    }
+    DebugLog::log("[cards] browser -> %s", path.c_str());
+    startLaunchHomebrew(path);
 #endif
 }
 

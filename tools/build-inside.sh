@@ -104,6 +104,17 @@ if [ "$VARIANT" = sysmodule ]; then
     elif [ -f "build/cross/aarch64/$MODE/OmniLaunch-Loader.nro" ]; then
         cp -f "build/cross/aarch64/$MODE/OmniLaunch-Loader.nro" "$DIST/switch/OmniLaunch/bin/loader.nro"
     fi
+    # BrowseNX (ad3333m/browsenx v1.1.0) ships inside the package so the
+    # Cards Browser tile works without downloading it. The binary is supplied
+    # locally under vendor-bin/ and checked against its release hash.
+    BROWSENX_SHA256=002996aa1d64a90314a5898b54789c46d7bb54001d739b7a0572801c1dab178e
+    if [ -f vendor-bin/browsenx/BrowseNX.nro ]; then
+        echo "$BROWSENX_SHA256  vendor-bin/browsenx/BrowseNX.nro" | sha256sum -c --quiet || { echo "BrowseNX.nro hash mismatch"; exit 1; }
+        mkdir -p "$DIST/switch/OmniLaunch/apps"
+        cp -f vendor-bin/browsenx/BrowseNX.nro "$DIST/switch/OmniLaunch/apps/BrowseNX.nro"
+    else
+        echo "aviso: vendor-bin/browsenx/BrowseNX.nro ausente; pacote sem navegador"
+    fi
     mkdir -p artifacts
     ZIP="$PWD/artifacts/OmniLaunch-1.2.2.zip"
     rm -f "$ZIP" "$PWD/artifacts/OmniLaunch-sysmodule-$MODE.zip"

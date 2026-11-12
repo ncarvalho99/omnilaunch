@@ -220,6 +220,18 @@
     "section": "Section"
   },
   "settings": {
+    "omnilaunch": {
+      "order": "Sidebar buttons",
+      "order_desc": "Choose the button for this spot; it swaps with the spot it was in.",
+      "left": "Left",
+      "right": "Right",
+      "hb_app": "Sphaira as an application",
+      "hb_app_desc": "On: Sphaira and homebrew get full memory by borrowing one of your games. Off: they open over Album with less memory.",
+      "ask_user": "Ask who's playing",
+      "ask_user_desc": "Starting a game shows the users first, each time, as Nintendo's HOME does.",
+      "lock": "Lock screen",
+      "lock_desc": "The time and date when the console starts or wakes. A opens HOME."
+    },
     "layout": {
       "grid": "Grid",
       "dynamic_line": "Dynamic Line",
@@ -421,6 +433,12 @@
       "dns_auto": "Auto (DHCP)"
     },
     "steamgriddb": {
+      "show_grid": "Show on grid menu",
+      "show_grid_desc": "Hero backdrop behind the standard HOME grid.",
+      "show_line": "Show on single-row menu",
+      "show_line_desc": "Hero and logo behind the single-row carousel.",
+      "show_folders": "Show inside folders",
+      "show_folders_desc": "Artwork while browsing games inside an open folder.",
       "section": "Game artwork",
       "enabled": "Display SteamGridDB artwork",
       "enabled_desc": "Show heroes and logos behind the application menu.",
@@ -1467,6 +1485,8 @@
     "tile_controllers": "Controllers",
     "tile_mii": "Mii Maker",
     "tile_internet": "Internet",
+    "tile_browser": "Browser",
+    "browser_missing": "Browser missing: reinstall OmniLaunch to restore it.",
     "tile_users": "Users",
     "tile_settings": "HOME settings",
     "system_tile": "Nintendo",
@@ -1675,6 +1695,8 @@
     "apply": "Apply",
     "back": "Back",
     "music_source": "HOME Music",
+    "music_song_of": "Song {n} of {total}",
+    "music_playlist": "Playlist",
     "music_hints": "A Choose   B Back",
     "power_hints": "A Choose   B Back",
     "power_sleep_desc": "Pick up later",
@@ -1683,20 +1705,6 @@
     "power_hekate_desc": "Hekate's menu",
     "sgdb_no_artwork": "No artwork found for this title.",
     "sgdb_empty_help": "Press X to change the resolution or Y to change the search name."
-  },
-  "settings": {
-    "homenx": {
-      "order": "Sidebar buttons",
-      "order_desc": "Choose the button for this spot; it swaps with the spot it was in.",
-      "left": "Left",
-      "right": "Right",
-      "hb_app": "Sphaira as an application",
-      "hb_app_desc": "On: Sphaira and homebrew get full memory by borrowing one of your games. Off: they open over Album with less memory.",
-      "ask_user": "Ask who's playing",
-      "ask_user_desc": "Starting a game shows the users first, each time, as Nintendo's HOME does.",
-      "lock": "Lock screen",
-      "lock_desc": "The time and date when the console starts or wakes. A opens HOME."
-    }
   },
   "news": {
     "empty_title": "No news",

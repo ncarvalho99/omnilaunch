@@ -74,6 +74,7 @@ void CardsCatalog::setPage(int page, const AppConfig& config) {
             {pg::SystemTile::Controllers, "cards.tile_controllers", "Controllers", "controller.png"},
             {pg::SystemTile::MiiEditor, "cards.tile_mii", "Mii Maker", "mii_editor.png"},
             {pg::SystemTile::Internet, "cards.tile_internet", "Internet", "network.png"},
+            {pg::SystemTile::Browser, "cards.tile_browser", "Browser", "cards/browser.png"},
             {pg::SystemTile::Users, "cards.tile_users", "Users", "switch_logo_white.png"},
             {pg::SystemTile::HomeSettings, "cards.tile_settings", "HOME settings", "settings.png"},
         };

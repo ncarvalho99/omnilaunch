@@ -66,8 +66,13 @@ enum class SystemTile : int {
     Eshop,
     SwitchOnline,
     Friends,
-    News
+    News,
+    Browser // BrowseNX, shipped inside the OmniLaunch package (no download)
 };
+/// The browser is bundled at this path by the package; a user copy at
+/// sdmc:/switch/BrowseNX/BrowseNX.nro is used when the bundled one is missing.
+inline constexpr const char* kBundledBrowserNro = "sdmc:/switch/OmniLaunch/apps/BrowseNX.nro";
+inline constexpr const char* kUserBrowserNro = "sdmc:/switch/BrowseNX/BrowseNX.nro";
 inline std::uint64_t systemId(SystemTile t) { return kSystemIdBase | static_cast<std::uint64_t>(t); }
 inline SystemTile systemTileOf(std::uint64_t id) { return static_cast<SystemTile>(id & 0xFFu); }
 

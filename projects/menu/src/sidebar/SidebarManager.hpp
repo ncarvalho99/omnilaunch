@@ -60,6 +60,9 @@ public:
     AppletButton*  albumButton()    const { return m_albumButton; }
     nxui::Widget*  settingsButton() const { return m_settingsButton; }
     nxui::Widget*  themeShopButton() const { return m_themeShopButton; }
+    // Button showing sidebar entry `id` (0 Sphaira .. 9 Power) wherever the
+    // user's order placed it; nullptr before build().
+    AppletButton*  buttonForId(int id) const;
 
 private:
     void loadAssets(nxui::GpuDevice& gpu, nxui::Renderer& ren,
@@ -82,6 +85,7 @@ private:
         nxui::Texture*   staticTex = nullptr;
     };
     std::vector<AnimEntry> m_anims;
+    std::vector<int> m_slotIds; // slot -> entry id, filled by build()
     std::string m_loadedAssetsBase;
     std::string m_loadedCustomIconsBase;
     bool m_assetsLoaded = false;

@@ -114,6 +114,10 @@ struct AppConfig {
     int   accessibilitySpeechRate = 190;
     bool  steamGridDbEnabled = true;
     float steamGridDbOpacity = 0.50f;
+    // Where the artwork shows (HomeNX parity): grid, single-row carousel, folders.
+    bool  steamGridDbShowInGrid = true;
+    bool  steamGridDbShowInDynamicLine = true;
+    bool  steamGridDbShowInFolders = true;
     std::string steamGridDbApiKey;
     std::string ytdlBackendUrl;
     std::vector<uint64_t> steamGridDbKnownTitles;

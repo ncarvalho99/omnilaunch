@@ -52,6 +52,7 @@ void SidebarManager::build(nxui::GpuDevice& gpu, nxui::Renderer& ren,
     m_settingsButton = nullptr;
     m_themeShopButton = nullptr;
     m_albumButton    = nullptr;
+    m_slotIds.assign(10, -1);
     m_hasDiscord     = (bool)actions.onDiscord;
     m_anims.clear();
     m_icons.clear();
@@ -94,6 +95,7 @@ void SidebarManager::build(nxui::GpuDevice& gpu, nxui::Renderer& ren,
         const int id = (order.size() == 10 && order[slot] >= 0 && order[slot] < kSidebarIconCount)
                      ? order[slot] : slot;
         const auto& d = defs[id];
+        m_slotIds[static_cast<std::size_t>(slot)] = d.id;
         auto btn = makeBtn(&m_icons[static_cast<std::size_t>(d.id)], d.key, d.fallback, d.action);
         if (d.id == 0) m_albumButton = btn.get();
         if (d.id == 4) m_settingsButton = btn.get();
@@ -322,12 +324,9 @@ void SidebarManager::loadAssets(nxui::GpuDevice& gpu, nxui::Renderer& ren,
     }
 
     for (const auto& def : animDefs) {
-        AppletButton* btn = nullptr;
-        if (def.iconIdx < 5 && def.iconIdx < (int)m_leftButtons.size())
-            btn = m_leftButtons[def.iconIdx].get();
-        else if (def.iconIdx >= 5 && (def.iconIdx - 5) < (int)m_rightButtons.size())
-            btn = m_rightButtons[def.iconIdx - 5].get();
-
+        // The animation belongs to the entry, not to the slot it occupies:
+        // with a custom order slot 1 may hold News while Discord sits in 2.
+        AppletButton* btn = buttonForId(def.iconIdx);
         if (!btn)
             continue;
 
@@ -345,6 +344,18 @@ void SidebarManager::loadAssets(nxui::GpuDevice& gpu, nxui::Renderer& ren,
     m_loadedAssetsBase = assetsBase;
     m_loadedCustomIconsBase = customIconsBase;
     m_assetsLoaded = true;
+}
+
+AppletButton* SidebarManager::buttonForId(int id) const {
+    for (std::size_t slot = 0; slot < m_slotIds.size(); ++slot) {
+        if (m_slotIds[slot] != id)
+            continue;
+        if (slot < 5)
+            return slot < m_leftButtons.size() ? m_leftButtons[slot].get() : nullptr;
+        const std::size_t right = slot - 5;
+        return right < m_rightButtons.size() ? m_rightButtons[right].get() : nullptr;
+    }
+    return nullptr;
 }
 
 void SidebarManager::tryLoadAnimation(nxui::GpuDevice& gpu, nxui::Renderer& ren,

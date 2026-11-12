@@ -220,6 +220,18 @@
     "section": "Seção"
   },
   "settings": {
+    "omnilaunch": {
+      "order": "Botões da barra lateral",
+      "order_desc": "Escolha o botão para esta posição; ele troca com o botão que estava nela.",
+      "left": "Esquerda",
+      "right": "Direita",
+      "hb_app": "Sphaira como aplicativo",
+      "hb_app_desc": "Ligado: Sphaira e homebrews recebem memória total emprestada de um jogo. Desligado: abrem pelo Álbum com menos memória.",
+      "ask_user": "Perguntar quem vai jogar",
+      "ask_user_desc": "Iniciar um jogo mostra a lista de usuários primeiro, como no menu original.",
+      "lock": "Tela de bloqueio",
+      "lock_desc": "Mostra data e hora ao ligar ou acordar o console. Pressione A para entrar no menu."
+    },
     "layout": {
       "grid": "Grade",
       "dynamic_line": "Linha Dinâmica",
@@ -421,6 +433,12 @@
       "dns_auto": "Auto (DHCP)"
     },
     "steamgriddb": {
+      "show_grid": "Mostrar no menu em grade",
+      "show_grid_desc": "Hero atrás da grade padrão do HOME.",
+      "show_line": "Mostrar no menu de linha única",
+      "show_line_desc": "Hero e logo atrás do carrossel de linha única.",
+      "show_folders": "Mostrar dentro das pastas",
+      "show_folders_desc": "Arte ao navegar pelos jogos de uma pasta aberta.",
       "section": "Arte dos jogos",
       "enabled": "Exibir arte do SteamGridDB",
       "enabled_desc": "Mostra heroes e logos atrás do menu de aplicativos.",
@@ -1467,6 +1485,8 @@
     "tile_controllers": "Controles",
     "tile_mii": "Editor de Mii",
     "tile_internet": "Internet",
+    "tile_browser": "Navegador",
+    "browser_missing": "Navegador ausente: reinstale o OmniLaunch para restaurá-lo.",
     "tile_users": "Usuários",
     "tile_settings": "Configurações do HOME",
     "system_tile": "Nintendo",
@@ -1675,6 +1695,8 @@
     "apply": "Aplicar",
     "back": "Voltar",
     "music_source": "Música do HOME",
+    "music_song_of": "Música {n} de {total}",
+    "music_playlist": "Playlist",
     "music_hints": "A Escolher   B Voltar",
     "power_hints": "A Escolher   B Voltar",
     "power_sleep_desc": "Continuar depois",
@@ -1683,20 +1705,6 @@
     "power_hekate_desc": "Menu do Hekate",
     "sgdb_no_artwork": "Nenhuma imagem encontrada para este título.",
     "sgdb_empty_help": "Pressione X para trocar a resolução ou Y para mudar o nome da busca."
-  },
-  "settings": {
-    "homenx": {
-      "order": "Botões da barra lateral",
-      "order_desc": "Escolha o botão para esta posição; ele troca com o botão que estava nela.",
-      "left": "Esquerda",
-      "right": "Direita",
-      "hb_app": "Sphaira como aplicativo",
-      "hb_app_desc": "Ligado: Sphaira e homebrews recebem memória total emprestada de um jogo. Desligado: abrem pelo Álbum com menos memória.",
-      "ask_user": "Perguntar quem vai jogar",
-      "ask_user_desc": "Iniciar um jogo mostra a lista de usuários primeiro, como no menu original.",
-      "lock": "Tela de bloqueio",
-      "lock_desc": "Mostra data e hora ao ligar ou acordar o console. Pressione A para entrar no menu."
-    }
   },
   "news": {
     "empty_title": "Sem notícias",

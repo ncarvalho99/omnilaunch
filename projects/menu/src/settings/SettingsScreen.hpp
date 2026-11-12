@@ -41,6 +41,13 @@ public:
     void onNetConnect(VoidCb cb)        { m_netConnectCb = std::move(cb); }
     void onSteamGridDbEnabledChange(BoolCb cb) { m_steamGridDbEnabledCb = std::move(cb); }
     void onSteamGridDbApiKeyRequest(VoidCb cb) { m_steamGridDbApiKeyCb = std::move(cb); }
+    using SteamGridDbViewFlagsCb = std::function<void(bool grid, bool line, bool folders)>;
+    void onSteamGridDbViewFlagsChange(SteamGridDbViewFlagsCb cb) { m_steamGridDbViewFlagsCb = std::move(cb); }
+    void setSteamGridDbViewFlags(bool grid, bool line, bool folders) {
+        m_steamGridDbShowInGrid = grid;
+        m_steamGridDbShowInDynamicLine = line;
+        m_steamGridDbShowInFolders = folders;
+    }
     void onConsoleNicknameRequest(VoidCb cb) { m_consoleNicknameCb = std::move(cb); }
     void onRotateLogsRequest(VoidCb cb) { m_rotateLogsCb = std::move(cb); }
     void onSteamGridDbScrapeRequest(VoidCb cb) { m_steamGridDbScrapeCb = std::move(cb); }
@@ -142,6 +149,7 @@ private:
     VoidCb m_netConnectCb;
     BoolCb m_steamGridDbEnabledCb;
     VoidCb m_steamGridDbApiKeyCb;
+    SteamGridDbViewFlagsCb m_steamGridDbViewFlagsCb;
     VoidCb m_consoleNicknameCb;
     VoidCb m_rotateLogsCb;
     VoidCb m_steamGridDbScrapeCb;
@@ -167,6 +175,9 @@ private:
     int m_accessibilitySpeechRate = 190;
     bool m_steamGridDbEnabled = true;
     bool m_steamGridDbHasApiKey = false;
+    bool m_steamGridDbShowInGrid = true;
+    bool m_steamGridDbShowInDynamicLine = true;
+    bool m_steamGridDbShowInFolders = true;
     bool m_steamGridDbRunning = false;
     bool m_steamGridDbFinished = false;
     int m_steamGridDbCompleted = 0;

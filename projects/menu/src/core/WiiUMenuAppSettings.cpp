@@ -327,6 +327,7 @@ void WiiUMenuApp::createSettings() {
                                             m_config.accessibilitySpeechRate);
     m_settings->setAccessibilitySpeechPreferences(m_config.accessibilitySpeakHints,
                                                   m_config.accessibilitySpeakPosition);
+    m_settings->setSteamGridDbViewFlags(m_config.steamGridDbShowInGrid, m_config.steamGridDbShowInDynamicLine, m_config.steamGridDbShowInFolders);
     m_settings->setSteamGridDbState(m_config.steamGridDbEnabled,
                                     !m_config.steamGridDbApiKey.empty());
 
@@ -514,12 +515,18 @@ void WiiUMenuApp::createSettings() {
         m_pendingNetConnect = true;
         m_settings->hide();
     });
+    m_settings->onSteamGridDbViewFlagsChange([this](bool grid, bool line, bool folders) {
+        m_config.steamGridDbShowInGrid = grid;
+        m_config.steamGridDbShowInDynamicLine = line;
+        m_config.steamGridDbShowInFolders = folders;
+        m_config.save();
+        m_steamGridDbShownState = -1;
+        syncSteamGridDbVisibility();
+    });
     m_settings->onSteamGridDbEnabledChange([this](bool enabled) {
         m_config.steamGridDbEnabled = enabled;
-        if (m_steamGridDbBackdrop) {
-            m_steamGridDbBackdrop->setEnabled(enabled);
-            if (enabled) showFocusedSteamGridDbArtwork(true);
-        }
+        m_steamGridDbShownState = -1;
+        syncSteamGridDbVisibility();
     });
     m_settings->onSteamGridDbApiKeyRequest([this]() {
         editSteamGridDbApiKey();
@@ -1455,6 +1462,7 @@ void WiiUMenuApp::createThemeShop() {
                                     m_config.backgroundSpeed,
                                     m_config.backgroundBlur);
     m_themeShop->setSteamGridDbOpacity(m_config.steamGridDbOpacity);
+    m_themeShop->setSteamGridDbViewFlags(m_config.steamGridDbShowInGrid, m_config.steamGridDbShowInDynamicLine, m_config.steamGridDbShowInFolders);
     m_themeShop->setSteamGridDbState(m_config.steamGridDbEnabled,
                                     !m_config.steamGridDbApiKey.empty());
     refreshAutoThemeSummary();
@@ -1521,12 +1529,18 @@ void WiiUMenuApp::createThemeShop() {
         if (m_steamGridDbBackdrop) m_steamGridDbBackdrop->setArtworkOpacityScale(v);
         if (m_gameArtworkBackdrop) m_gameArtworkBackdrop->setArtworkOpacityScale(v);
     });
+    m_themeShop->onSteamGridDbViewFlagsChange([this](bool grid, bool line, bool folders) {
+        m_config.steamGridDbShowInGrid = grid;
+        m_config.steamGridDbShowInDynamicLine = line;
+        m_config.steamGridDbShowInFolders = folders;
+        m_config.save();
+        m_steamGridDbShownState = -1;
+        syncSteamGridDbVisibility();
+    });
     m_themeShop->onSteamGridDbEnabledChange([this](bool enabled) {
         m_config.steamGridDbEnabled = enabled;
-        if (m_steamGridDbBackdrop) {
-            m_steamGridDbBackdrop->setEnabled(enabled);
-            if (enabled) showFocusedSteamGridDbArtwork(true);
-        }
+        m_steamGridDbShownState = -1;
+        syncSteamGridDbVisibility();
     });
     m_themeShop->onSteamGridDbApiKeyRequest([this]() {
         editSteamGridDbApiKey();
@@ -2139,6 +2153,7 @@ void WiiUMenuApp::createGameDetails() {
 
 void WiiUMenuApp::reloadThemePresets(bool forceFullScan) {
     m_allPresets = ThemePreset::builtInPresets();
+    m_presetsFullyScanned = false; // set again only after the full scan below
     if (m_config.safeMode()) {
         // Boot-guard safe mode: only the two shipped defaults. A user or package
         // theme (and any video or audio it names) is exactly what may have been
@@ -2189,6 +2204,7 @@ void WiiUMenuApp::reloadThemePresets(bool forceFullScan) {
     auto installedPackages = ThemePreset::loadInstalledPackages();
     m_allPresets.insert(m_allPresets.end(), userPresets.begin(), userPresets.end());
     m_allPresets.insert(m_allPresets.end(), installedPackages.begin(), installedPackages.end());
+    m_presetsFullyScanned = true;
     DebugLog::log("[theme-apply] reloadThemePresets: builtIn=%zu user=%zu installed=%zu total=%zu",
                   ThemePreset::builtInPresets().size(), userPresets.size(), installedPackages.size(), m_allPresets.size());
 }
@@ -2465,10 +2481,11 @@ std::vector<ThemeShopScreen::ThemeShopEntry> WiiUMenuApp::buildThemeShopEntries(
     return entries;
 }
 
-void WiiUMenuApp::refreshThemeShopState() {
+void WiiUMenuApp::refreshThemeShopState(bool rescanPresets) {
     if (!m_themeShop) return;
 
-    reloadThemePresets(true);
+    if (rescanPresets || !m_presetsFullyScanned)
+        reloadThemePresets(true);
 
     ThemePreset* activePreset = findPresetPtr(m_activePresetName);
     std::string activeId = activePreset ? (activePreset->id.empty() ? activePreset->name : activePreset->id)

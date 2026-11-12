@@ -106,6 +106,38 @@ int main() {
         TEST_ASSERT(loaded.cards.panelButtonEnabled == false);
     }
 
+    // 6. Sidebar order must be a permutation of 0..9; a swap round-trips, a
+    //    duplicate (one button twice, another hidden) falls back to default.
+    {
+        AppConfig cfg;
+        cfg.sidebarOrder = {0, 2, 1, 3, 4, 5, 6, 7, 8, 9};
+        TEST_ASSERT(cfg.save());
+        AppConfig loaded;
+        TEST_ASSERT(loaded.load());
+        TEST_ASSERT((loaded.sidebarOrder == std::vector<int>{0, 2, 1, 3, 4, 5, 6, 7, 8, 9}));
+
+        nlohmann::json j = readCfg(kPath);
+        j["sidebarOrder"] = {0, 2, 2, 3, 4, 5, 6, 7, 8, 9};
+        std::ofstream(kPath) << j.dump(2);
+        AppConfig dup;
+        TEST_ASSERT(dup.load());
+        TEST_ASSERT((dup.sidebarOrder == std::vector<int>{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}));
+    }
+
+    // 7. SteamGridDB per-view flags default on and round-trip.
+    {
+        AppConfig cfg;
+        TEST_ASSERT(cfg.steamGridDbShowInGrid && cfg.steamGridDbShowInDynamicLine && cfg.steamGridDbShowInFolders);
+        cfg.steamGridDbShowInDynamicLine = false;
+        cfg.steamGridDbShowInFolders = false;
+        TEST_ASSERT(cfg.save());
+        AppConfig loaded;
+        TEST_ASSERT(loaded.load());
+        TEST_ASSERT(loaded.steamGridDbShowInGrid);
+        TEST_ASSERT(!loaded.steamGridDbShowInDynamicLine);
+        TEST_ASSERT(!loaded.steamGridDbShowInFolders);
+    }
+
     std::system("rm -rf 'sdmc:'");
     std::printf("PASS: config_cards_layout_test passed all assertions!\n");
     return 0;

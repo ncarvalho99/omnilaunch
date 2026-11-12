@@ -57,7 +57,11 @@ ThemeShopScreen::Tab OmniLaunchTab::build(ThemeShopScreen& screen) {
                 order[static_cast<std::size_t>(slot)] = self.intVal;
                 if (screen.m_sidebarOrderCb)
                     screen.m_sidebarOrderCb(order);
-                screen.rebuildCurrentTab();
+                // Refresh only the row widgets. rebuildCurrentTab() rebuilt
+                // every tab, destroying this std::function while it ran and
+                // leaving the other rows bound to freed items, so a swap could
+                // show a stale or wrong value on screen.
+                screen.refreshCurrentTabWidgets();
             };
             t.items.push_back(std::move(it));
         }

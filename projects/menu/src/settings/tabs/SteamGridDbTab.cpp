@@ -31,6 +31,31 @@ SettingsScreen::Tab settings::tabs::SteamGridDbTab::build(SettingsScreen& screen
     };
     tab.items.push_back(std::move(enabled));
 
+    // Where the artwork shows (HomeNX parity), nested under the master switch.
+    auto addViewToggle = [&](const char* labelKey, const char* label, const char* descKey, const char* desc,
+                             bool SettingsScreen::*flag) {
+        SettingItem item;
+        item.type = ItemType::Toggle;
+        item.label = i18n.tr(labelKey, label);
+        item.description = i18n.tr(descKey, desc);
+        item.boolVal = screen.*flag;
+        item.anim01 = item.boolVal ? 1.f : 0.f;
+        item.onChange = [&screen, flag](SettingItem& self) {
+            screen.*flag = self.boolVal;
+            if (screen.m_steamGridDbViewFlagsCb)
+                screen.m_steamGridDbViewFlagsCb(screen.m_steamGridDbShowInGrid,
+                                                screen.m_steamGridDbShowInDynamicLine,
+                                                screen.m_steamGridDbShowInFolders);
+        };
+        tab.items.push_back(std::move(item));
+    };
+    addViewToggle("settings.steamgriddb.show_grid", "Show on grid menu", "settings.steamgriddb.show_grid_desc",
+                  "Hero backdrop behind the standard HOME grid.", &SettingsScreen::m_steamGridDbShowInGrid);
+    addViewToggle("settings.steamgriddb.show_line", "Show on single-row menu", "settings.steamgriddb.show_line_desc",
+                  "Hero and logo behind the single-row carousel.", &SettingsScreen::m_steamGridDbShowInDynamicLine);
+    addViewToggle("settings.steamgriddb.show_folders", "Show inside folders", "settings.steamgriddb.show_folders_desc",
+                  "Artwork while browsing games inside an open folder.", &SettingsScreen::m_steamGridDbShowInFolders);
+
     SettingItem apiKey;
     apiKey.type = ItemType::Action;
     apiKey.label = i18n.tr("settings.steamgriddb.api_key", "API key");
@@ -62,9 +87,19 @@ SettingsScreen::Tab settings::tabs::SteamGridDbTab::build(SettingsScreen& screen
 
     tab.onUpdate = [](SettingsScreen::Tab& current, TabbedOverlayScreen& base) {
         auto& owner = static_cast<SettingsScreen&>(base);
-        if (current.items.size() < 4) return;
+        if (current.items.size() < 7) return;
 
-        auto& key = current.items[2];
+        // The tab may be built before the owner pushes its state: mirror it.
+        const bool flags[4] = {owner.m_steamGridDbEnabled, owner.m_steamGridDbShowInGrid,
+                               owner.m_steamGridDbShowInDynamicLine, owner.m_steamGridDbShowInFolders};
+        for (int i = 0; i < 4; ++i) {
+            auto& row = current.items[static_cast<std::size_t>(1 + i)];
+            if (row.boolVal != flags[i]) {
+                row.boolVal = flags[i];
+                row.anim01 = flags[i] ? 1.f : 0.f;
+            }
+        }
+        auto& key = current.items[5]; // section, enable, 3 view toggles, key
         key.description = owner.m_steamGridDbHasApiKey
             ? nxui::I18n::instance().tr("settings.steamgriddb.api_key_set", "Configured (hidden)")
             : nxui::I18n::instance().tr("settings.steamgriddb.api_key_optional",

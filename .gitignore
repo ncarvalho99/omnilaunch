@@ -171,3 +171,6 @@ id_ed25519
 
 # Agent-protocol validator: tooling for the agent workflow, not for the project.
 /tools/validate-agent-protocol.ps1
+
+# Third-party binaries bundled into the package at build time (not redistributed in source)
+/vendor-bin/

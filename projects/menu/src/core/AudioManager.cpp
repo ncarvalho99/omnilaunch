@@ -33,6 +33,55 @@ void fft(std::vector<std::complex<float>>& a) {
         }
     }
 }
+// An MP3's length from its header: the Xing/Info frame count when present,
+// otherwise the audio size at the first frame's bit rate. 0 when unknown
+// (not an MP3, or no frame in the first bytes). Adapted from HomeNX
+// projects/cards/src/Audio.cpp mp3Seconds @ 0448cd4 (GPL-3.0, ad3333m).
+double mp3Seconds(const std::string& path) {
+    std::FILE* f = std::fopen(path.c_str(), "rb");
+    if (!f) return 0.0;
+    std::fseek(f, 0, SEEK_END);
+    const long fileSize = std::ftell(f);
+    std::fseek(f, 0, SEEK_SET);
+    std::vector<unsigned char> b(16 * 1024);
+    b.resize(std::fread(b.data(), 1, b.size(), f));
+    std::size_t at = 0;
+    if (b.size() > 10 && b[0] == 'I' && b[1] == 'D' && b[2] == '3')
+        at = 10 + ((static_cast<std::size_t>(b[6] & 0x7F) << 21) | ((b[7] & 0x7F) << 14) | ((b[8] & 0x7F) << 7) | (b[9] & 0x7F));
+    const long audioStart = static_cast<long>(at);
+    if (at >= b.size()) { // a large tag (cover art): read on from after it
+        std::fseek(f, static_cast<long>(at), SEEK_SET);
+        b.assign(4096, 0);
+        b.resize(std::fread(b.data(), 1, b.size(), f));
+        at = 0;
+    }
+    std::fclose(f);
+    for (; at + 4 < b.size(); ++at)
+        if (b[at] == 0xFF && (b[at + 1] & 0xE0) == 0xE0) break;
+    if (at + 4 >= b.size()) return 0.0;
+    const int version = (b[at + 1] >> 3) & 3; // 3 MPEG-1, 2 MPEG-2, 0 MPEG-2.5
+    const int layer = (b[at + 1] >> 1) & 3;   // 1 = Layer III
+    const int rateIndex = (b[at + 2] >> 4) & 15, freqIndex = (b[at + 2] >> 2) & 3;
+    const bool mono = ((b[at + 3] >> 6) & 3) == 3;
+    if (layer != 1 || version == 1 || rateIndex == 0 || rateIndex == 15 || freqIndex == 3) return 0.0;
+    static const int kRates1[] = {0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320};
+    static const int kRates2[] = {0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160};
+    static const int kFreqs[] = {44100, 48000, 32000};
+    const bool mpeg1 = version == 3;
+    const int kbps = (mpeg1 ? kRates1 : kRates2)[rateIndex];
+    const int freq = kFreqs[freqIndex] >> (mpeg1 ? 0 : version == 2 ? 1 : 2);
+    const int samples = mpeg1 ? 1152 : 576;
+    const std::size_t side = mpeg1 ? (mono ? 17 : 32) : (mono ? 9 : 17);
+    const std::size_t x = at + 4 + side;
+    if (x + 12 <= b.size()
+        && (std::equal(b.begin() + x, b.begin() + x + 4, "Xing") || std::equal(b.begin() + x, b.begin() + x + 4, "Info"))
+        && (b[x + 7] & 1)) {
+        const unsigned frames = (static_cast<unsigned>(b[x + 8]) << 24) | (b[x + 9] << 16) | (b[x + 10] << 8) | b[x + 11];
+        return static_cast<double>(frames) * samples / freq;
+    }
+    if (fileSize <= audioStart) return 0.0;
+    return static_cast<double>(fileSize - audioStart) * 8.0 / (kbps * 1000.0);
+}
 } // namespace
 
 AudioManager::~AudioManager() { shutdown(); }
@@ -146,7 +195,9 @@ void AudioManager::spectrum(float* out) const {
 float AudioManager::bassLevel() const {
     float spec[kBands]{};
     spectrum(spec);
-    return (spec[0] + spec[1] + spec[2]) / 3.f;
+    float bass = 0.f;
+    for (int i = 0; i < 8; ++i) bass += spec[i];
+    return bass / 8.f;
 }
 
 void AudioManager::rebuildShuffleOrderLocked() {
@@ -239,6 +290,7 @@ void AudioManager::playCurrentTrackLocked() {
     m_trackFinished.store(false);
     m_trackStart = std::chrono::steady_clock::now();
     m_pausedTotal = 0.0;
+    m_trackDuration = mp3Seconds(track.path);
 }
 
 void AudioManager::play() {
@@ -411,7 +463,8 @@ double AudioManager::trackPositionSeconds() const {
 }
 
 double AudioManager::trackDurationSeconds() const {
-    return 0.0;
+    std::lock_guard<std::mutex> lk(m_trackMutex);
+    return m_activeMusic ? m_trackDuration : 0.0;
 }
 
 int AudioManager::currentTrackIndex() const {

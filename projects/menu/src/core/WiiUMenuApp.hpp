@@ -354,6 +354,10 @@ private:
                                            const SteamGridDbManager::Candidate& candidate);
     void syncSteamGridDb();
     void showFocusedSteamGridDbArtwork(bool forceReload = false);
+    // Master switch plus the per-view flags (grid / single row / folders).
+    bool steamGridDbArtworkAllowedHere() const;
+    void syncSteamGridDbVisibility();
+    int m_steamGridDbShownState = -1; // last applied allowed-state, -1 unknown
     void applyTheme();
     void applyThemeResources(const ThemePreset& preset);
     void retryPendingBackgroundImage();
@@ -499,7 +503,10 @@ private:
     void syncMediaCenterState();
     void refreshPlazaCommunities();
     void reloadThemePresets(bool forceFullScan = false);
-    void refreshThemeShopState();
+    // rescanPresets=false reuses the preset list when a full scan already ran
+    // (opening the shop); installs, deletes and applies keep the full rescan.
+    void refreshThemeShopState(bool rescanPresets = true);
+    bool m_presetsFullyScanned = false;
     std::vector<ThemeShopScreen::ThemeShopEntry> buildThemeShopEntries();
     void startThemePackageTransfer(const ThemeCatalogClient::Entry& entry, bool installMode);
     void syncThemePackageTransfer();

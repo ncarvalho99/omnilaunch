@@ -115,7 +115,14 @@ bool AppConfig::load() {
             if (el.is_number_integer())
                 sidebarOrder.push_back(el.get<int>());
         }
-        if (sidebarOrder.size() != 10)
+        // Must be a permutation of 0..9: a duplicate would show one button
+        // twice and hide another.
+        std::vector<int> sorted = sidebarOrder;
+        std::sort(sorted.begin(), sorted.end());
+        bool permutation = sorted.size() == 10;
+        for (int i = 0; permutation && i < 10; ++i)
+            permutation = sorted[static_cast<std::size_t>(i)] == i;
+        if (!permutation)
             sidebarOrder = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
     }
     readJsonOpt(j, "uiLanguageOverride", uiLanguageOverride);
@@ -198,6 +205,9 @@ bool AppConfig::load() {
     readJsonOpt(j, "accessibilitySpeechRate", accessibilitySpeechRate);
     readJsonOpt(j, "steamGridDbEnabled", steamGridDbEnabled);
     readJsonOpt(j, "steamGridDbOpacity", steamGridDbOpacity);
+    readJsonOpt(j, "steamGridDbShowInGrid", steamGridDbShowInGrid);
+    readJsonOpt(j, "steamGridDbShowInDynamicLine", steamGridDbShowInDynamicLine);
+    readJsonOpt(j, "steamGridDbShowInFolders", steamGridDbShowInFolders);
     readJsonOpt(j, "steamGridDbApiKey", steamGridDbApiKey);
     readJsonOpt(j, "ytdlBackendUrl", ytdlBackendUrl);
     readJsonOpt(j, "themePreset", themePreset);
@@ -439,6 +449,9 @@ bool AppConfig::save() const {
     j["accessibilitySpeechRate"] = std::clamp(accessibilitySpeechRate, 120, 320);
     j["steamGridDbEnabled"] = steamGridDbEnabled;
     j["steamGridDbOpacity"] = std::clamp(steamGridDbOpacity, 0.f, 1.f);
+    j["steamGridDbShowInGrid"] = steamGridDbShowInGrid;
+    j["steamGridDbShowInDynamicLine"] = steamGridDbShowInDynamicLine;
+    j["steamGridDbShowInFolders"] = steamGridDbShowInFolders;
     j["steamGridDbApiKey"] = steamGridDbApiKey;
     j["ytdlBackendUrl"] = ytdlBackendUrl;
     j["themePreset"] = (m_safe && !m_touchedTheme) ? m_savedTheme : themePreset;

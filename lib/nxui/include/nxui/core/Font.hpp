@@ -6,6 +6,7 @@
 #include <string>
 #include <unordered_map>
 #include <list>
+#include <vector>
 
 namespace nxui {
 
@@ -60,6 +61,9 @@ private:
     void adopt(GpuDevice& gpu, Renderer& ren, TTF_Font* newFont, int ptSize);
 
     TTF_Font* m_font = nullptr;
+    std::vector<std::uint8_t> m_fontData; // face bytes the TTF_Font reads from
+    static constexpr std::size_t kMeasureCacheMax = 4096;
+    mutable std::unordered_map<std::string, Vec2> m_measureCache;
     int       m_ptSize = 0;
     GpuDevice* m_gpu = nullptr;
     Renderer*  m_ren = nullptr;

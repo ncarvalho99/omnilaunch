@@ -96,6 +96,13 @@ public:
     void onBackgroundBlurChange(FloatCb cb)  { m_backgroundBlurCb = std::move(cb); }
     void onSteamGridDbEnabledChange(BoolCb cb) { m_steamGridDbEnabledCb = std::move(cb); }
     void onSteamGridDbApiKeyRequest(VoidCb cb) { m_steamGridDbApiKeyCb = std::move(cb); }
+    using SteamGridDbViewFlagsCb = std::function<void(bool grid, bool line, bool folders)>;
+    void onSteamGridDbViewFlagsChange(SteamGridDbViewFlagsCb cb) { m_steamGridDbViewFlagsCb = std::move(cb); }
+    void setSteamGridDbViewFlags(bool grid, bool line, bool folders) {
+        m_steamGridDbShowInGrid = grid;
+        m_steamGridDbShowInDynamicLine = line;
+        m_steamGridDbShowInFolders = folders;
+    }
     void onSteamGridDbScrapeRequest(VoidCb cb) { m_steamGridDbScrapeCb = std::move(cb); }
     void setSteamGridDbState(bool enabled, bool hasApiKey) {
         m_steamGridDbEnabled = enabled;
@@ -391,6 +398,7 @@ private:
     FloatCb m_steamGridDbOpacityCb;
     BoolCb m_steamGridDbEnabledCb;
     VoidCb m_steamGridDbApiKeyCb;
+    SteamGridDbViewFlagsCb m_steamGridDbViewFlagsCb;
     VoidCb m_steamGridDbScrapeCb;
     IntCb m_gridColumnsCb;
     IntCb m_gridRowsCb;
@@ -438,6 +446,9 @@ private:
     float m_steamGridDbOpacity = 0.50f;
     bool m_steamGridDbEnabled = true;
     bool m_steamGridDbHasApiKey = false;
+    bool m_steamGridDbShowInGrid = true;
+    bool m_steamGridDbShowInDynamicLine = true;
+    bool m_steamGridDbShowInFolders = true;
     int m_gridColumns = 5;
     int m_gridRows = 3;
     bool m_dynamicPages = true;
