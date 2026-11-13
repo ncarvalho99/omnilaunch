@@ -1,4 +1,5 @@
 #include "TabBuilders.hpp"
+#include "settings/SystemPrefs.hpp"
 #include "core/DebugLog.hpp"
 #include "smi_commands.hpp"
 #include "services/NtpClient.hpp"
@@ -161,30 +162,27 @@ std::vector<ProfileOption> listProfileOptions() {
 }
 
 bool currentDateTimeValue(TabbedOverlayScreen::DateTimeEditorValue& value) {
-    u64 timestamp = 0;
-    TimeCalendarTime calendar{};
-    TimeCalendarAdditionalInfo additional{};
-    if (R_FAILED(timeGetCurrentTime(TimeType_UserSystemClock, &timestamp)) ||
-        R_FAILED(timeToCalendarTimeWithMyRule(timestamp, &calendar, &additional)))
+    settings::system_prefs::DateTime now;
+    if (!settings::system_prefs::currentDateTime(now))
         return false;
-    value.year = calendar.year;
-    value.month = calendar.month;
-    value.day = calendar.day;
-    value.hour = calendar.hour;
-    value.minute = calendar.minute;
+    value.year = now.year;
+    value.month = now.month;
+    value.day = now.day;
+    value.hour = now.hour;
+    value.minute = now.minute;
     return true;
 }
 
 bool setManualDateTime(
     SettingsScreen& screen,
     const TabbedOverlayScreen::DateTimeEditorValue& value) {
-    switchu::smi::ManualDateTimeArgs args{};
-    args.year = static_cast<uint32_t>(value.year);
-    args.month = static_cast<uint32_t>(value.month);
-    args.day = static_cast<uint32_t>(value.day);
-    args.hour = static_cast<uint32_t>(value.hour);
-    args.minute = static_cast<uint32_t>(value.minute);
-    const Result rc = switchu::menu::smi_cmd::setManualDateTime(args);
+    settings::system_prefs::DateTime args;
+    args.year = value.year;
+    args.month = value.month;
+    args.day = value.day;
+    args.hour = value.hour;
+    args.minute = value.minute;
+    const Result rc = settings::system_prefs::setManualDateTime(args);
     // Queued is not applied. The daemon answers with TimeSettingApplied once
     // it has set the clocks and read the time back, and that answer is what
     // says "updated" or not.
@@ -209,25 +207,7 @@ bool containsInsensitive(const std::string& haystack, const std::string& needle)
 }
 
 std::vector<std::string> loadAllTimezoneNames() {
-    std::vector<std::string> out;
-    s32 total = 0;
-    if (R_FAILED(timeGetTotalLocationNameCount(&total)) || total <= 0)
-        return out;
-
-    out.reserve(static_cast<size_t>(total));
-    constexpr s32 kChunk = 64;
-    TimeLocationName buf[kChunk];
-    for (s32 index = 0; index < total; ) {
-        s32 got = 0;
-        if (R_FAILED(timeLoadLocationNameList(index, buf, kChunk, &got)) || got <= 0)
-            break;
-        for (s32 i = 0; i < got; ++i) {
-            if (buf[i].name[0] != '\0')
-                out.emplace_back(buf[i].name);
-        }
-        index += got;
-    }
-    return out;
+    return settings::system_prefs::timezoneNames();
 }
 
 std::string timezoneLabel() {
@@ -389,9 +369,7 @@ void SystemTab::beginTimezoneChange(SettingsScreen& screen, const std::string& f
         selected,
         [&screen](const std::string& chosen) {
             auto& i18nInner = nxui::I18n::instance();
-            TimeLocationName name{};
-            std::snprintf(name.name, sizeof(name.name), "%s", chosen.c_str());
-            const Result rc = timeSetDeviceLocationName(&name);
+            const Result rc = settings::system_prefs::setTimezone(chosen);
             DebugLog::log("[settings-time] set timezone '%s' rc=0x%X",
                           chosen.c_str(), rc);
             if (R_FAILED(rc)) {

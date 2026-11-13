@@ -93,6 +93,11 @@ struct AppConfig {
         bool shuffle = false;     // HOME music in random order
         bool sounds = true;       // interface sound effects
         bool perfLog = true;      // sdmc:/config/OmniLaunch/perf.log
+        // Background (HomeNX "Background" / "Shuffle background"): one picture
+        // from sdmc:/config/OmniLaunch/backgrounds behind everything (empty =
+        // each game's art); shuffleWall picks another one at every Cards start.
+        std::string wallpaper;
+        bool shuffleWall = false;
 
         bool pageHidden(int page) const {
             for (int h : hiddenPages)

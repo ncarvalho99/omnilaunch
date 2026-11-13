@@ -1,4 +1,5 @@
 #include "TabBuilders.hpp"
+#include "settings/SystemPrefs.hpp"
 #include <nxui/core/I18n.hpp>
 #include <switch.h>
 #include <algorithm>
@@ -97,15 +98,9 @@ SettingsScreen::Tab settings::tabs::DisplayTab::build(SettingsScreen& screen) {
             i18n.tr("settings.audio.res_720p", "720p"),
             i18n.tr("settings.audio.res_480p", "480p")
         };
-        SetSysTvSettings tv{};
-        if (R_SUCCEEDED(setsysGetTvSettings(&tv)))
-            it.intVal = std::clamp((int)tv.tv_resolution, 0, 3);
+        it.intVal = settings::system_prefs::tvResolution();
         it.onChange = [](SettingItem& self) {
-            SetSysTvSettings tv{};
-            if (R_SUCCEEDED(setsysGetTvSettings(&tv))) {
-                tv.tv_resolution = (s32)self.intVal;
-                setsysSetTvSettings(&tv);
-            }
+            settings::system_prefs::setTvResolution(self.intVal);
         };
         t.items.push_back(std::move(it));
     }

@@ -1,4 +1,5 @@
 #include "cards/CardsHomeActivity.hpp"
+#include "bluetooth/BluetoothManager.hpp"
 #include "cards/CardsLayout.hpp"
 #include "cards/CardsAchievements.hpp"
 #include "cards/CardsPages.hpp"
@@ -402,6 +403,7 @@ bool CardsHomeActivity::onCreate() {
             m_picker->wait();
         m_catalog.releaseAll();
         m_art.releaseAll();
+        waitWallpaper();
     });
     m_core.frontendStarted();
     const uint64_t createStartTick = armGetSystemTick();
@@ -495,6 +497,8 @@ bool CardsHomeActivity::onCreate() {
             m_text->hide(false);
         if (m_picker && m_picker->isActive())
             m_picker->hide();
+        if (m_padTest && m_padTest->isActive())
+            m_padTest->hide();
         if (m_moving)
             finishMove(false);
         m_closeConfirmQueued = false;
@@ -518,7 +522,18 @@ bool CardsHomeActivity::onCreate() {
     // Sheets (E3+): sfx hooks; QS / keyboard reuse Classic's widgets (E6, E9).
     m_sheet.onNavigate([this] { m_audio.playSfx(Sfx::Navigate); });
     m_sheet.onActivate([this] { m_audio.playSfx(Sfx::Activate); });
-    m_sheet.onClosed([this] { m_audio.playSfx(Sfx::ModalHide); });
+    m_sheet.onClosed([this] {
+        m_audio.playSfx(Sfx::ModalHide);
+        // B on a sub-sheet opened from Settings goes back to that Settings row.
+        if (!m_subSheetTitle.empty() && m_sheet.title() == m_subSheetTitle) {
+            if (m_btAudioSheet && bluetooth::IsDiscovering())
+                bluetooth::StopDiscovery();
+            openSettingsAt(m_settingsReturnSection, m_settingsReturnRow);
+            return;
+        }
+        m_subSheetTitle.clear();
+        m_btAudioSheet = false;
+    });
     m_fontIcons.load(gpu, ren, std::string(kAssets) + "/fonts/switch_icons.ttf", 24);
     m_text = std::make_shared<TextEntryScreen>();
     m_text->setFont(&m_font);
@@ -573,6 +588,7 @@ bool CardsHomeActivity::onCreate() {
             m_page = m_leaveSession.page;
     }
     m_art.setConfig(&m_core.config());
+    startWallpaper(m_core.config().cards.shuffleWall);
     m_catalog.setAssetsRoot(kAssets);
     m_catalog.setPage(m_page, m_core.config());
     m_catalog.startLoad(m_core.catalog(), m_core.threadPool());
@@ -678,6 +694,10 @@ void CardsHomeActivity::onDestroy() {
     }
     m_catalog.releaseAll();
     m_art.releaseAll();
+    waitWallpaper();
+    m_wallImage.reset();
+    m_wallPending.reset();
+    m_wallTex.reset();
     m_core.catalog().waitIdle();
     m_core.threadPool().waitForIdle();
 #ifdef SWITCHU_MENU
@@ -700,6 +720,7 @@ void CardsHomeActivity::onDestroy() {
     m_moving = false;
     m_quick.reset();
     m_text.reset();
+    m_padTest.reset();
     m_profiles.reset();
     // Frontend-owned GPU resources (audit §6.1 rule 3).
     m_chrome.release();
@@ -720,6 +741,8 @@ nxui::Widget* CardsHomeActivity::focusRoot() {
         return m_profiles.get();
     if (m_picker && m_picker->isActive())
         return m_picker.get();
+    if (m_padTest && m_padTest->isActive())
+        return m_padTest.get();
     if (m_quick && m_quick->isActive())
         return m_quick.get();
     if (m_discordPanel && m_discordPanel->isActive())
@@ -981,6 +1004,10 @@ void CardsHomeActivity::onUpdate(float dt) {
     }
     if (m_picker)
         m_picker->update(dt);
+    if (m_padTest)
+        m_padTest->update(dt);
+    pumpWallpaper();
+    pumpBluetoothAudioSheet();
     if (m_pageIn < 1.f)
         m_pageIn = std::min(1.f, m_pageIn + dt / 0.22f);
     if (m_tutorialCard > 0)
@@ -993,6 +1020,8 @@ void CardsHomeActivity::onUpdate(float dt) {
         }
         if (m_text && m_text->isActive()) {
             m_text->handleTouch(app().input());
+        } else if (m_padTest && m_padTest->isActive()) {
+            m_padTest->handleTouch(app().input());
         } else if (m_picker && m_picker->isActive()) {
             m_picker->handleTouch(app().input());
         } else if (m_discordPanel && m_discordPanel->isActive()) {
@@ -1896,6 +1925,11 @@ void CardsHomeActivity::handleSystemAction(SysAction action) {
             m_overlayLatch = true;
             break;
         }
+        if (m_padTest && m_padTest->isActive()) {
+            m_padTest->hide();
+            m_overlayLatch = true;
+            break;
+        }
         if (m_quick && m_quick->isActive()) {
             closeQuickSettings();
             m_overlayLatch = true;
@@ -2242,9 +2276,10 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
     // Background: the focused title's art, cross-faded from the previous one.
     const auto& plainTitles = m_core.config().cards.plainBackgroundTitles;
     const bool plain = std::find(plainTitles.begin(), plainTitles.end(), m_bgId) != plainTitles.end();
-    const nxui::Texture* bg = !plain && m_bgId ? m_art.background(m_bgId) : nullptr;
-    const float bgIn = bg ? std::min(1.f, m_art.backgroundAge(m_bgId, m_time) / 0.6f) : 0.f;
-    const nxui::Texture* prev = !plain && m_bgPrevId ? m_art.background(m_bgPrevId) : nullptr;
+    const bool wall = m_wallTex && m_wallTex->valid();
+    const nxui::Texture* bg = wall ? m_wallTex.get() : !plain && m_bgId ? m_art.background(m_bgId) : nullptr;
+    const float bgIn = wall ? 1.f : bg ? std::min(1.f, m_art.backgroundAge(m_bgId, m_time) / 0.6f) : 0.f;
+    const nxui::Texture* prev = !wall && !plain && m_bgPrevId ? m_art.background(m_bgPrevId) : nullptr;
     m_chrome.drawBackground(ren, bg, bgIn, prev, m_time, m_core.config().cards.haze,
                             m_core.config().cards.bgMotion);
 
@@ -2313,6 +2348,8 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
         m_quick->render(ren);
     if (m_picker && m_picker->isActive())
         m_picker->render(ren);
+    if (m_padTest && m_padTest->isActive())
+        m_padTest->render(ren);
     if (m_text && m_text->isActive())
         m_text->render(ren);
     if (m_profiles && m_profiles->isActive())

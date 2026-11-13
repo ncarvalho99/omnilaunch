@@ -192,7 +192,10 @@ bool AppConfig::load() {
         readJsonOpt(c, "lockMusic", cards.lockMusic);
         readJsonOpt(c, "shuffle", cards.shuffle);
         readJsonOpt(c, "sounds", cards.sounds);
-        readJsonOpt(c, "perfLog", cards.perfLog);    }
+        readJsonOpt(c, "perfLog", cards.perfLog);
+        readJsonOpt(c, "wallpaper", cards.wallpaper);
+        readJsonOpt(c, "shuffleWall", cards.shuffleWall);
+    }
     cards.normalize();
     readJsonOpt(j, "lastUpdateCheckDay", lastUpdateCheckDay);
     readJsonOpt(j, "nextendoPath", nextendoPath);
@@ -432,7 +435,10 @@ bool AppConfig::save() const {
         c["lockMusic"] = cards.lockMusic;
         c["shuffle"] = cards.shuffle;
         c["sounds"] = cards.sounds;
-        c["perfLog"] = cards.perfLog;        c["settingsOrder"] = cards.settingsOrder;
+        c["perfLog"] = cards.perfLog;
+        c["wallpaper"] = cards.wallpaper;
+        c["shuffleWall"] = cards.shuffleWall;
+        c["settingsOrder"] = cards.settingsOrder;
         c["tutorialDone"] = cards.tutorialDone;
         c["accent"] = cards.accent;
         c["glass"] = cards.glass;

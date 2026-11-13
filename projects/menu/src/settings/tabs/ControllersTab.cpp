@@ -1,4 +1,5 @@
 #include "TabBuilders.hpp"
+#include "settings/SystemPrefs.hpp"
 #include <nxui/core/I18n.hpp>
 #include <switch.h>
 #include <algorithm>
@@ -59,12 +60,11 @@ SettingsScreen::Tab settings::tabs::ControllersTab::build(SettingsScreen& screen
 
     {
         SettingItem it; it.label = i18n.tr("settings.controllers.vibration", "Vibration"); it.type = ItemType::Slider;
-        float vol = 1.f;
-        setsysGetVibrationMasterVolume(&vol);
+        const float vol = settings::system_prefs::vibrationVolume();
         it.floatVal = vol;
-        it.anim01 = std::clamp(vol, 0.f, 1.f);
+        it.anim01 = vol;
         it.onChange = [](SettingItem& self) {
-            setsysSetVibrationMasterVolume(self.floatVal);
+            settings::system_prefs::setVibrationVolume(self.floatVal);
         };
         t.items.push_back(std::move(it));
     }

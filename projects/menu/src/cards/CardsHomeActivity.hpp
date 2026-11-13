@@ -24,6 +24,7 @@
 #include "widgets/LockScreen.hpp"
 #include "widgets/ProfileCarouselScreen.hpp"
 #include "widgets/QuickSettingsOverlay.hpp"
+#include "settings/ControllerTestScreen.hpp"
 #include "settings/SteamGridDbPickerScreen.hpp"
 #include "settings/TextEntryScreen.hpp"
 #include "update/UpdateClient.hpp"
@@ -168,6 +169,19 @@ private:
     void drawTutorial(nxui::Renderer& ren);
     bool overlayActive(bool ignoreFetch = false) const;
     std::vector<CardsSheet::Section> settingsSections();
+    // E7 rows shared with Classic Settings (CL 313).
+    void openSettingsAt(int section, int row);
+    void openSubSheet(std::string title, std::vector<CardsSheet::Section> sections);
+    void openWallpaperSheet();
+    void openBluetoothAudioSheet();
+    std::vector<CardsSheet::Section> bluetoothAudioSections();
+    void pumpBluetoothAudioSheet();
+    void openPadTest();
+    void openTimezonePicker(const std::string& filter);
+    void openDateTimeEditor();
+    void startWallpaper(bool shuffle);
+    void pumpWallpaper();
+    void waitWallpaper();
 
     home::HomeCore& m_core;
     AudioManager& m_audio;
@@ -250,6 +264,20 @@ private:
     std::shared_ptr<TextEntryScreen> m_text;
     std::shared_ptr<ProfileCarouselScreen> m_profiles; // HomeNX account picker (same as Classic)
     std::shared_ptr<SteamGridDbPickerScreen> m_picker;
+    std::shared_ptr<ControllerTestScreen> m_padTest; // Settings > controller test (Classic's screen)
+    // A sub-sheet opened from Settings: B on it returns to this Settings spot.
+    std::string m_subSheetTitle;
+    int m_settingsReturnSection = 0;
+    int m_settingsReturnRow = 0;
+    bool m_btAudioSheet = false; // the Bluetooth audio sheet is open (live list)
+    // Wallpaper (one picture behind everything). Decoded on the pool, uploaded
+    // here on the main thread; m_wallPath is what is shown (a shuffle pick is
+    // not written back to the settings).
+    std::string m_wallPath;
+    std::unique_ptr<nxui::Texture> m_wallTex;
+    std::shared_ptr<nxui::DecodedImage> m_wallImage;
+    std::shared_ptr<std::string> m_wallPending; // path the running job decodes
+    std::future<void> m_wallJob;
     nxui::Theme m_overlayTheme = nxui::Theme::dark();
     nxui::Font m_fontIcons;
     // Welcome tutorial (E9, C-UI-1): 0 = hidden, else card 1..4.

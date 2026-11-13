@@ -17,6 +17,7 @@
 #include "widgets/OverlayDialog.hpp"
 #include "widgets/ProgressDialog.hpp"
 #include "launcher/HekateReboot.hpp"
+#include "settings/SystemPrefs.hpp"
 #include "widgets/LockPassword.hpp"
 #include "net/NetService.hpp"
 #include "usb/Mtp.hpp"
@@ -78,7 +79,8 @@ bool CardsHomeActivity::overlayActive(bool ignoreFetch) const {
            (m_quick && m_quick->isActive()) || (m_deleteProgress && m_deleteProgress->isActive()) ||
            (m_selfUpdateProgress && m_selfUpdateProgress->isActive()) ||
            (!ignoreFetch && m_fetchProgress && m_fetchProgress->isActive()) ||
-           (m_picker && m_picker->isActive()) || (m_discordPanel && m_discordPanel->isActive());
+           (m_picker && m_picker->isActive()) || (m_padTest && m_padTest->isActive()) ||
+           (m_discordPanel && m_discordPanel->isActive());
 }
 
 void CardsHomeActivity::saveConfig(const char* why) {
@@ -2111,6 +2113,30 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
             saveConfig("cards show temp");
         };
         s.rows.push_back(std::move(tempRow));
+        Row wallRow; // HomeNX "Background"
+        wallRow.label = i18n.tr("cards.set_wallpaper", "Background picture");
+        wallRow.detail = i18n.tr("cards.set_wallpaper_desc", "One of your pictures behind everything");
+        wallRow.value = [this]() {
+            const auto& c = m_core.config().cards;
+            if (c.shuffleWall)
+                return nxui::I18n::instance().tr("cards.set_shuffle_wall", "Shuffle background");
+            if (c.wallpaper.empty())
+                return nxui::I18n::instance().tr("cards.wall_game_art", "Each game's art");
+            return std::filesystem::path(c.wallpaper).filename().string();
+        };
+        wallRow.onA = [this]() { openWallpaperSheet(); };
+        s.rows.push_back(std::move(wallRow));
+        Row shuffleWall; // HomeNX "Shuffle background"
+        shuffleWall.label = i18n.tr("cards.set_shuffle_wall", "Shuffle background");
+        shuffleWall.detail = i18n.tr("cards.set_shuffle_wall_desc", "Another of your pictures at every start");
+        shuffleWall.toggle = [this]() { return m_core.config().cards.shuffleWall; };
+        shuffleWall.onChange = [this](int) {
+            auto& c = m_core.config().cards;
+            c.shuffleWall = !c.shuffleWall;
+            saveConfig("cards shuffle background");
+            startWallpaper(c.shuffleWall);
+        };
+        s.rows.push_back(std::move(shuffleWall));
         all["look"] = std::move(s);
     }
     { // Sound: shared with Classic, stored once at the top level.
@@ -2198,6 +2224,40 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
             openSystemTile(pages::systemId(pages::SystemTile::Controllers));
         };
         s.rows.push_back(std::move(pads));
+        Row padTest;
+        padTest.label = i18n.tr("settings.controllers.test", "Test Input Devices");
+        padTest.detail = i18n.tr("settings.controllers.test_desc", "Test joysticks, buttons, and the touch screen.");
+        padTest.onA = [this]() { openPadTest(); };
+        s.rows.push_back(std::move(padTest));
+#ifdef SWITCHU_MENU
+        Row vibration;
+        vibration.label = i18n.tr("settings.controllers.vibration", "Vibration");
+        vibration.value = []() {
+            return std::to_string(static_cast<int>(std::lround(settings::system_prefs::vibrationVolume() * 100.f))) + "%";
+        };
+        vibration.progress = []() { return settings::system_prefs::vibrationVolume(); };
+        vibration.onChange = [](int d) {
+            settings::system_prefs::setVibrationVolume(settings::system_prefs::vibrationVolume() + 0.1f * static_cast<float>(d));
+        };
+        s.rows.push_back(std::move(vibration));
+        Row tvRes;
+        tvRes.label = i18n.tr("settings.audio.tv_resolution", "TV Resolution");
+        tvRes.detail = i18n.tr("settings.audio.tv_resolution_desc", "Adjust HDMI resolution. Auto uses recommended value.");
+        tvRes.value = []() {
+            auto& t = nxui::I18n::instance();
+            switch (settings::system_prefs::tvResolution()) {
+            case 1: return t.tr("settings.audio.res_1080p", "1080p");
+            case 2: return t.tr("settings.audio.res_720p", "720p");
+            case 3: return t.tr("settings.audio.res_480p", "480p");
+            default: return t.tr("common.auto", "Auto");
+            }
+        };
+        tvRes.onChange = [](int d) {
+            const int n = settings::system_prefs::kTvResolutionCount;
+            settings::system_prefs::setTvResolution((settings::system_prefs::tvResolution() + d + n) % n);
+        };
+        s.rows.push_back(std::move(tvRes));
+#endif
         Row tut;
         tut.label = i18n.tr("cards.set_tutorial", "Show the welcome tour again");
         tut.onA = [this]() {
@@ -2282,6 +2342,18 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
                                                     "The date and time setting could not be changed."));
         };
         s.rows.push_back(std::move(autoTime));
+        Row dateTime;
+        dateTime.label = i18n.tr("settings.system.manual_time", "Set Date and Time");
+        dateTime.detail = i18n.tr("settings.system.manual_time_desc",
+                                  "Available when Internet clock synchronization is disabled.");
+        dateTime.onA = [this]() { openDateTimeEditor(); };
+        s.rows.push_back(std::move(dateTime));
+        Row zone;
+        zone.label = i18n.tr("settings.system.timezone", "Timezone");
+        const std::string zoneName = settings::system_prefs::currentTimezone();
+        zone.value = [zoneName]() { return zoneName; };
+        zone.onA = [this]() { openTimezonePicker(std::string()); };
+        s.rows.push_back(std::move(zone));
         for (const bool docked : {false, true}) {
             Row r;
             r.label = docked ? i18n.tr("cards.set_sleep_tv", "Sleep on TV")
@@ -2543,6 +2615,11 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         remap.label = i18n.tr("cards.bt_remap", "Button mapping");
         remap.onA = [this]() { m_sheet.close(); m_core.launcher().launchControllerRemapping(); };
         s.rows.push_back(std::move(remap));
+        Row btAudio;
+        btAudio.label = i18n.tr("cards.bt_audio", "Audio devices");
+        btAudio.detail = i18n.tr("cards.bt_audio_desc", "Pair and connect Bluetooth headphones and speakers");
+        btAudio.onA = [this]() { openBluetoothAudioSheet(); };
+        s.rows.push_back(std::move(btAudio));
 #endif
         all["bluetooth"] = std::move(s);
     }
@@ -2674,8 +2751,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
 
 void CardsHomeActivity::openSettingsSheet() {
     m_audio.playSfx(Sfx::ModalShow);
-    m_sheet.open(nxui::I18n::instance().tr("sidebar.settings", "Settings"), settingsSections());
-    m_sheet.onReorderSection([this](int d) { reorderSettingsSection(d); });
+    openSettingsAt(0, 0);
 }
 
 // ── Welcome tour (E9 safe part, C-UI-1) ─────────────────────────────────────
