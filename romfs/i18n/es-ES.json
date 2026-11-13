@@ -218,7 +218,10 @@
     "switch_layout": "Cambiar vista",
     "sort_playtime": "Más jugados",
     "change": "Cambiar",
-    "section": "Sección"
+    "section": "Sección",
+    "hold": "(mantener)",
+    "switch_to_cards": "Cards",
+    "switch_to_classic": "Classic"
   },
   "settings": {
     "omnilaunch": {
@@ -231,7 +234,9 @@
       "ask_user": "Preguntar quién juega",
       "ask_user_desc": "Al iniciar un juego se muestran primero los usuarios, como en el HOME de Nintendo.",
       "lock": "Pantalla de bloqueo",
-      "lock_desc": "La hora y la fecha al encender o reanudar la consola. A abre el HOME."
+      "lock_desc": "La hora y la fecha al encender o reanudar la consola. A abre el HOME.",
+      "icon_size": "Tamaño de los iconos",
+      "icon_size_desc": "Tamaño de los iconos del HOME en las vistas de Classic (cuadrícula, línea y Flow)."
     },
     "layout": {
       "grid": "Cuadrícula",
@@ -1710,10 +1715,20 @@
     "set_updates": "Actualizaciones",
     "updates_pending": "Cliente de actualización: parte G6",
     "save_failed": "Error al guardar",
-    "query_failed": "No disponible"
+    "query_failed": "No disponible",
+    "fetch_title": "Obteniendo {app}",
+    "fetch_connecting": "Conectando con GitHub...",
+    "fetch_downloading": "Descargando...",
+    "fetch_installing": "Instalando...",
+    "fetch_cancelling": "Cancelando...",
+    "fetch_cancelled": "Descarga cancelada.",
+    "hold_minus_classic": "Mantén - para cambiar a Classic"
   },
   "news": {
     "empty_title": "Sin noticias",
     "empty_message": "No hay noticias disponibles ahora."
+  },
+  "browser": {
+    "close_suspended": "Cierra primero el programa suspendido."
   }
 }

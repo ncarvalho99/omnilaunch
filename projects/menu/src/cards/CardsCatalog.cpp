@@ -2,6 +2,7 @@
 #include "cards/CardsPages.hpp"
 #include "core/Config.hpp"
 #include "core/DebugLog.hpp"
+#include "home/AppFetch.hpp"
 #include "homebrew/HomebrewStore.hpp"
 #include "launcher/AppListLoader.hpp"
 #include <nxui/core/GpuDevice.hpp>
@@ -74,7 +75,6 @@ void CardsCatalog::setPage(int page, const AppConfig& config) {
             {pg::SystemTile::Controllers, "cards.tile_controllers", "Controllers", "controller.png"},
             {pg::SystemTile::MiiEditor, "cards.tile_mii", "Mii Maker", "mii_editor.png"},
             {pg::SystemTile::Internet, "cards.tile_internet", "Internet", "network.png"},
-            {pg::SystemTile::Browser, "cards.tile_browser", "Browser", "cards/browser.png"},
             {pg::SystemTile::Users, "cards.tile_users", "Users", "switch_logo_white.png"},
             {pg::SystemTile::HomeSettings, "cards.tile_settings", "HOME settings", "settings.png"},
         };
@@ -120,35 +120,36 @@ void CardsCatalog::setPage(int page, const AppConfig& config) {
             m_entries.push_back(std::move(c));
         }
         if (media) {
-            constexpr const char* kTikTokPath = "sdmc:/switch/TikTok/TikTok.nro";
-            std::error_code ec;
+            // Media apps fetched on first use (as CardsNX): TikTok and the
+            // BrowseNX browser. The card keeps one stable id before and after
+            // the download; A downloads it (progress dialog), then opens it.
             auto& i18n = nxui::I18n::instance();
-            if (std::filesystem::exists(kTikTokPath, ec)) {
-                CardEntry tik;
-                tik.isHomebrew = true;
-                tik.homebrewPath = kTikTokPath;
-                tik.app.title = "TikTok";
-                tik.app.titleId = pg::homebrewId(kTikTokPath);
-                tik.author = "ad3333m";
-                tik.app.kind = GridEntryKind::Application;
-                tik.app.userRequired = false;
-                adopt(tik);
-                m_entries.push_back(std::move(tik));
-            } else {
-                CardEntry tik;
-                tik.isHomebrew = true;
-                tik.needsDownload = true;
-                tik.homebrewPath = kTikTokPath;
-                tik.downloadUrl = "https://github.com/ad3333m/tiktok-nx/releases/download/latest/TikTok.nro";
-                tik.app.title = "TikTok";
-                tik.app.titleId = pg::homebrewId(kTikTokPath); // same stable id before and after download
-                tik.author = i18n.tr("cards.download_from_github", "Download from GitHub");
-                tik.app.kind = GridEntryKind::Application;
-                tik.app.userRequired = false;
-                tik.iconFile = m_assetsRoot + "/icons/cards/download.png";
-                adopt(tik);
-                m_entries.push_back(std::move(tik));
-            }
+            auto fetchCard = [&](const std::string& installed, const char* dest, const char* url,
+                                 const std::string& title) {
+                CardEntry c;
+                c.isHomebrew = true;
+                c.app.title = config.customTitle(pg::homebrewId(dest), title);
+                c.app.titleId = pg::homebrewId(dest);
+                c.app.kind = GridEntryKind::Application;
+                c.app.userRequired = false;
+                if (!installed.empty()) {
+                    c.homebrewPath = installed;
+                    c.author = "ad3333m";
+                } else {
+                    c.needsDownload = true;
+                    c.homebrewPath = dest;
+                    c.downloadUrl = url;
+                    c.author = i18n.tr("cards.download_from_github", "Download from GitHub");
+                    c.iconFile = m_assetsRoot + "/icons/cards/download.png";
+                }
+                adopt(c);
+                m_entries.push_back(std::move(c));
+            };
+            std::error_code ec;
+            fetchCard(std::filesystem::exists(pg::kTikTokNro, ec) ? std::string(pg::kTikTokNro) : std::string(),
+                      pg::kTikTokNro, pg::kTikTokUrl, "TikTok");
+            fetchCard(home::installedBrowserPath(), home::kBrowserNro, home::kBrowserUrl,
+                      i18n.tr("cards.tile_browser", "Browser"));
         }
         sort(config);
     }

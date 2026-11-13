@@ -217,7 +217,10 @@
     "switch_layout": "Weergave wisselen",
     "sort_playtime": "Meest gespeeld",
     "change": "Wijzigen",
-    "section": "Sectie"
+    "section": "Sectie",
+    "hold": "(vasthouden)",
+    "switch_to_cards": "Cards",
+    "switch_to_classic": "Classic"
   },
   "settings": {
     "omnilaunch": {
@@ -230,7 +233,9 @@
       "ask_user": "Vragen wie er speelt",
       "ask_user_desc": "Bij het starten van een game worden eerst de gebruikers getoond, zoals in Nintendo's HOME.",
       "lock": "Vergrendelscherm",
-      "lock_desc": "De tijd en datum bij het opstarten of wekken van de console. A opent HOME."
+      "lock_desc": "De tijd en datum bij het opstarten of wekken van de console. A opent HOME.",
+      "icon_size": "Pictogramgrootte",
+      "icon_size_desc": "Grootte van de HOME-pictogrammen in de Classic-weergaven (raster, rij en Flow)."
     },
     "layout": {
       "grid": "Raster",
@@ -1708,10 +1713,20 @@
     "set_updates": "Updates",
     "updates_pending": "Updateclient: deel G6",
     "save_failed": "Opslaan mislukt",
-    "query_failed": "Niet beschikbaar"
+    "query_failed": "Niet beschikbaar",
+    "fetch_title": "{app} ophalen",
+    "fetch_connecting": "Verbinden met GitHub...",
+    "fetch_downloading": "Downloaden...",
+    "fetch_installing": "Installeren...",
+    "fetch_cancelling": "Annuleren...",
+    "fetch_cancelled": "Download geannuleerd.",
+    "hold_minus_classic": "Houd - ingedrukt voor Classic"
   },
   "news": {
     "empty_title": "Geen nieuws",
     "empty_message": "Er is momenteel geen nieuws."
+  },
+  "browser": {
+    "close_suspended": "Sluit eerst de gepauzeerde software."
   }
 }

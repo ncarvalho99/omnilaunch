@@ -1437,6 +1437,7 @@ void WiiUMenuApp::createThemeShop() {
     m_themeShop->youTubeClient().setBackendUrl(m_config.ytdlBackendUrl);
     m_themeShop->setMusicState(m_audio.isPlaying(), m_audio.volume(), m_audio.sfxVolume(), m_config.themeMusicEnabled);
     m_themeShop->setGridLayoutState(m_config.gridColumns, m_config.gridRows);
+    m_themeShop->setIconScaleState(m_config.iconScalePercent);
     m_themeShop->setDynamicPagesState(m_config.dynamicPages);
     m_themeShop->setViewSwitchButtonState(m_config.viewSwitchButton);
     m_themeShop->setAppearanceState(m_config.glassSharpness,
@@ -1534,6 +1535,15 @@ void WiiUMenuApp::createThemeShop() {
         if (m_config.gridColumns == cols)
             return;
         m_config.gridColumns = cols;
+        reflowHomeGrid();
+    });
+    m_themeShop->onIconScaleChange([this](int percent) {
+        percent = std::clamp(percent, 80, 130);
+        if (m_config.iconScalePercent == percent)
+            return;
+        m_config.iconScalePercent = percent;
+        if (m_grid)
+            m_grid->setItemScale(static_cast<float>(percent) / 100.f);
         reflowHomeGrid();
     });
     m_themeShop->onGridRowsChange([this](int rows) {
@@ -1829,10 +1839,21 @@ void WiiUMenuApp::createThemeShop() {
     });
     m_themeShop->onPlayMusic([this](const std::string& path, const std::string& title) {
         DebugLog::log("[themeshop] Playing track: %s (%s)", title.c_str(), path.c_str());
-        m_audio.stop();
-        m_audio.clearTracks();
-        m_audio.loadTrack(path, title);
-        m_audio.play();
+        reloadMusicTracks();
+        const auto tracks = m_audio.tracks();
+        int index = -1;
+        for (std::size_t i = 0; i < tracks.size(); ++i)
+            if (tracks[i].path == path)
+                index = static_cast<int>(i);
+        if (index >= 0) {
+            m_audio.playTrack(index);
+        } else {
+            // Not part of the current source (e.g. theme music only).
+            m_audio.stop();
+            m_audio.clearTracks();
+            m_audio.loadTrack(path, title);
+            m_audio.play();
+        }
         syncMediaCenterState();
     });
     m_themeShop->onClosed([this, clearCompletedThemeTransferState]() {

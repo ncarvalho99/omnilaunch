@@ -19,6 +19,7 @@
 #include "core/LeaveFrameCache.hpp"
 #include "core/SystemMessages.hpp"
 #include "homebrew/HomebrewUpdateCatalog.hpp"
+#include "home/AppFetch.hpp"
 #include "home/HomeStyle.hpp"
 #include "widgets/LockScreen.hpp"
 #include "widgets/ProfileCarouselScreen.hpp"
@@ -61,6 +62,7 @@ public:
 
 private:
     void handleInput();
+    void resolveThemeMusic();
     void pollDaemonNotifications();
 #ifdef SWITCHU_MENU
     void handleSystemAction(SysAction action);
@@ -125,7 +127,6 @@ private:
     void drawPanelButton(nxui::Renderer& ren, float cy);
     void drawMoveHint(nxui::Renderer& ren);
     void openSystemTile(std::uint64_t id);
-    void openBrowser();
     void startMove();
     void finishMove(bool keep);
     void handleMoveInput();
@@ -165,7 +166,7 @@ private:
     void reorderSettingsSection(int delta);
     void maybeShowTutorial();
     void drawTutorial(nxui::Renderer& ren);
-    bool overlayActive() const;
+    bool overlayActive(bool ignoreFetch = false) const;
     std::vector<CardsSheet::Section> settingsSections();
 
     home::HomeCore& m_core;
@@ -204,6 +205,13 @@ private:
     // Live frontend switch (D2): queued by the style sheet, then a short fade
     // to black before home::switchFrontend.
     bool m_switchQueued = false;
+    // Hold Minus: back to Classic, the same gesture Classic uses for Cards.
+    static constexpr float kFrontendHoldSeconds = 0.6f;
+    float m_minusHeld = 0.f;
+    float m_inputDt = 1.f / 60.f; ///< this frame's time, for held-button timing
+    bool m_minusArmed = false;
+    bool m_minusFired = false;
+    void drawHintChips(nxui::Renderer& ren, const std::string& pageLabel);
     home::HomeStyle m_switchTarget = home::HomeStyle::Classic;
     float m_switchFade = -1.f;  // < 0: not fading
     // Arrived by a switch: ignore buttons until everything has been released,
@@ -258,13 +266,13 @@ private:
         std::function<void()> run;
     };
     std::vector<DotsTile> m_dotsTiles;
-    // Media app download (TikTok): 0 idle, 1 running, 2 done, 3 failed. Shared
-    // with the worker so a late finish after destroy touches no dead state.
-    std::shared_ptr<std::atomic<int>> m_appDownloadState = std::make_shared<std::atomic<int>>(0);
-    // BrowseNX download on first use (as CardsNX): same 0..3 states.
-    std::shared_ptr<std::atomic<int>> m_browserDownloadState = std::make_shared<std::atomic<int>>(0);
-    std::shared_ptr<std::atomic<bool>> m_browserDownloadStop = std::make_shared<std::atomic<bool>>(false);
-    std::future<void> m_browserDownloadFuture;
+    // Media apps fetched on first use (TikTok, BrowseNX): one at a time, with a
+    // progress dialog (what it does, percentage, Cancel). The card id of the
+    // fetch is opened when it arrives and nothing else has taken the screen.
+    home::AppFetch m_fetch;
+    std::shared_ptr<ProgressDialog> m_fetchProgress;
+    std::uint64_t m_fetchCardId = 0;
+    void startAppFetch(const CardEntry& card);
     void pollBrowserDownload();
     void stopBrowserDownload(); ///< cancel and wait (onDestroy, quiesce)
     bool m_dotsOpen = false;

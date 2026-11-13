@@ -59,6 +59,8 @@
 #include "warawara/WaraWaraPlazaScreen.hpp"
 #include "warawara/PlazaScreenSwapButton.hpp"
 #include "widgets/MediaCenterButton.hpp"
+#include "widgets/BrowserButton.hpp"
+#include "home/AppFetch.hpp"
 #include "widgets/PowerButton.hpp"
 #include "media/MediaCenterScreen.hpp"
 #include "gallery/GameArtworkStore.hpp"
@@ -500,6 +502,12 @@ private:
     void closeWaraWaraPlaza();
     void toggleWaraWaraPlaza();
     void toggleMediaCenter();
+    // BrowseNX beside the music button: first press downloads it (progress
+    // dialog with Cancel), later presses open it.
+    void openBrowser();
+    void syncBrowserFetch();
+    home::AppFetch m_browserFetch;
+    bool m_browserOpenWhenReady = false;
     void syncMediaCenterState();
     void refreshPlazaCommunities();
     void reloadThemePresets(bool forceFullScan = false);
@@ -683,6 +691,7 @@ private:
     std::shared_ptr<nxui::Box>                       m_topCenterCluster;
     std::shared_ptr<warawara::PlazaScreenSwapButton> m_screenSwapButton;
     std::shared_ptr<widgets::MediaCenterButton>      m_mediaCenterButton;
+    std::shared_ptr<widgets::BrowserButton>          m_browserButton;
     std::shared_ptr<widgets::PowerButton>            m_powerButton;
     std::function<void()>                            m_showPowerDialog;
     std::shared_ptr<media::MediaCenterScreen>        m_mediaCenterScreen;
@@ -1065,6 +1074,12 @@ private:
     std::shared_ptr<UpdateDownload> m_updateDownload;
     std::future<void> m_updateDownloadFuture;
     bool m_sortShortcutArmed = false;
+    // Hold Minus: switch Classic <-> Cards (same gesture in both frontends).
+    static constexpr float kFrontendHoldSeconds = 0.6f;
+    float m_minusHeld = 0.f;
+    bool m_minusArmed = false;
+    bool m_minusFired = false;
+    void handleFrontendSwitchHold(float dt);
     float m_sortShortcutHeld = 0.f;
     bool m_plusExitPending = false;
     AppLayoutMode m_appLayoutMode = AppLayoutMode::Grid;

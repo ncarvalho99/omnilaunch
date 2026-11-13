@@ -235,6 +235,9 @@ public:
     const MetroContext& metroContext() const { return m_metroContext; }
     // Widget the top row of Metro tiles navigates UP to (the top-bar buttons).
     void setMetroUpTarget(nxui::Widget* target);
+    /// Player icon size for the line and Flow views (grid cells come from
+    /// the cell size given to setup()). 0.8..1.3.
+    void setItemScale(float scale) { m_itemScale = scale < 0.8f ? 0.8f : (scale > 1.3f ? 1.3f : scale); }
     void setMetroTileSpans(const std::unordered_map<std::uint64_t, std::pair<int, int>>& spans) {
         m_metroTileSpans = spans;
     }
@@ -519,6 +522,10 @@ private:
     int m_page = 0, m_totalPages = 1;
     float m_cellW = 200, m_cellH = 200;
     float m_padX  = 20,  m_padY  = 20;
+    float m_itemScale = 1.f;
+    // Flow covers stop growing at 115 %: past that the swung cases touch at
+    // the fixed row spacing (kFlowSpacing).
+    float flowItemScale() const { return m_itemScale > 1.15f ? 1.15f : m_itemScale; }
     float m_originX = 0, m_originY = 0;
     static constexpr float kLineScrollDuration = 0.34f;
 

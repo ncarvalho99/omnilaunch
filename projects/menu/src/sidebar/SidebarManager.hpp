@@ -45,6 +45,13 @@ public:
     // span the top HUD has for the profiles and whatever sits beside them.
     static float dynamicLineGapLeft();
     static float dynamicLineGapRight();
+    // Places the strip computed by the top HUD: the left group starts at
+    // `leftX`, the right group ends at `rightEndX`, buttons `size` wide with
+    // `gap` between them, centred on `centerY`. Navigation is unchanged.
+    void placeDynamicLine(float leftX, float rightEndX, float size, float gap, float centerY);
+    // Where the placed groups end/start (valid after placeDynamicLine).
+    float placedLeftEnd() const { return m_placedLeftEnd; }
+    float placedRightStart() const { return m_placedRightStart; }
     void setDynamicLineDownAction(std::function<void()> action);
     void setDynamicLineUpTarget(nxui::Widget* target);
     void setDynamicLineProfileTargets(nxui::Widget* firstProfile,
@@ -90,4 +97,6 @@ private:
     std::string m_loadedCustomIconsBase;
     bool m_assetsLoaded = false;
     bool m_hasDiscord = false;
+    float m_placedLeftEnd = 0.f;
+    float m_placedRightStart = 1280.f;
 };

@@ -369,10 +369,24 @@ bool HomeAudio::reloadMusicTracks(const AppConfig& config, const std::vector<The
                        return a.path == b.path && a.title == b.title;
                    });
     if (unchanged) return false;
+    // A new download, a deleted song or the other frontend rebuilding the same
+    // list must not restart the music from another song: keep the one that
+    // was playing when it is still in the list.
+    const std::string playingPath = audio.currentTrackPath();
     audio.stop();
     audio.clearTracks();
-    for (const auto& track : desired) audio.loadTrack(track.path, track.title);
-    if (wasPlaying && config.musicEnabled) audio.play();
+    int keep = -1;
+    for (std::size_t i = 0; i < desired.size(); ++i) {
+        if (keep < 0 && !playingPath.empty() && desired[i].path == playingPath)
+            keep = static_cast<int>(i);
+        audio.loadTrack(desired[i].path, desired[i].title);
+    }
+    if (wasPlaying && config.musicEnabled) {
+        if (keep >= 0)
+            audio.playTrack(keep);
+        else
+            audio.play();
+    }
     return true;
 }
 

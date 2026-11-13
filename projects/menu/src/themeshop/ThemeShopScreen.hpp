@@ -159,6 +159,8 @@ public:
     // em cache. É a saída para um atalho cujo id foi reaproveitado, que não
     // parece novo para nenhuma verificação automática.
     void onReloadCatalog(VoidCb cb)      { m_reloadCatalogCb = std::move(cb); }
+    void onIconScaleChange(IntCb cb)     { m_iconScaleCb = std::move(cb); }
+    void setIconScaleState(int percent)  { m_iconScalePercent = std::clamp(percent, 80, 130); }
     void onRebuildControlCache(VoidCb cb) { m_rebuildControlCacheCb = std::move(cb); }
     void onSwitchToCardsRequest(VoidCb cb) { m_switchToCardsCb = std::move(cb); }
 
@@ -433,6 +435,8 @@ private:
     std::function<void()> m_updateRestartCb;
     std::function<void()> m_selfUninstallCb;
     VoidCb m_reloadCatalogCb;
+    IntCb m_iconScaleCb;
+    int m_iconScalePercent = 100;
     VoidCb m_rebuildControlCacheCb;
     VoidCb m_switchToCardsCb;
     std::function<void()> m_releaseNotesCb;

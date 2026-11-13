@@ -9,6 +9,7 @@
 #include "core/PlayTime.hpp"
 #include "home/HomeCore.hpp"
 #include "home/HomeFrontend.hpp"
+#include "core/ThemePreset.hpp"
 #include "themeshop/ThemeHttp.hpp"
 #include "widgets/OverlayDialog.hpp"
 #include "widgets/ProgressDialog.hpp"
@@ -439,7 +440,11 @@ bool CardsHomeActivity::onCreate() {
         i18n.setLanguage(config.uiLanguageOverride);
     m_core.audioServices().configureAccessibility(config, i18n.activeLanguageTag());
     // Same process-lifetime music/SFX as Classic: started once, kept across
-    // frontends (HomeAudio::startClassic is idempotent).
+    // frontends (HomeAudio::startClassic is idempotent). Booting straight into
+    // Cards resolves the theme's own songs first, as Classic's theme apply
+    // does, or Cards played the preset music and Classic then swapped it.
+    if (!m_core.audioServices().started)
+        resolveThemeMusic();
     m_core.audioServices().startClassic(m_core.threadPool(), config, {});
 
     auto& gpu = app().gpu();
@@ -687,6 +692,7 @@ void CardsHomeActivity::onDestroy() {
     // The pool is idle (above), so a delete worker has finished with `this`.
     m_deleteProgress.reset();
     m_selfUpdateProgress.reset();
+    m_fetchProgress.reset();
     m_sheet.close();
     m_musicSheet.close();
     m_newsSheet.close();
@@ -706,6 +712,8 @@ nxui::Widget* CardsHomeActivity::focusRoot() {
         return nullptr;
     if (m_userSelect && m_userSelect->isActive())
         return m_userSelect.get();
+    if (m_fetchProgress && m_fetchProgress->isActive())
+        return m_fetchProgress.get(); // A or B cancels the download
     if (m_text && m_text->isActive())
         return m_text.get();
     if (m_profiles && m_profiles->isOpen())
@@ -734,6 +742,44 @@ void CardsHomeActivity::persistLastFocus() {
 #endif
 }
 
+// Classic resolves theme music in applyThemeResources (resolveThemeAssetPath):
+// absolute paths as they are, package and built-in themes relative to their
+// folder, anything else relative to the OmniLaunch folder.
+void CardsHomeActivity::resolveThemeMusic() {
+    auto& audio = m_core.audioServices();
+    const auto& config = m_core.config();
+    if (config.safeMode())
+        return;
+    std::optional<ThemePreset> theme;
+    for (const auto& preset : ThemePreset::builtInPresets())
+        if (preset.id == config.themePreset || preset.name == config.themePreset)
+            theme = preset;
+    if (!theme)
+        theme = ThemePreset::loadSinglePackage(config.themePreset);
+    if (!theme || theme->music.empty())
+        return;
+    std::vector<std::string> tracks;
+    for (const auto& raw : theme->music) {
+        if (raw.empty())
+            continue;
+        std::string path;
+        if (raw.front() == '/' || raw.find(":/") != std::string::npos)
+            path = raw;
+        else if (!theme->installPath.empty())
+            path = theme->installPath + (theme->installPath.back() == '/' ? "" : "/") + raw;
+        else
+            path = std::string(kAssets) + "/" + raw;
+        std::error_code ec;
+        if (std::filesystem::exists(path, ec))
+            tracks.push_back(std::move(path));
+    }
+    if (!tracks.empty()) {
+        audio.themeMusicTracks = std::move(tracks);
+        DebugLog::log("[cards] theme music: %zu track(s) from %s", audio.themeMusicTracks.size(),
+                      config.themePreset.c_str());
+    }
+}
+
 void CardsHomeActivity::finishAudioLoad() {
     // HomeAudio::startClassic queues the mixer/preset load on the pool; the
     // frontend applies volumes and starts music when it lands (as Classic).
@@ -747,7 +793,7 @@ void CardsHomeActivity::finishAudioLoad() {
     const auto& config = m_core.config();
     m_audio.setVolume(config.musicVolume);
     m_audio.setSfxVolume(config.cards.sounds ? config.sfxVolume : 0.f);
-    m_audio.setShuffle(config.cards.shuffle);
+    m_audio.setShuffle(config.customBgmShuffle); // one setting for both frontends
     if (config.musicEnabled && !m_lock.isLocked())
         m_audio.play();
     m_audioStarted = true;
@@ -809,6 +855,7 @@ void CardsHomeActivity::refreshCatalogue() {
 
 void CardsHomeActivity::onUpdate(float dt) {
     m_time += dt;
+    m_inputDt = dt;
 #ifdef SWITCHU_MENU
     // Startup logs line by line (a hang leaves a trace); once Cards has run
     // a few seconds, buffer and let the background thread write the card.
@@ -901,14 +948,6 @@ void CardsHomeActivity::onUpdate(float dt) {
     finishAudioLoad();
     m_audio.update();
     m_status.musicPlaying = m_audio.isPlaying() && !m_audio.isPaused();
-    if (const int dl = m_appDownloadState->load(); dl >= 2) {
-        m_appDownloadState->store(0);
-        auto& t = nxui::I18n::instance();
-        showToast(dl == 2 ? t.tr("cards.download_done", "Download complete!")
-                          : t.tr("cards.download_failed", "Download failed."));
-        if (dl == 2)
-            m_catalog.rebuild(m_core.config());
-    }
     pollPlaytime();
     pollNetCheck();
     pollArtJobs();
@@ -986,6 +1025,8 @@ void CardsHomeActivity::onUpdate(float dt) {
             m_deleteProgress->update(dt);
         if (m_selfUpdateProgress)
             m_selfUpdateProgress->update(dt);
+        if (m_fetchProgress)
+            m_fetchProgress->update(dt);
         pollDeleteSoftware();
 #endif
         // D2/D4: input is held off during the switch fade, leaving launch animation,
@@ -1265,7 +1306,7 @@ void CardsHomeActivity::updateLock(float dt) {
     // frame stops presentation after one frame.
 #ifdef SWITCHU_MENU
     const bool sleepSuppressed = m_launching || m_core.launcher().isAppRunning() || m_selfUpdateJob ||
-                                 m_browserDownloadState->load() == 1 ||
+                                 m_fetch.running() ||
                                  (!app().renderEnabled() && !m_lockLowPowerPrimed);
     m_sleepPlanTimer += dt;
     if (m_sleepPlanTimer >= 3.f) {
@@ -1387,22 +1428,45 @@ void CardsHomeActivity::handleInput() {
         goToPage(pages::step(m_core.config().cards, m_page, d), d);
         return;
     }
-    // Same R / Minus contract as Classic (Settings > view switch button): the
-    // chosen button switches the view (here: back to Classic), the other one
-    // sorts. Quick settings: left stick click, as Classic, or the top bar.
-    const std::string& viewBtnName = m_core.config().viewSwitchButton;
-    const bool viewOnMinus = viewBtnName == "Minus" || viewBtnName == "-";
-    const B viewBtn = viewOnMinus ? B::Minus : B::R;
-    const B sortBtn = viewOnMinus ? B::R : B::Minus;
-    if (in.isDown(viewBtn) && !in.isHeld(B::Plus)) {
-        if (!m_launching && !m_leaving) {
-            m_audio.playSfx(Sfx::Activate);
-            m_switchQueued = true;
-            m_switchTarget = home::HomeStyle::Classic;
+    // Holding Minus switches back to Classic: the same gesture Classic uses
+    // to come here, whatever button its layout cycle is on. A short press
+    // keeps the button's other role, read on release.
+    if (in.isDown(B::Minus)) {
+        m_minusArmed = !in.isHeld(B::Plus);
+        m_minusFired = false;
+        m_minusHeld = 0.f;
+        return;
+    }
+    if (m_minusArmed && in.isHeld(B::Minus)) {
+        if (in.isHeld(B::Plus)) {
+            m_minusArmed = false;
+        } else if (!m_minusFired && (m_minusHeld += m_inputDt) >= kFrontendHoldSeconds) {
+            m_minusFired = true;
+            m_minusArmed = false;
+            if (!m_launching && !m_leaving) {
+                m_audio.playSfx(Sfx::Activate);
+                m_switchQueued = true;
+                m_switchTarget = home::HomeStyle::Classic;
+            }
         }
         return;
     }
-    if (in.isDown(sortBtn) && !in.isHeld(B::Plus)) { openSortSheet(); return; }
+    const bool minusTap = in.isUp(B::Minus) && m_minusArmed && !m_minusFired;
+    if (in.isUp(B::Minus))
+        m_minusArmed = false;
+    // Same R / Minus contract as Classic (Settings > view switch button): the
+    // other button sorts. Cards has no layouts to cycle, so the view button
+    // only reminds how to switch frontend. Quick settings: left stick click.
+    const std::string& viewBtnName = m_core.config().viewSwitchButton;
+    const bool viewOnMinus = viewBtnName == "Minus" || viewBtnName == "-";
+    const bool viewPressed = viewOnMinus ? minusTap : in.isDown(B::R);
+    const bool sortPressed = viewOnMinus ? in.isDown(B::R) : minusTap;
+    if (viewPressed && !in.isHeld(B::Plus)) {
+        auto& t = nxui::I18n::instance();
+        showToast(t.tr("cards.hold_minus_classic", "Hold - to switch to Classic"));
+        return;
+    }
+    if (sortPressed && !in.isHeld(B::Plus)) { openSortSheet(); return; }
     if (in.isDown(B::LStick)) { openQuickSettings(); return; }
     if (in.isDown(B::L)) { openDiscord(); return; }
     if (in.isDown(B::Y)) { openSortSheet(); return; }
@@ -1544,36 +1608,8 @@ void CardsHomeActivity::startLaunchHomebrew(const std::string& path) {
 
 void CardsHomeActivity::launchTitle(const CardEntry& card) {
     if (card.needsDownload) {
-        // Media app not on the SD card (TikTok, as CardsNX): fetch its .nro.
-        auto& i18n = nxui::I18n::instance();
-        if (m_appDownloadState->load() == 1) {
-            showToast(i18n.tr("cards.downloading_app", "Downloading app..."));
-            return;
-        }
-        if (!m_core.net().online()) {
-            showToast(i18n.tr("cards.net_offline", "No internet connection"));
-            return;
-        }
-        if (!m_core.threadPool().acceptingTasks())
-            return;
-        showToast(i18n.tr("cards.downloading_app", "Downloading app..."));
-        const std::string url = card.downloadUrl;
-        const std::string dest = card.homebrewPath;
-        std::error_code ec;
-        std::filesystem::create_directories(std::filesystem::path(dest).parent_path(), ec);
-        auto state = m_appDownloadState;
-        state->store(1);
-        net::NetService* net = &m_core.net();
-        m_core.threadPool().submit([state, net, url, dest]() {
-            net::Download dl;
-            dl.url = url;
-            dl.path = dest;
-            dl.timeoutMs = 120000;
-            const auto res = net->download(dl);
-            DebugLog::log("[cards] app download %s -> %s status=%ld %s", url.c_str(), dest.c_str(), res.status,
-                          res.error.c_str());
-            state->store(res.ok() ? 2 : 3);
-        });
+        // Media app not on the SD card (TikTok, BrowseNX, as CardsNX).
+        startAppFetch(card);
         return;
     }
     if (card.isHomebrew) {
@@ -1697,10 +1733,10 @@ std::uint64_t CardsHomeActivity::runningCardId() const {
     const std::string nro = m_core.launcher().runningHomebrew();
     if (nro.empty())
         return suspended;
-    // The bundled browser is shown as the Nintendo-page Browser tile, not as
-    // a homebrew card: report that tile so its glow and X-to-close work.
-    if (nro == pages::kBundledBrowserNro || nro == pages::kUserBrowserNro)
-        return pages::systemId(pages::SystemTile::Browser);
+    // BrowseNX is the Media-page card keyed by its download path, wherever
+    // the running copy lives, so its glow and X-to-close work.
+    if (nro == home::kLegacyBrowserNro)
+        return pages::homebrewId(home::kBrowserNro);
     return pages::homebrewId(nro);
 }
 
@@ -2167,6 +2203,40 @@ void CardsHomeActivity::drawLaunch(nxui::Renderer& ren) {
     }
 }
 
+// Button hints as glyph capsules (Classic hint style) in the strip between
+// the top bar (ends y 86) and the focused card (starts y 114), drawn after the
+// cards so a lifted or focused card can no longer cover them: the page switch
+// (ZL page ZR) and the frontend switch (hold Minus).
+void CardsHomeActivity::drawHintChips(nxui::Renderer& ren, const std::string& pageLabel) {
+    auto& sf = m_chrome.smallFont();
+    auto& tr = nxui::I18n::instance();
+    const float gs = 0.62f;
+    const float gh = m_fontIcons.measure(ui::glyph::button(nxui::Button::ZL)).y * gs;
+    auto chip = [&](float x, const std::string& lead, const std::string& label, const std::string& tail) {
+        const float lw = lead.empty() ? 0.f : m_fontIcons.measure(lead).x * gs;
+        const float tw = tail.empty() ? 0.f : m_fontIcons.measure(tail).x * gs;
+        const float textW = sf.measure(label).x;
+        const float w = 16.f + lw + (lw > 0.f ? 6.f : 0.f) + textW + (tw > 0.f ? 6.f + tw : 0.f);
+        const nxui::Rect cap{x, 89.f, w, 22.f};
+        ren.drawRoundedRect(cap, {0.12f, 0.14f, 0.20f, 0.62f}, 11.f);
+        ren.drawRoundedRectOutline(cap, {1.f, 1.f, 1.f, 0.18f}, 11.f, 1.f);
+        const float iy = cap.y + (cap.height - gh) * 0.5f;
+        float cx = cap.x + 8.f;
+        if (lw > 0.f) {
+            ren.drawText(lead, {cx, iy}, &m_fontIcons, CardsChrome::kWhite, gs);
+            cx += lw + 6.f;
+        }
+        m_chrome.textMid(ren, sf, label, cx, cap.y + 11.f, {1.f, 1.f, 1.f, 0.9f});
+        cx += textW + 6.f;
+        if (tw > 0.f)
+            ren.drawText(tail, {cx, iy}, &m_fontIcons, CardsChrome::kWhite, gs);
+        return cap.right();
+    };
+    float x = chip(20.f, ui::glyph::button(nxui::Button::ZL), pageLabel, ui::glyph::button(nxui::Button::ZR));
+    chip(x + 10.f, ui::glyph::button(nxui::Button::Minus),
+         tr.tr("hint.hold", "(hold)") + " " + tr.tr("hint.switch_to_classic", "Classic"), std::string());
+}
+
 void CardsHomeActivity::onRender(nxui::Renderer& ren) {
     samplePerfFrame();
     // Background: the focused title's art, cross-faded from the previous one.
@@ -2184,22 +2254,6 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
         : m_page == AppConfig::CardsPrefs::kHomebrew ? tr.tr("cards.page_homebrew", "Homebrew")
         : m_page == AppConfig::CardsPrefs::kNintendo ? tr.tr("cards.page_nintendo", "Nintendo")
                                                     : tr.tr("cards.page_media", "Media");
-    {
-        // Page label as button-glyph capsules (Classic hint style), in the gap
-        // left of the first card so it no longer overlaps the card row.
-        auto& sf = m_chrome.smallFont();
-        const std::string zl = ui::glyph::button(nxui::Button::ZL);
-        const std::string zr = ui::glyph::button(nxui::Button::ZR);
-        const float zw = m_fontIcons.measure(zl).x * 0.65f;
-        const float lw = sf.measure(pageLabel).x;
-        const nxui::Rect cap{20.f, 102.f, zw * 2.f + lw + 36.f, 24.f};
-        ren.drawRoundedRect(cap, {0.12f, 0.14f, 0.20f, 0.55f}, 12.f);
-        ren.drawRoundedRectOutline(cap, {1.f, 1.f, 1.f, 0.18f}, 12.f, 1.f);
-        const float iy = cap.y + (cap.height - m_fontIcons.measure(zl).y * 0.65f) * 0.5f;
-        ren.drawText(zl, {cap.x + 8.f, iy}, &m_fontIcons, CardsChrome::kWhite, 0.65f);
-        m_chrome.textMid(ren, sf, pageLabel, cap.x + 14.f + zw, cap.y + 12.f, {1.f, 1.f, 1.f, 0.9f});
-        ren.drawText(zr, {cap.x + 20.f + zw + lw, iy}, &m_fontIcons, CardsChrome::kWhite, 0.65f);
-    }
 
     // Neighbours first, focused card last so its outline sits on top.
     const bool zoomLeaving = m_leaving && m_core.config().cardsLaunchStyle == 1;
@@ -2232,6 +2286,8 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
             }
         }
     }
+    if (!m_moving)
+        drawHintChips(ren, pageLabel);
     drawPanel(ren);
     drawLaunch(ren);
 
@@ -2267,6 +2323,8 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
         m_deleteProgress->render(ren);
     if (m_selfUpdateProgress && m_selfUpdateProgress->isActive())
         m_selfUpdateProgress->render(ren);
+    if (m_fetchProgress && m_fetchProgress->isActive())
+        m_fetchProgress->render(ren);
     // D2 switch: fade to black on the way out, from black on the way in.
     float black = m_fadeIn;
     if (m_switchFade >= 0.f)

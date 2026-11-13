@@ -209,6 +209,23 @@ float SidebarManager::dynamicLineGapRight() {
     return kDynamicRightGroupX;
 }
 
+void SidebarManager::placeDynamicLine(float leftX, float rightEndX, float size, float gap, float centerY) {
+    const float y = centerY - size * 0.5f;
+    float x = leftX;
+    for (auto& button : m_leftButtons) {
+        button->setRect({x, y, size, size});
+        x += size + gap;
+    }
+    m_placedLeftEnd = m_leftButtons.empty() ? leftX : x - gap;
+    const float n = static_cast<float>(m_rightButtons.size());
+    x = rightEndX - n * size - std::max(0.f, n - 1.f) * gap;
+    m_placedRightStart = m_rightButtons.empty() ? rightEndX : x;
+    for (auto& button : m_rightButtons) {
+        button->setRect({x, y, size, size});
+        x += size + gap;
+    }
+}
+
 void SidebarManager::setDynamicLineDownAction(std::function<void()> action) {
     auto configure = [&action](std::shared_ptr<AppletButton>& button) {
         button->removeAction(static_cast<uint64_t>(nxui::Button::DDown));

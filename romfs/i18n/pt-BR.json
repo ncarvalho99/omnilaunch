@@ -217,7 +217,10 @@
     "switch_layout": "Trocar visualização",
     "sort_playtime": "Mais jogados",
     "change": "Alterar",
-    "section": "Seção"
+    "section": "Seção",
+    "hold": "(segure)",
+    "switch_to_cards": "Cards",
+    "switch_to_classic": "Classic"
   },
   "settings": {
     "omnilaunch": {
@@ -230,7 +233,9 @@
       "ask_user": "Perguntar quem vai jogar",
       "ask_user_desc": "Iniciar um jogo mostra a lista de usuários primeiro, como no menu original.",
       "lock": "Tela de bloqueio",
-      "lock_desc": "Mostra data e hora ao ligar ou acordar o console. Pressione A para entrar no menu."
+      "lock_desc": "Mostra data e hora ao ligar ou acordar o console. Pressione A para entrar no menu.",
+      "icon_size": "Tamanho dos ícones",
+      "icon_size_desc": "Tamanho dos ícones do HOME nas visualizações do Classic (grade, linha e Flow)."
     },
     "layout": {
       "grid": "Grade",
@@ -1708,10 +1713,20 @@
     "power_shutdown_desc": "Desligar o console",
     "power_hekate_desc": "Menu do Hekate",
     "sgdb_no_artwork": "Nenhuma imagem encontrada para este título.",
-    "sgdb_empty_help": "Pressione X para trocar a resolução ou Y para mudar o nome da busca."
+    "sgdb_empty_help": "Pressione X para trocar a resolução ou Y para mudar o nome da busca.",
+    "fetch_title": "Obtendo {app}",
+    "fetch_connecting": "Conectando ao GitHub...",
+    "fetch_downloading": "Baixando...",
+    "fetch_installing": "Instalando...",
+    "fetch_cancelling": "Cancelando...",
+    "fetch_cancelled": "Download cancelado.",
+    "hold_minus_classic": "Segure - para trocar para o Classic"
   },
   "news": {
     "empty_title": "Sem notícias",
     "empty_message": "Nenhuma notícia disponível agora."
+  },
+  "browser": {
+    "close_suspended": "Feche primeiro o software suspenso."
   }
 }

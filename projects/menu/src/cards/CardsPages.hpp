@@ -67,14 +67,12 @@ enum class SystemTile : int {
     SwitchOnline,
     Friends,
     News,
-    Browser // BrowseNX, downloaded from its GitHub release on first use
+    Browser // retired tile id (BrowseNX is a Media card now); kept for saved orders
 };
-/// Not shipped any more; a copy left by an older package is still opened.
-inline constexpr const char* kBundledBrowserNro = "sdmc:/switch/OmniLaunch/apps/BrowseNX.nro";
-/// Where the first use downloads BrowseNX (same place as CardsNX).
-inline constexpr const char* kUserBrowserNro = "sdmc:/switch/BrowseNX/BrowseNX.nro";
-inline constexpr const char* kBrowserDownloadUrl =
-    "https://github.com/ad3333m/browsenx/releases/download/latest/BrowseNX.nro";
+/// Media page app fetched on first use (as CardsNX).
+inline constexpr const char* kTikTokNro = "sdmc:/switch/TikTok/TikTok.nro";
+inline constexpr const char* kTikTokUrl =
+    "https://github.com/ad3333m/tiktok-nx/releases/download/latest/TikTok.nro";
 inline std::uint64_t systemId(SystemTile t) { return kSystemIdBase | static_cast<std::uint64_t>(t); }
 inline SystemTile systemTileOf(std::uint64_t id) { return static_cast<SystemTile>(id & 0xFFu); }
 

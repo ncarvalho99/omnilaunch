@@ -341,6 +341,8 @@ void WiiUMenuApp::handleSortShortcutRelease(float dt) {
         return;
     if (held > kSortShortcutTapSeconds)
         return;
+    if (sortBtn == nxui::Button::Minus && m_minusFired)
+        return;
     // Anything with its own R meaning, or any overlay covering the grid, keeps
     // the shortcut out of the way: the sort belongs to the grid alone.
     //

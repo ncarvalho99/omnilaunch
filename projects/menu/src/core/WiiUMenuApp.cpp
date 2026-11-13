@@ -848,6 +848,7 @@ bool WiiUMenuApp::onCreate() {
 // that made the daemon see no menu running and relaunch it into the middle of
 // the reboot, leaving the console black and needing RCM.
 void WiiUMenuApp::quiesceWritersForPowerAction() {
+    m_browserFetch.stop();
     if (m_configSaveFuture.valid())
         m_configSaveFuture.get();
     if (m_themePackageTransferFuture.valid()) {
@@ -911,6 +912,7 @@ void WiiUMenuApp::onDestroy() {
     // The transform captures this frontend; the Core keeps the loader.
     m_appLoader.setPendingTransform({});
     m_iconStreamer.cancelPending();
+    m_browserFetch.stop();
 
     // Release frontend-owned background media (frames, arena, video player)
     // on the render thread before Activity destruction so GPU image memory
@@ -1344,7 +1346,6 @@ void WiiUMenuApp::layoutTopHud() {
     constexpr float kAvatarSize = 56.f;
     constexpr float kAvatarGap = 10.f;
     constexpr float kAvatarTop = 17.f;
-    constexpr float kTightAvatarGap = 8.f;
     constexpr float kMinAvatarSize = 32.f;
     constexpr float kSpanInset = 14.f;
     constexpr float kClusterGap = 14.f;
@@ -1353,18 +1354,45 @@ void WiiUMenuApp::layoutTopHud() {
     const float count = static_cast<float>(m_userAvatarButtons.size() + (m_bell ? 1 : 0));
     const bool clusterShown = m_topCenterCluster && m_topCenterCluster->isVisible();
     const float clusterWidth = clusterShown ? m_topCenterCluster->rect().width : 0.f;
-    const float spanX = SidebarManager::dynamicLineGapLeft() + kSpanInset;
-    const float spanWidth = SidebarManager::dynamicLineGapRight() - kSpanInset - spanX;
+    float spanX = SidebarManager::dynamicLineGapLeft() + kSpanInset;
+    float spanWidth = SidebarManager::dynamicLineGapRight() - kSpanInset - spanX;
 
     float size = kAvatarSize;
     float gap = kAvatarGap;
-    if (line && count > 0.f) {
-        const float room = spanWidth - (clusterShown ? clusterWidth + kClusterGap : 0.f);
-        if (count * size + (count - 1.f) * gap > room) {
-            gap = kTightAvatarGap;
-            size = std::clamp(std::floor((room - (count - 1.f) * gap) / count),
-                              kMinAvatarSize, kAvatarSize);
-        }
+    if (line) {
+        // One row from the clock to the battery: both sidebar groups, the
+        // profiles, the bell and the centre cluster share the real space
+        // between them with one common size. The old fixed group positions
+        // assumed three buttons per side; with five they ran under the
+        // profiles and the battery and some were hidden.
+        constexpr float kLineCenterY = 45.f;
+        constexpr float kLineGap = 6.f;
+        constexpr float kLineMinSize = 34.f;
+        constexpr float kClockRight = 174.f;  // clock: margin 24, width 150
+        constexpr float kBatteryLeft = 1106.f; // battery: width 150, margin 24
+        const float lo = kClockRight + kClusterGap;
+        const float hi = kBatteryLeft - kClusterGap;
+        const float sideCount = static_cast<float>(m_sidebar.leftButtons().size() +
+                                                   m_sidebar.rightButtons().size());
+        const float units = sideCount + count;
+        const int groups = (m_sidebar.leftButtons().empty() ? 0 : 1) + (m_sidebar.rightButtons().empty() ? 0 : 1) +
+                           (count > 0.f ? 1 : 0) + (clusterShown ? 1 : 0);
+        const float groupGaps = static_cast<float>(std::max(0, groups - 1)) * kClusterGap;
+        const float innerGaps = std::max(0.f, units - static_cast<float>(groups - (clusterShown ? 1 : 0))) * kLineGap;
+        // Gap first (tight as soon as the full size does not fit), then the
+        // size that fits. Never under kLineMinSize: past that (many profiles)
+        // the centre group shrinks its own gap instead of covering the strip.
+        const float wideGaps = std::max(0.f, units - static_cast<float>(groups - (clusterShown ? 1 : 0))) * kAvatarGap;
+        const bool wideFits = units * kAvatarSize + wideGaps + clusterWidth + groupGaps <= hi - lo;
+        gap = wideFits ? kAvatarGap : kLineGap;
+        if (units > 0.f && !wideFits)
+            size = std::floor((hi - lo - clusterWidth - groupGaps - innerGaps) / units);
+        size = std::clamp(size, kLineMinSize, kAvatarSize);
+        m_sidebar.placeDynamicLine(lo, hi, size, gap, kLineCenterY);
+        spanX = m_sidebar.leftButtons().empty() ? lo : m_sidebar.placedLeftEnd() + kClusterGap - kSpanInset;
+        const float spanEnd = m_sidebar.rightButtons().empty() ? hi : m_sidebar.placedRightStart() - kClusterGap + kSpanInset;
+        spanX += kSpanInset;
+        spanWidth = spanEnd - kSpanInset - spanX;
     }
 
     for (const auto& avatar : m_userAvatarButtons) {
@@ -1373,7 +1401,18 @@ void WiiUMenuApp::layoutTopHud() {
         avatar->setMinHeight(size);
         avatar->setCornerRadius(size * 0.5f);
     }
-    const float barWidth = count > 0.f ? count * size + (count - 1.f) * gap : 0.f;
+    if (m_bell) {
+        m_bell->setSize(size, size);
+        m_bell->setCornerRadius(size * 0.5f);
+    }
+    float barWidth = count > 0.f ? count * size + (count - 1.f) * gap : 0.f;
+    if (line && count > 1.f) {
+        const float room = spanWidth - (clusterShown ? clusterWidth + kClusterGap : 0.f);
+        if (barWidth > room) {
+            gap = std::max(0.f, (room - count * size) / (count - 1.f));
+            barWidth = count * size + (count - 1.f) * gap;
+        }
+    }
     if (m_userAvatarBar) {
         m_userAvatarBar->setGap(gap);
         // Smaller avatars stay on the centre line of the strip beside them.
@@ -1501,6 +1540,16 @@ void WiiUMenuApp::wireUserAvatarNavigation() {
             : nullptr;
         if (isMetroLayout() && m_powerButton)
             right = m_powerButton.get();
+        if (m_browserButton) {
+            m_browserButton->setCustomNavigation(nxui::FocusDirection::LEFT, m_mediaCenterButton.get());
+            m_browserButton->setCustomNavigation(nxui::FocusDirection::RIGHT, right);
+            m_browserButton->setCustomNavigation(nxui::FocusDirection::DOWN, nullptr);
+            m_browserButton->removeAction(static_cast<uint64_t>(nxui::Button::DDown));
+            m_browserButton->removeAction(static_cast<uint64_t>(nxui::Button::LStickD));
+            m_browserButton->removeAction(static_cast<uint64_t>(nxui::Button::RStickD));
+            m_browserButton->addDirectionAction(nxui::FocusDirection::DOWN, returnToGrid);
+            right = m_browserButton.get();
+        }
         m_mediaCenterButton->setCustomNavigation(nxui::FocusDirection::LEFT, left);
         m_mediaCenterButton->setCustomNavigation(nxui::FocusDirection::RIGHT, right);
         m_mediaCenterButton->setCustomNavigation(nxui::FocusDirection::DOWN, nullptr);
@@ -1511,7 +1560,8 @@ void WiiUMenuApp::wireUserAvatarNavigation() {
     }
     if (m_powerButton) {
         m_powerButton->setCustomNavigation(nxui::FocusDirection::LEFT,
-            m_mediaCenterButton ? static_cast<nxui::Widget*>(m_mediaCenterButton.get()) : nullptr);
+            m_browserButton ? static_cast<nxui::Widget*>(m_browserButton.get())
+                            : (m_mediaCenterButton ? static_cast<nxui::Widget*>(m_mediaCenterButton.get()) : nullptr));
         m_powerButton->setCustomNavigation(nxui::FocusDirection::RIGHT, nullptr);
         m_powerButton->setCustomNavigation(nxui::FocusDirection::DOWN, nullptr);
         m_powerButton->removeAction(static_cast<uint64_t>(nxui::Button::DDown));
@@ -1614,7 +1664,9 @@ WiiUMenuApp::GridLayoutMetrics WiiUMenuApp::computeGridLayoutMetrics(int cols,
 
     const float scaleW = safeW / baseGridW;
     const float scaleH = safeH / baseGridH;
-    const float scale = std::min(1.f, std::min(scaleW, scaleH));
+    // The player's icon size scales the fitted size, never past the safe area.
+    const float user = std::clamp(m_config.iconScalePercent, 80, 130) / 100.f;
+    const float scale = std::min(std::min(scaleW, scaleH), std::min(1.f, std::min(scaleW, scaleH)) * user);
 
     GridLayoutMetrics m;
     m.cellW = std::max(88.f, kGridBaseCellW * scale);
@@ -2739,13 +2791,13 @@ void WiiUMenuApp::applyMetroPowerButton(bool isMetro) {
     m_powerButton->setVisible(isMetro);
     m_powerButton->setFocusable(isMetro);
     if (m_grid)
-        m_grid->setMetroUpTarget(isMetro ? static_cast<nxui::Widget*>(m_mediaCenterButton.get()) : nullptr);
+        m_grid->setMetroUpTarget(isMetro ? static_cast<nxui::Widget*>(m_browserButton ? static_cast<nxui::Widget*>(m_browserButton.get()) : m_mediaCenterButton.get()) : nullptr);
     if (m_topCenterCluster) {
         if (isMetro) {
-            m_topCenterCluster->setRect({778.f, 18.f, 186.f, 48.f});
+            m_topCenterCluster->setRect({712.f, 18.f, 252.f, 48.f});
             m_topCenterCluster->layout();
         } else {
-            m_topCenterCluster->setSize(120.f, 48.f);
+            m_topCenterCluster->setSize(186.f, 48.f);
             m_topCenterCluster->layout();
             if (m_topHud) layoutTopHud();
         }
@@ -3156,6 +3208,7 @@ void WiiUMenuApp::applyDisplayModel(GridModel model, std::uint64_t focusId, bool
     if (m_titlePill && hidePill) m_titlePill->setVisible(false);
     if (m_screenSwapButton) m_screenSwapButton->setMetroStyle(isMetro);
     if (m_mediaCenterButton) m_mediaCenterButton->setMetroStyle(isMetro);
+    if (m_browserButton) m_browserButton->setMetroStyle(isMetro);
     applyMetroPowerButton(isMetro);
     m_grid->onEdgePage([this](int dir) { flipPageFromEdge(dir); });
     m_grid->onEdgePageHold([this](int dir) -> bool {
@@ -4931,7 +4984,9 @@ void WiiUMenuApp::configureDynamicLineNavigation() {
             btn->addDirectionAction(nxui::FocusDirection::RIGHT, returnFromLeftSidebar);
         }
 
-        nxui::Widget* rightUpTarget = m_mediaCenterButton
+        nxui::Widget* rightUpTarget = m_browserButton
+            ? static_cast<nxui::Widget*>(m_browserButton.get())
+            : m_mediaCenterButton
             ? static_cast<nxui::Widget*>(m_mediaCenterButton.get())
             : (m_screenSwapButton
                 ? static_cast<nxui::Widget*>(m_screenSwapButton.get())
@@ -5045,6 +5100,7 @@ void WiiUMenuApp::setAppLayoutMode(AppLayoutMode mode) {
     if (m_titlePill && hidePill) m_titlePill->setVisible(false);
     if (m_screenSwapButton) m_screenSwapButton->setMetroStyle(isMetro);
     if (m_mediaCenterButton) m_mediaCenterButton->setMetroStyle(isMetro);
+    if (m_browserButton) m_browserButton->setMetroStyle(isMetro);
     applyMetroPowerButton(isMetro);
 
     if (rebuildRoot) {
@@ -6136,6 +6192,7 @@ void WiiUMenuApp::buildGrid() {
     GridLayoutMetrics gridMetrics = computeGridLayoutMetrics();
 
     m_grid = std::make_shared<IconGrid>();
+    m_grid->setItemScale(static_cast<float>(std::clamp(m_config.iconScalePercent, 80, 130)) / 100.f);
     m_grid->setRect({kGridRectX, kGridRectY, kGridRectW, kGridRectH});
     m_grid->setThreadPool(&m_threadPool);
     if (m_background)
@@ -6601,7 +6658,7 @@ void WiiUMenuApp::buildGrid() {
     m_topCenterCluster->setMarginTop(18.f);
     m_topCenterCluster->setShrink(0.f);
     m_topCenterCluster->setGap(12.f);
-    m_topCenterCluster->setSize(120.f, 48.f);
+    m_topCenterCluster->setSize(186.f, 48.f);
 
     m_screenSwapButton = std::make_shared<warawara::PlazaScreenSwapButton>();
     m_screenSwapButton->setSize(54.f, 48.f);
@@ -6622,6 +6679,17 @@ void WiiUMenuApp::buildGrid() {
         toggleMediaCenter();
     });
     m_topCenterCluster->addChild(m_mediaCenterButton);
+
+    m_browserButton = std::make_shared<widgets::BrowserButton>();
+    m_browserButton->setSize(54.f, 48.f);
+    m_browserButton->setMarginTop(0.f);
+    m_browserButton->setShrink(0.f);
+    m_browserButton->setInstalled(!home::installedBrowserPath().empty());
+    m_browserButton->onActivate([this]() {
+        m_audio.playSfx(Sfx::Activate);
+        openBrowser();
+    });
+    m_topCenterCluster->addChild(m_browserButton);
 
     m_powerButton = std::make_shared<widgets::PowerButton>();
     m_powerButton->setSize(54.f, 48.f);
@@ -6677,6 +6745,7 @@ void WiiUMenuApp::buildGrid() {
     if (m_titlePill && hidePill) m_titlePill->setVisible(false);
     if (m_screenSwapButton) m_screenSwapButton->setMetroStyle(isMetro);
     if (m_mediaCenterButton) m_mediaCenterButton->setMetroStyle(isMetro);
+    if (m_browserButton) m_browserButton->setMetroStyle(isMetro);
     applyMetroPowerButton(isMetro);
 
     m_overlayLayer = std::make_shared<nxui::Box>();
@@ -8312,6 +8381,9 @@ void WiiUMenuApp::onUpdate(float dt) {
     }
     syncUpdateCheck();
     syncUpdateDownload();
+    syncBrowserFetch();
+    if (!lockScreenUp)
+        handleFrontendSwitchHold(dt);
 #ifdef SWITCHU_MENU
     pollAutoNtpSync(dt);
 #endif
@@ -8379,8 +8451,14 @@ void WiiUMenuApp::onUpdate(float dt) {
     const bool viewOnMinus = (m_config.viewSwitchButton == "Minus" || m_config.viewSwitchButton == "-");
     const auto viewBtn = viewOnMinus ? nxui::Button::Minus : nxui::Button::R;
 
+    // Minus is shared with the frontend switch (hold): on Minus the layout
+    // cycle fires on the release of a short press instead of on the press.
+    const bool viewPressed = viewOnMinus
+        ? (app().input().isUp(nxui::Button::Minus) && m_minusArmed && !m_minusFired &&
+           m_minusHeld < kFrontendHoldSeconds)
+        : app().input().isDown(viewBtn);
     if (!lockScreenUp &&
-        app().input().isDown(viewBtn) &&
+        viewPressed &&
         !app().input().isHeld(nxui::Button::Plus) && // Plus+Minus is the accessibility combo
         m_navigator.route() == switchu::navigation::Route::Home &&
         focusRoot() == &rootBox() && // no view switch under an open overlay
@@ -8615,6 +8693,13 @@ void WiiUMenuApp::onUpdate(float dt) {
     if (!debugTouchBlocked && !lockScreenUp && m_mediaCenterButton)
         m_mediaCenterButton->handleTouch(app().input());
 
+    // Only while HOME's own screen has input: a tap under an overlay or the
+    // download dialog must not reach the button behind it.
+    if (!debugTouchBlocked && !lockScreenUp && !dialogActiveNow && m_browserButton &&
+        m_navigator.route() == switchu::navigation::Route::Home && focusRoot() == &rootBox() &&
+        !(m_launchAnim && m_launchAnim->isPlaying()))
+        m_browserButton->handleTouch(app().input());
+
     if (!debugTouchBlocked && !lockScreenUp && !dialogActiveNow &&
         m_navigator.route() == switchu::navigation::Route::Home &&
         m_powerButton && m_powerButton->isVisible())
@@ -8773,6 +8858,157 @@ void WiiUMenuApp::updateFrontendSwitch(float dt) {
         m_configSaveFuture.wait();
     if (!home::switchFrontend(app(), m_homeCore, home::HomeStyle::Cards))
         DebugLog::log("[home] switch to cards not started");
+}
+
+// Hold Minus switches to Cards, as it switches back from Cards: one gesture for
+// both frontends, whatever button the layout cycle uses. A short press keeps
+// its old meaning (sort, or the layout cycle when that is on Minus).
+void WiiUMenuApp::handleFrontendSwitchHold(float dt) {
+    auto& input = app().input();
+    if (input.isDown(nxui::Button::Minus)) {
+        m_minusArmed = !input.isHeld(nxui::Button::Plus);
+        m_minusFired = false;
+        m_minusHeld = 0.f;
+        return;
+    }
+    if (!input.isHeld(nxui::Button::Minus)) {
+        if (input.isUp(nxui::Button::Minus))
+            return; // release frame: the tap readers above saw the state
+        m_minusArmed = false;
+        m_minusFired = false;
+        m_minusHeld = 0.f;
+        return;
+    }
+    if (!m_minusArmed || m_minusFired)
+        return;
+    if (input.isHeld(nxui::Button::Plus)) {
+        m_minusArmed = false; // Plus+Minus is the accessibility combo
+        return;
+    }
+    m_minusHeld += dt;
+    if (m_minusHeld < kFrontendHoldSeconds)
+        return;
+    m_minusFired = true;
+    if (m_navigator.route() != switchu::navigation::Route::Home || focusRoot() != &rootBox() || m_editMode ||
+        m_openFolderId != 0 || (m_progressDialog && m_progressDialog->isActive()))
+        return;
+    m_audio.playSfx(Sfx::Activate);
+    m_frontendSwitchQueued = true;
+}
+
+void WiiUMenuApp::openBrowser() {
+#ifdef SWITCHU_MENU
+    auto& i18n = nxui::I18n::instance();
+    const std::string path = home::installedBrowserPath();
+    if (!path.empty()) {
+        if (m_browserButton)
+            m_browserButton->setInstalled(true);
+        const std::string running = m_launcher.runningHomebrew();
+        if (m_launcher.suspendedTitleId() != 0 &&
+            (running == home::kBrowserNro || running == home::kLegacyBrowserNro)) {
+            // BrowseNX is the suspended software: go back to it.
+            resumeSuspendedApplication(m_launcher.suspendedTitleId(), "BrowseNX");
+            return;
+        }
+        if (m_launcher.suspendedTitleId() != 0) {
+            m_audio.playSfx(Sfx::ModalShow);
+            if (m_dialog) {
+                m_dialogReturnFocus = focusManager().current();
+                m_dialog->show(i18n.tr("cards.suspended_title", "Software suspended"),
+                               i18n.tr("browser.close_suspended", "Close the suspended software first."),
+                               {{i18n.tr("button.ok", "OK"), []() {}, true}});
+                focusManager().setFocus(m_dialog.get());
+            }
+            return;
+        }
+        DebugLog::log("[home] browser -> %s", path.c_str());
+        m_launcher.launchNro(path, 0, {}, true);
+        return;
+    }
+    if (m_browserFetch.running())
+        return;
+    if (!m_homeCore.net().online()) {
+        m_audio.playSfx(Sfx::ModalShow);
+        if (m_dialog) {
+            m_dialogReturnFocus = focusManager().current();
+            m_dialog->show(i18n.tr("cards.tile_browser", "Browser"),
+                           i18n.tr("cards.browser_offline", "Connect to the internet to get BrowseNX."),
+                           {{i18n.tr("button.ok", "OK"), []() {}, true}});
+            focusManager().setFocus(m_dialog.get());
+        }
+        return;
+    }
+    if (!m_progressDialog || m_progressDialog->isActive())
+        return;
+    if (!m_browserFetch.start(m_homeCore.net(), m_threadPool, home::kBrowserUrl, home::kBrowserNro, "BrowseNX"))
+        return;
+    m_browserOpenWhenReady = true;
+    m_progressDialog->setTheme(&m_theme);
+    raiseOverlay(m_progressDialog);
+    std::string title = i18n.tr("cards.fetch_title", "Getting {app}");
+    if (const auto at = title.find("{app}"); at != std::string::npos)
+        title.replace(at, 5, "BrowseNX");
+    m_progressDialog->show(title, i18n.tr("cards.fetch_connecting", "Connecting to GitHub..."), -1.f);
+    m_progressDialog->setCancelAction(i18n.tr("button.cancel", "Cancel"), [this]() {
+        m_browserFetch.cancel();
+        if (m_progressDialog)
+            m_progressDialog->markCancelling(nxui::I18n::instance().tr("cards.fetch_cancelling", "Cancelling..."));
+    });
+    m_dialogReturnFocus = focusManager().current();
+    focusManager().setFocus(m_progressDialog.get());
+#endif
+}
+
+void WiiUMenuApp::syncBrowserFetch() {
+    auto& i18n = nxui::I18n::instance();
+    const auto state = m_browserFetch.poll();
+    if (state == home::AppFetch::Idle)
+        return;
+    if (state == home::AppFetch::Running) {
+        if (m_progressDialog && m_progressDialog->isActive() && !m_progressDialog->cancelRequested()) {
+            std::string message;
+            if (m_browserFetch.installing()) {
+                message = i18n.tr("cards.fetch_installing", "Installing...");
+            } else if (m_browserFetch.received() > 0) {
+                char size[48];
+                const double mb = static_cast<double>(m_browserFetch.received()) / (1024.0 * 1024.0);
+                if (m_browserFetch.total() > 0)
+                    std::snprintf(size, sizeof(size), " %.1f / %.1f MB", mb,
+                                  static_cast<double>(m_browserFetch.total()) / (1024.0 * 1024.0));
+                else
+                    std::snprintf(size, sizeof(size), " %.1f MB", mb);
+                message = i18n.tr("cards.fetch_downloading", "Downloading...") + size;
+            } else {
+                message = i18n.tr("cards.fetch_connecting", "Connecting to GitHub...");
+            }
+            m_progressDialog->updateState(message, m_browserFetch.progress());
+        }
+        return;
+    }
+    if (m_progressDialog && m_progressDialog->isActive())
+        m_progressDialog->hide();
+    if (isCurrentFocusableWidget(m_dialogReturnFocus))
+        focusManager().setFocus(m_dialogReturnFocus);
+    m_dialogReturnFocus = nullptr;
+    const bool openNow = m_browserOpenWhenReady;
+    m_browserOpenWhenReady = false;
+    if (state == home::AppFetch::Done) {
+        if (m_browserButton)
+            m_browserButton->setInstalled(true);
+        // Opened straight away unless something else took the screen.
+        if (openNow && m_navigator.route() == switchu::navigation::Route::Home && focusRoot() == &rootBox() &&
+            !m_lockScreen.isLocked())
+            openBrowser();
+        return;
+    }
+    if (state == home::AppFetch::Failed && m_dialog) {
+        m_audio.playSfx(Sfx::ModalShow);
+        m_dialogReturnFocus = focusManager().current();
+        m_dialog->show(i18n.tr("cards.tile_browser", "Browser"),
+                       i18n.tr("cards.browser_failed", "BrowseNX didn't download. Check the internet connection."),
+                       {{i18n.tr("button.ok", "OK"), []() {}, true}});
+        focusManager().setFocus(m_dialog.get());
+    }
 }
 
 std::vector<WiiUMenuApp::ActionHint> WiiUMenuApp::buildActionHints() {
@@ -9081,6 +9317,9 @@ std::vector<WiiUMenuApp::ActionHint> WiiUMenuApp::buildActionHints() {
             add(buttonGlyph(nxui::Button::LStick),
                 i18n.tr("quicksettings.hint_shortcut", "Quick Settings"));
         }
+        if (m_openFolderId == 0)
+            add(buttonGlyph(nxui::Button::Minus) + " " + i18n.tr("hint.hold", "(hold)"),
+                i18n.tr("hint.switch_to_cards", "Cards"));
     }
     addVoiceControls();
 

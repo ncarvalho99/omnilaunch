@@ -217,7 +217,10 @@
     "switch_layout": "Сменить вид",
     "sort_playtime": "По времени игры",
     "change": "Изменить",
-    "section": "Раздел"
+    "section": "Раздел",
+    "hold": "(удерж.)",
+    "switch_to_cards": "Cards",
+    "switch_to_classic": "Classic"
   },
   "settings": {
     "omnilaunch": {
@@ -230,7 +233,9 @@
       "ask_user": "Спрашивать, кто играет",
       "ask_user_desc": "При запуске игры сначала показываются пользователи, как в HOME от Nintendo.",
       "lock": "Экран блокировки",
-      "lock_desc": "Время и дата при включении или пробуждении консоли. A открывает HOME."
+      "lock_desc": "Время и дата при включении или пробуждении консоли. A открывает HOME.",
+      "icon_size": "Размер значков",
+      "icon_size_desc": "Размер значков HOME в видах Classic (сетка, линия и Flow)."
     },
     "layout": {
       "grid": "Сетка",
@@ -1708,10 +1713,20 @@
     "set_updates": "Обновления",
     "updates_pending": "Клиент обновлений: часть G6",
     "save_failed": "Ошибка сохранения",
-    "query_failed": "Недоступно"
+    "query_failed": "Недоступно",
+    "fetch_title": "Загрузка {app}",
+    "fetch_connecting": "Подключение к GitHub...",
+    "fetch_downloading": "Загрузка...",
+    "fetch_installing": "Установка...",
+    "fetch_cancelling": "Отмена...",
+    "fetch_cancelled": "Загрузка отменена.",
+    "hold_minus_classic": "Удерживайте -, чтобы перейти в Classic"
   },
   "news": {
     "empty_title": "Новостей нет",
     "empty_message": "Сейчас новостей нет."
+  },
+  "browser": {
+    "close_suspended": "Сначала закройте приостановленную программу."
   }
 }

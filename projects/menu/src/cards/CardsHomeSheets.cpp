@@ -72,11 +72,12 @@ std::string onOff(bool v) {
 }
 } // namespace
 
-bool CardsHomeActivity::overlayActive() const {
+bool CardsHomeActivity::overlayActive(bool ignoreFetch) const {
     return (m_userSelect && m_userSelect->isActive()) || (m_text && m_text->isActive()) ||
            (m_profiles && m_profiles->isActive()) ||
            (m_quick && m_quick->isActive()) || (m_deleteProgress && m_deleteProgress->isActive()) ||
            (m_selfUpdateProgress && m_selfUpdateProgress->isActive()) ||
+           (!ignoreFetch && m_fetchProgress && m_fetchProgress->isActive()) ||
            (m_picker && m_picker->isActive()) || (m_discordPanel && m_discordPanel->isActive());
 }
 
@@ -351,6 +352,10 @@ void CardsHomeActivity::openDiscord() {
 
 void CardsHomeActivity::openMusicSheet() {
     m_audio.playSfx(Sfx::ModalShow);
+    // Songs downloaded or deleted since the list was built (YouTube store,
+    // MTP) appear here; the playing song keeps playing.
+    if (m_audioStarted)
+        m_core.audioServices().reloadMusicTracks(m_core.config(), {});
     m_musicSheet.open(m_audio, m_core.config());
 }
 
@@ -612,10 +617,6 @@ void CardsHomeActivity::openSystemTile(std::uint64_t id) {
         openSettingsSheet();
         return;
     }
-    if (tile == T::Browser) {
-        openBrowser();
-        return;
-    }
     if (tile == T::Eshop || tile == T::SwitchOnline || tile == T::Friends) {
         auto& i18n = nxui::I18n::instance();
         m_audio.playSfx(Sfx::ModalShow);
@@ -657,127 +658,98 @@ void CardsHomeActivity::openSystemTile(std::uint64_t id) {
 #endif
 }
 
-// BrowseNX arrived (or did not): say so and, as CardsNX, open it straight away
-// when nothing else has taken the screen meanwhile.
+// Media app fetch (TikTok, BrowseNX): a progress dialog says what is happening
+// (downloading with size and percentage, then installing) and offers Cancel.
+// When the app arrives it opens at once, as CardsNX, if nothing else has taken
+// the screen meanwhile.
 void CardsHomeActivity::stopBrowserDownload() {
-    m_browserDownloadStop->store(true);
-    if (m_browserDownloadFuture.valid()) {
-        m_browserDownloadFuture.wait();
-        try { m_browserDownloadFuture.get(); } catch (...) {}
+    m_fetch.stop();
+}
+
+void CardsHomeActivity::startAppFetch(const CardEntry& card) {
+    auto& i18n = nxui::I18n::instance();
+    m_audio.playSfx(Sfx::ModalShow);
+    if (m_fetch.running()) {
+        showToast(i18n.tr("cards.downloading_app", "Downloading app..."));
+        return;
     }
+    if (!m_core.net().online()) {
+        showToast(i18n.tr("cards.net_offline", "No internet connection"));
+        return;
+    }
+    if (!m_fetch.start(m_core.net(), m_core.threadPool(), card.downloadUrl, card.homebrewPath, card.app.title))
+        return;
+    m_fetchCardId = card.app.titleId;
+    if (!m_fetchProgress) {
+        m_fetchProgress = std::make_shared<ProgressDialog>();
+        m_fetchProgress->setFont(&m_font);
+        m_fetchProgress->setSmallFont(&m_fontSmall);
+        m_fetchProgress->setTheme(&m_overlayTheme);
+        m_fetchProgress->setRect({0, 0, 1280, 720});
+    }
+    std::string title = i18n.tr("cards.fetch_title", "Getting {app}");
+    if (const auto at = title.find("{app}"); at != std::string::npos)
+        title.replace(at, 5, card.app.title);
+    m_fetchProgress->show(title, i18n.tr("cards.fetch_connecting", "Connecting to GitHub..."), -1.f);
+    m_fetchProgress->setCancelAction(i18n.tr("button.cancel", "Cancel"), [this]() {
+        m_fetch.cancel();
+        if (m_fetchProgress)
+            m_fetchProgress->markCancelling(nxui::I18n::instance().tr("cards.fetch_cancelling", "Cancelling..."));
+    });
+    focusManager().setFocus(m_fetchProgress.get());
+    DebugLog::log("[cards] fetch %s -> %s", card.downloadUrl.c_str(), card.homebrewPath.c_str());
 }
 
 void CardsHomeActivity::pollBrowserDownload() {
-    if (m_browserDownloadFuture.valid() &&
-        m_browserDownloadFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-        try { m_browserDownloadFuture.get(); } catch (...) {}
-    }
-    const int state = m_browserDownloadState->load();
-    if (state < 2)
-        return;
-    m_browserDownloadState->store(0);
     auto& i18n = nxui::I18n::instance();
-    if (state != 2) {
-        showToast(i18n.tr("cards.browser_failed", "BrowseNX didn't download. Check the internet connection."));
+    const auto state = m_fetch.poll();
+    if (state == home::AppFetch::Running) {
+        if (m_fetchProgress && m_fetchProgress->isActive() && !m_fetchProgress->cancelRequested()) {
+            std::string message;
+            if (m_fetch.installing()) {
+                message = i18n.tr("cards.fetch_installing", "Installing...");
+            } else if (m_fetch.received() > 0) {
+                char size[48];
+                const double mb = static_cast<double>(m_fetch.received()) / (1024.0 * 1024.0);
+                if (m_fetch.total() > 0)
+                    std::snprintf(size, sizeof(size), " %.1f / %.1f MB", mb,
+                                  static_cast<double>(m_fetch.total()) / (1024.0 * 1024.0));
+                else
+                    std::snprintf(size, sizeof(size), " %.1f MB", mb);
+                message = i18n.tr("cards.fetch_downloading", "Downloading...") + size;
+            } else {
+                message = i18n.tr("cards.fetch_connecting", "Connecting to GitHub...");
+            }
+            m_fetchProgress->updateState(message, m_fetch.progress());
+        }
         return;
     }
-    const bool busy = overlayActive() || m_sheet.isOpen() || m_musicSheet.isOpen() || m_newsSheet.isOpen() ||
+    if (state == home::AppFetch::Idle)
+        return;
+    if (m_fetchProgress)
+        m_fetchProgress->hide();
+    const std::uint64_t id = m_fetchCardId;
+    m_fetchCardId = 0;
+    if (state == home::AppFetch::Cancelled) {
+        showToast(i18n.tr("cards.fetch_cancelled", "Download cancelled."));
+        return;
+    }
+    if (state != home::AppFetch::Done) {
+        showToast(i18n.tr("cards.download_failed", "Download failed."));
+        return;
+    }
+    // The card now points at the installed .nro (same stable id).
+    m_catalog.rebuild(m_core.config());
+    const bool busy = overlayActive(true) || m_sheet.isOpen() || m_musicSheet.isOpen() || m_newsSheet.isOpen() ||
                       m_dotsOpen || m_powerOpen || m_cardOptOpen || m_moving || m_launching || m_leaving ||
-                      m_lock.isLocked() || m_page != AppConfig::CardsPrefs::kNintendo;
-    if (busy) {
+                      m_lock.isLocked();
+    const int index = m_catalog.indexOf(id);
+    if (busy || index < 0 || index != m_selected) {
         showToast(i18n.tr("cards.download_done", "Download complete!"));
         return;
     }
-    openBrowser();
+    launchTitle(m_catalog.at(index));
 }
-
-// The Browser tile opens BrowseNX (ad3333m) as a homebrew. As in CardsNX it is
-// not shipped in the package: the first use downloads it from the author's
-// GitHub release into sdmc:/switch/BrowseNX/ and opens it when it arrives.
-// A copy left by an older package in the OmniLaunch folder is still used.
-void CardsHomeActivity::openBrowser() {
-#ifdef SWITCHU_MENU
-    auto& i18n = nxui::I18n::instance();
-    std::error_code ec;
-    std::string path;
-    for (const char* candidate : {pages::kUserBrowserNro, pages::kBundledBrowserNro})
-        if (std::filesystem::is_regular_file(candidate, ec) && std::filesystem::file_size(candidate, ec) > 0) {
-            path = candidate;
-            break;
-        }
-    if (path.empty()) {
-        m_audio.playSfx(Sfx::ModalShow);
-        if (m_browserDownloadState->load() == 1) {
-            showToast(i18n.tr("cards.browser_downloading", "Still downloading BrowseNX..."));
-            return;
-        }
-        if (!m_core.net().online()) {
-            showToast(i18n.tr("cards.browser_offline", "Connect to the internet to get BrowseNX."));
-            return;
-        }
-        if (!m_core.threadPool().acceptingTasks())
-            return;
-        showToast(i18n.tr("cards.browser_getting", "Getting BrowseNX from GitHub..."));
-        std::filesystem::create_directories(std::filesystem::path(pages::kUserBrowserNro).parent_path(), ec);
-        auto state = m_browserDownloadState;
-        auto stop = m_browserDownloadStop;
-        stop->store(false);
-        state->store(1);
-        net::NetService* net = &m_core.net();
-        try {
-            m_browserDownloadFuture = m_core.threadPool().submit([state, stop, net]() {
-                const std::string fresh = std::string(pages::kUserBrowserNro) + ".part";
-                net::Download dl;
-                dl.url = pages::kBrowserDownloadUrl;
-                dl.path = fresh;
-                dl.timeoutMs = 180000;
-                dl.cancel = stop.get();
-                const auto res = net->download(dl);
-                bool ok = res.ok();
-                // Only a real .nro replaces nothing and becomes the browser.
-                if (ok) {
-                    char magic[4] = {};
-                    if (std::FILE* f = std::fopen(fresh.c_str(), "rb")) {
-                        ok = std::fseek(f, 0x10, SEEK_SET) == 0 && std::fread(magic, 1, 4, f) == 4 &&
-                             std::memcmp(magic, "NRO0", 4) == 0;
-                        std::fclose(f);
-                    } else {
-                        ok = false;
-                    }
-                }
-                if (ok && stop->load())
-                    ok = false; // power action or frontend leaving: write nothing more
-                if (ok) {
-                    std::remove(pages::kUserBrowserNro);
-                    ok = std::rename(fresh.c_str(), pages::kUserBrowserNro) == 0;
-                }
-                if (!ok)
-                    std::remove(fresh.c_str());
-                switchu::commitSdCard("browser download");
-                DebugLog::log("[cards] browser download status=%ld ok=%d %s", res.status, ok ? 1 : 0,
-                              res.error.c_str());
-                state->store(ok ? 2 : 3);
-            });
-        } catch (...) {
-            state->store(0);
-        }
-        return;
-    }
-    if (isRunningCard(pages::systemId(pages::SystemTile::Browser))) {
-        resumeSuspended();
-        return;
-    }
-    if (m_core.launcher().suspendedTitleId() != 0) {
-        m_audio.playSfx(Sfx::ModalShow);
-        showToast(nxui::I18n::instance().tr("cards.suspended_body",
-                                            "Close the suspended software first (X on its card)."));
-        return;
-    }
-    DebugLog::log("[cards] browser -> %s", path.c_str());
-    startLaunchHomebrew(path);
-#endif
-}
-
 // ── Sort and Move mode (E2, C-IN-5) ─────────────────────────────────────────
 void CardsHomeActivity::openSortSheet() {
     auto& i18n = nxui::I18n::instance();
@@ -2179,13 +2151,15 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         }
         Row shuffle;
         shuffle.label = i18n.tr("cards.set_shuffle", "Shuffle");
-        shuffle.value = [this]() { return onOff(m_core.config().cards.shuffle); };
-        shuffle.toggle = [this]() { return m_core.config().cards.shuffle; };
+        // Shared with Classic's Media Center: one shuffle setting, so a
+        // frontend switch no longer reshuffles the songs.
+        shuffle.value = [this]() { return onOff(m_core.config().customBgmShuffle); };
+        shuffle.toggle = [this]() { return m_core.config().customBgmShuffle; };
         shuffle.onChange = [this](int) {
-            auto& c = m_core.config().cards;
-            c.shuffle = !c.shuffle;
-            m_audio.setShuffle(c.shuffle);
-            saveConfig("cards shuffle");
+            auto& c = m_core.config();
+            c.customBgmShuffle = !c.customBgmShuffle;
+            m_audio.setShuffle(c.customBgmShuffle);
+            saveConfig("shuffle");
         };
         s.rows.push_back(std::move(shuffle));
         Row repeat; // HomeNX "Repeat song"
@@ -2759,9 +2733,14 @@ void CardsHomeActivity::reorderSettingsSection(int delta) {
 }
 
 void CardsHomeActivity::activatePanelShortcut() {
-    const auto id = m_core.config().cards.panelTitleId;
+    auto id = m_core.config().cards.panelTitleId;
     if (!id) return;
-    const int page = m_core.config().cards.isMedia(id) ? AppConfig::CardsPrefs::kMedia : AppConfig::CardsPrefs::kGames;
+    // The retired Nintendo-page Browser tile is the BrowseNX Media card now.
+    if (id == pages::systemId(pages::SystemTile::Browser))
+        id = pages::homebrewId(home::kBrowserNro);
+    const bool builtInMedia = id == pages::homebrewId(home::kBrowserNro) || id == pages::homebrewId(pages::kTikTokNro);
+    const int page = (builtInMedia || m_core.config().cards.isMedia(id)) ? AppConfig::CardsPrefs::kMedia
+                                                                         : AppConfig::CardsPrefs::kGames;
     goToPage(page, 0);
     const int index = m_catalog.indexOf(id);
     if (index < 0) {

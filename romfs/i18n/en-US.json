@@ -217,7 +217,10 @@
     "switch_layout": "Switch view",
     "sort_playtime": "Most played",
     "change": "Change",
-    "section": "Section"
+    "section": "Section",
+    "hold": "(hold)",
+    "switch_to_cards": "Cards",
+    "switch_to_classic": "Classic"
   },
   "settings": {
     "omnilaunch": {
@@ -230,7 +233,9 @@
       "ask_user": "Ask who's playing",
       "ask_user_desc": "Starting a game shows the users first, each time, as Nintendo's HOME does.",
       "lock": "Lock screen",
-      "lock_desc": "The time and date when the console starts or wakes. A opens HOME."
+      "lock_desc": "The time and date when the console starts or wakes. A opens HOME.",
+      "icon_size": "Icon size",
+      "icon_size_desc": "Size of the HOME icons in the Classic views (grid, line and Flow)."
     },
     "layout": {
       "grid": "Grid",
@@ -1708,10 +1713,20 @@
     "power_shutdown_desc": "Turn the console off",
     "power_hekate_desc": "Hekate's menu",
     "sgdb_no_artwork": "No artwork found for this title.",
-    "sgdb_empty_help": "Press X to change the resolution or Y to change the search name."
+    "sgdb_empty_help": "Press X to change the resolution or Y to change the search name.",
+    "fetch_title": "Getting {app}",
+    "fetch_connecting": "Connecting to GitHub...",
+    "fetch_downloading": "Downloading...",
+    "fetch_installing": "Installing...",
+    "fetch_cancelling": "Cancelling...",
+    "fetch_cancelled": "Download cancelled.",
+    "hold_minus_classic": "Hold - to switch to Classic"
   },
   "news": {
     "empty_title": "No news",
     "empty_message": "No news items available right now."
+  },
+  "browser": {
+    "close_suspended": "Close the suspended software first."
   }
 }

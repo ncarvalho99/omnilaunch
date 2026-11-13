@@ -1,6 +1,7 @@
 #include "ThemeShopTabBuilders.hpp"
 #include <nxui/core/I18n.hpp>
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -65,6 +66,30 @@ ThemeShopScreen::Tab OmniLaunchTab::build(ThemeShopScreen& screen) {
             };
             t.items.push_back(std::move(it));
         }
+    }
+
+    {
+        // Classic icon size: 80..130 % in 5 % steps, applied live.
+        SettingItem it;
+        it.label = i18n.tr("settings.omnilaunch.icon_size", "Icon size");
+        it.description = i18n.tr("settings.omnilaunch.icon_size_desc",
+            "Size of the HOME icons in the Classic views (grid, line and Flow).");
+        it.type = ItemType::Slider;
+        it.sliderSteps = 10;
+        const int pct = std::clamp(screen.m_iconScalePercent, 80, 130);
+        it.floatVal = static_cast<float>(pct - 80) / 50.f;
+        it.anim01 = it.floatVal;
+        it.infoText = std::to_string(pct) + "%";
+        it.onChange = [&screen](SettingItem& self) {
+            const int pct = std::clamp(80 + static_cast<int>(std::round(std::clamp(self.floatVal, 0.f, 1.f) * 10.f)) * 5,
+                                       80, 130);
+            self.floatVal = static_cast<float>(pct - 80) / 50.f;
+            self.anim01 = self.floatVal;
+            self.infoText = std::to_string(pct) + "%";
+            screen.m_iconScalePercent = pct;
+            if (screen.m_iconScaleCb) screen.m_iconScaleCb(pct);
+        };
+        t.items.push_back(std::move(it));
     }
 
 #ifdef SWITCHU_MENU

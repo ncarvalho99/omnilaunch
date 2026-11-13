@@ -23,6 +23,8 @@ struct AppConfig {
     float sfxVolume    = 0.25f;
     int   gridColumns  = 5;
     int   gridRows     = 3;
+    // Classic icon size, percent of the layout's own size (grid, line, flow).
+    int   iconScalePercent = 100;
     bool  dynamicPages = true;
     AppLayoutMode appLayoutMode = AppLayoutMode::Grid;
     std::string viewSwitchButton = "R";

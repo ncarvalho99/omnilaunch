@@ -24,6 +24,8 @@ class AudioManager {
  void clearTracks() { ++clears; playlist.clear(); }
  void clearSfx() {}
  void play() { ++plays; playing=true; paused=false; }
+ void playTrack(int) { play(); }
+ std::string currentTrackPath() const { return {}; }
  std::vector<TrackInfo> tracks() const { return playlist; }
  void loadTrack(const std::string& path, const std::string& title="") {
   auto stem=path.substr(path.find_last_of('/')+1); stem=stem.substr(0,stem.find_last_of('.'));

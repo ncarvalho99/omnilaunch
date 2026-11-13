@@ -956,8 +956,8 @@ nxui::Rect IconGrid::dynamicIconRect(int index, float* outScale,
     const float offset = m_lineScrollOffset.value();
     // Carousel sizing is intentionally independent from the configurable
     // grid rows/columns. Changing the grid density must not resize single row.
-    constexpr float baseCellW = 150.f;
-    constexpr float baseCellH = 150.f;
+    const float baseCellW = 150.f * m_itemScale;
+    const float baseCellH = 150.f * m_itemScale;
     // The old extra 36 px made neighbouring apps feel disconnected. A small,
     // stable gutter keeps the row compact even when grid padding is reconfigured.
     const float lineSpacing = baseCellW + std::max(8.f, m_padX * 0.4f);
@@ -1217,8 +1217,8 @@ int IconGrid::hitTestFlow(float screenX, float screenY) const {
         return a.z < b.z;
     });
 
-    const float halfW = kFlowHalfW;
-    const float halfH = kFlowHalfH;
+    const float halfW = kFlowHalfW * flowItemScale();
+    const float halfH = kFlowHalfH * flowItemScale();
     const float depth = kFlowDepth;
 
     for (const auto& c : order) {
@@ -1389,8 +1389,8 @@ nxui::Rect IconGrid::projected3DIconRect(int index) const {
     if (m_layoutMode == AppLayoutMode::Flow) {
         float fx, fz, fang;
         flowPlace(d, fx, fz, fang);
-        const float halfW = kFlowHalfW;
-        const float halfH = kFlowHalfH;
+        const float halfW = kFlowHalfW * flowItemScale();
+        const float halfH = kFlowHalfH * flowItemScale();
         flowFace(fx, fz, fang, -halfW, 0.f, halfW, 0.f, halfH, quad);
     } else if (m_layoutMode == AppLayoutMode::Shelf) {
         float x, y, z, a;
@@ -2133,8 +2133,8 @@ void IconGrid::renderFlow(nxui::Renderer& ren) {
         if (icon->isSuspended())
             fang += m_flowClock * kFlowRunSpin;
 
-        const float halfW = kFlowHalfW;
-        const float halfH = kFlowHalfH;
+        const float halfW = kFlowHalfW * flowItemScale();
+        const float halfH = kFlowHalfH * flowItemScale();
         const float depth = kFlowDepth;
 
         // Watertight case geometry: front, left spine, right edge, and back

@@ -62,6 +62,7 @@ void CardsMusicSheet::controlAction(int col, AudioManager& audio, AppConfig& con
     switch (col) {
     case 0:
         audio.setShuffle(!audio.isShuffle());
+        config.customBgmShuffle = audio.isShuffle(); // shared with Classic, saved with the config
         break;
     case 1:
         audio.previousTrack();
