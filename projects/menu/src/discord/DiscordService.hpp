@@ -102,6 +102,9 @@ public:
     std::string presenceStatus(Snowflake userId) const;
 
     std::vector<Message> messages(Snowflake channelId) const;
+    /// The chat was opened: its unread mark and mention count are cleared
+    /// locally (nothing is sent to Discord).
+    void markRead(Snowflake channelId);
     void sendMessage(home::HomeCore& core, Snowflake channelId, const std::string& text);
     void fetchGuildChannelsAsync(home::HomeCore& core, Snowflake guildId);
     void fetchMessagesAsync(home::HomeCore& core, Snowflake channelId);
@@ -121,6 +124,12 @@ private:
     /// returns finds a different generation and publishes nothing.
     void endSession();
     bool current(std::uint64_t session) const { return m_session.load() == session; }
+    /// Recomputes unread/mention counters of every DM, channel and server from
+    /// the read markers, and orders DMs by their newest message. m_mu held.
+    void applyReadStatesLocked();
+    /// Appends a message once (the send reply and the gateway echo carry the
+    /// same id). m_mu held.
+    void addMessageLocked(Message m);
     void bump() { ++m_version; }
 
     DiscordAccounts m_accounts;
@@ -148,6 +157,9 @@ private:
     PendingSignIn m_pendingSignIn;
     std::map<Snowflake, std::vector<Message>> m_messages;
     std::map<Snowflake, std::string> m_presences;
+    std::map<Snowflake, ReadState> m_readStates;
+    std::vector<Snowflake> m_mutedGuilds;
+    std::vector<Snowflake> m_mutedChannels;
 
     Alert m_pendingAlert;
     bool m_hasAlert = false;

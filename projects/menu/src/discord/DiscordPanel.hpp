@@ -134,6 +134,7 @@ private:
     Snowflake m_chatGuildId = 0;
     std::string m_chatName;
     float m_chatScroll = 0.f;
+    bool m_chatAtBottom = true; // follow new messages until scrolled up
 
     std::vector<std::pair<int, nxui::Rect>> m_hits;
     nxui::Rect m_backHit{};
@@ -154,6 +155,7 @@ private:
     };
     mutable std::map<std::string, ImageSlot> m_images;
     const nxui::Texture* requestImage(const std::string& url, int maxSide = 256) const;
+    bool imageFailed(const std::string& url) const; // download or decode gave up
     void pumpImages(nxui::GpuDevice& gpu, nxui::Renderer& ren) const;
 };
 

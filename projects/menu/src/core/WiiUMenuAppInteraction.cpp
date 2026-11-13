@@ -965,7 +965,7 @@ void WiiUMenuApp::wireGlobalActions() {
         auto* icon = static_cast<GlossyIcon*>(cur);
 
         if (m_launcher.suspendedTitleId() != 0 &&
-            m_launcher.isAppSuspended(icon->titleId())) {
+            gridTitleSuspended(icon->titleId())) {
             m_audio.playSfx(Sfx::ModalShow);
             m_dialogReturnFocus = cur;
             auto& i18n = nxui::I18n::instance();
@@ -1010,7 +1010,10 @@ void WiiUMenuApp::wireGlobalActions() {
 #else
             m_dialog->show(
                 i18n.tr("game.close_title", "Close game"),
-                i18n.tr("game.close_prefix", "Close") + std::string(" ") + icon->title()
+                i18n.tr("game.close_prefix", "Close") + std::string(" ") +
+                    (m_launcher.runningHomebrew().empty()
+                         ? icon->title()
+                         : std::filesystem::path(m_launcher.runningHomebrew()).stem().string())
                     + i18n.tr("game.close_suffix", "?\nUnsaved progress will be lost."),
                 {
                     {i18n.tr("button.cancel", "Cancel"), [this]() {}, true},

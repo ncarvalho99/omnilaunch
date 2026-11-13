@@ -51,6 +51,28 @@ struct WiiUMenuApp::LauncherHbJob {
     hbupdate::InstallResult result;
 };
 
+// ── Which grid entry is the suspended software ──────────────────────────────
+std::uint64_t WiiUMenuApp::suspendedGridId() const {
+#ifdef SWITCHU_MENU
+    const std::uint64_t suspended = m_launcher.suspendedTitleId();
+    if (suspended == 0 || m_launcher.runningHomebrew().empty())
+        return suspended;
+    // A homebrew borrows a game (its host) to run. Marking that game's icon
+    // showed the host as the open software after closing the homebrew, so the
+    // Homebrew tile carries the mark instead, when the grid has one.
+    for (const auto& w : m_widgetStore.all())
+        if (w.type == switchu::widgets::WidgetType::HomebrewApps)
+            return switchu::widgets::widgetTitleId(w.id);
+    return 0;
+#else
+    return 0;
+#endif
+}
+
+bool WiiUMenuApp::gridTitleSuspended(std::uint64_t titleId) const {
+    return titleId != 0 && titleId == suspendedGridId();
+}
+
 // ── Homebrew list ───────────────────────────────────────────────────────────
 void WiiUMenuApp::ensureLauncherScreen() {
     if (m_launcherScreen)
@@ -287,7 +309,6 @@ void WiiUMenuApp::openSystemLauncher() {
         e.body = i18n.tr(t.descKey, t.desc);
         const bool blocked = t.id == T::Eshop || t.id == T::SwitchOnline || t.id == T::Friends;
         if (!blocked) {
-            e.actionHint = i18n.tr("launcher.press_a_open", "Press A to open");
             const int tile = static_cast<int>(t.id);
             e.onActivate = [this, tile]() { openSystemApplet(tile); };
         }
@@ -311,7 +332,6 @@ void WiiUMenuApp::openSystemLauncher() {
         e.kicker = i18n.tr("cards.page_media", "Media");
         e.body = installed ? std::string(cards::pages::kTikTokNro)
                            : i18n.tr("launcher.fetch_on_first_use", "Downloaded from GitHub the first time you open it.");
-        e.actionHint = i18n.tr("launcher.press_a_open", "Press A to open");
         e.onActivate = [this, installed]() {
             if (installed)
                 launchHomebrewNro(cards::pages::kTikTokNro, "TikTok");
@@ -427,9 +447,10 @@ void WiiUMenuApp::syncLauncherWork() {
                     e.footer = replaceTag(i18n.tr("cards.hb_update_to", "Update to {version} (+)"), "{version}",
                                           offer->latest) + "\n" + offer->source;
                 }
-                const bool isRunning = !running.empty() && running == hb.path;
-                e.actionHint = isRunning ? i18n.tr("launcher.press_a_resume", "Press A to resume. X for options.")
-                                         : i18n.tr("launcher.press_a_launch", "Press A to open. X for options.");
+                // Button hints are glyph capsules in the bottom bar now; the
+                // running one says so in its kicker instead.
+                if (!running.empty() && running == hb.path)
+                    e.kicker += "  \u2022  " + i18n.tr("cards.running", "Running");
                 e.unread = offer != nullptr;
                 const std::string path = hb.path, title = e.title, version = hb.version;
                 e.onActivate = [this, path, title]() { launchHomebrewNro(path, title); };
@@ -457,7 +478,7 @@ void WiiUMenuApp::syncLauncherWork() {
                                                           "{n} homebrew apps have an update (Menu > Updates)."),
                                                   "{n}", std::to_string(pending))
                                      : i18n.tr("cards.hb_none", "Everything is up to date");
-                e.actionHint = pending > 0 ? e.listName : i18n.tr("cards.hb_check_again", "Check again");
+                e.footer = pending > 0 ? std::string() : i18n.tr("cards.hb_check_again", "Check again");
                 std::vector<std::string> paths;
                 for (const auto& hb : scan->apps)
                     if (hbupdate::pendingOffer(scan->state, hbupdate::Installed{hb.path, hb.name, hb.version}) &&

@@ -1053,7 +1053,7 @@ void WiiUMenuApp::wireFocusCallback() {
                 return;
             }
 #ifdef SWITCHU_MENU
-            if (m_launcher.isAppSuspended(icon->titleId())) {
+            if (gridTitleSuspended(icon->titleId())) {
                 m_titlePill->setText(icon->title());
             } else
 #endif
@@ -1160,7 +1160,7 @@ void WiiUMenuApp::showGameContextMenu(GlossyIcon* icon) {
         : i18n.tr("game.publisher_unknown", "Unknown publisher");
     game.icon = icon->texture();
     game.gameCard = icon->isGameCard();
-    game.suspended = m_launcher.isAppSuspended(titleId);
+    game.suspended = gridTitleSuspended(titleId);
     game.canMove = m_openFolderId == 0;
     game.canResize = m_openFolderId == 0;
     const auto currentSize = gameGridSize(titleId, AppLayoutMode::Grid);
@@ -1632,7 +1632,7 @@ void WiiUMenuApp::handleSystemAction(SysAction a) {
             // shows "Cancelling" and closes once the worker has cleaned up.
             cancelThemePackageTransfer("home");
 
-            std::uint64_t returnFocusId = m_launcher.suspendedTitleId();
+            std::uint64_t returnFocusId = suspendedGridId();
             if (returnFocusId == 0 && m_grid) {
                 if (auto* focused = m_grid->focusManager().current();
                     focused && focused->tag() == "glossy_icon")
@@ -1651,7 +1651,7 @@ void WiiUMenuApp::handleSystemAction(SysAction a) {
             if (hasActivityWidget && m_openFolderId == 0) {
                 applyDisplayModel(buildRootFolderModel(), returnFocusId, false);
             } else {
-                markSuspendedIcon(m_launcher.suspendedTitleId());
+                markSuspendedIcon(suspendedGridId());
                 if (!focusTitle(returnFocusId))
                     focusGridSelection();
             }

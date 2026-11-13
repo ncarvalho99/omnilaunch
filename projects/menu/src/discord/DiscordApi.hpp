@@ -5,6 +5,7 @@
 
 #include "discord/DiscordTypes.hpp"
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -14,6 +15,9 @@ namespace discord {
 namespace api {
 
 constexpr const char* kBaseUrl = "https://discord.com/api/v10";
+
+/// READY "read_state" (array or {entries:[...]}) into channel id -> read marker.
+bool parseReadStatesJson(const std::string& json, std::map<Snowflake, ReadState>& out);
 
 /// Validate a token and fetch account details (GET /users/@me).
 bool fetchMe(net::NetService& net, const std::string& token, User& outUser, std::string& outError);

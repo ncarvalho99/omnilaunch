@@ -220,7 +220,8 @@
     "section": "Раздел",
     "hold": "(удерж.)",
     "switch_to_cards": "Cards",
-    "switch_to_classic": "Classic"
+    "switch_to_classic": "Classic",
+    "scroll": "Прокрутка"
   },
   "settings": {
     "omnilaunch": {
@@ -1399,7 +1400,22 @@
     "no_messages": "No messages yet. Press A or X to send one!",
     "type_hint": "Press (A) or (X) to type a message...",
     "y_accounts": "  (Y: Accounts)",
-    "loading_image": "[Загрузка изображения...]"
+    "loading_image": "[Загрузка изображения...]",
+    "call_missed": "Пропущенный звонок",
+    "call_ended": "Звонок завершён",
+    "call_ongoing": "Идёт",
+    "call_seconds": "несколько секунд",
+    "call_minute": "минута",
+    "call_minutes": "минут",
+    "image_unavailable": "[Изображение недоступно]",
+    "file": "Файл",
+    "sticker": "Стикер",
+    "sys_added": "добавил(а) кого-то в группу",
+    "sys_left": "покинул(а) группу",
+    "sys_renamed": "изменил(а) название",
+    "sys_icon": "изменил(а) значок",
+    "sys_pinned": "закрепил(а) сообщение",
+    "sys_joined": "присоединился(-ась) к серверу"
   },
   "cards": {
     "moved_back": "Возвращено на свою страницу",
@@ -1417,6 +1433,7 @@
     "set_auto_brightness": "Автояркость",
     "set_auto_brightness_desc": "В портативном режиме следует за освещением",
     "hb_kind": "Homebrew",
+    "running": "Открыто",
     "hb_by": "Homebrew от {author}",
     "hb_update_to": "Обновить до {version} (+)",
     "music_shuffle": "Случайно",

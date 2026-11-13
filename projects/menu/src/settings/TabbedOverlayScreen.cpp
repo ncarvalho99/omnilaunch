@@ -425,7 +425,27 @@ float TabbedOverlayScreen::tabCardHeight(int tabCount, const nxui::Rect& rail) c
     const float available = std::max(0.f, rail.height - kTabRailInset * 2.f);
     const float fitted = (available - kTabCardGap * static_cast<float>(tabCount - 1))
                        / static_cast<float>(tabCount);
-    return std::clamp(fitted, kTabCardMinHeight, natural);
+    // Too many tabs to fit readably: keep the natural height and let the rail
+    // scroll with the selection (a long homebrew list ran off the panel).
+    if (fitted < kTabCardMinHeight)
+        return natural;
+    return std::min(fitted, natural);
+}
+
+int TabbedOverlayScreen::updateTabScroll(int tabCount, const nxui::Rect& rail, float tabH) {
+    const float available = std::max(0.f, rail.height - kTabRailInset * 2.f);
+    const int fit = std::max(1, static_cast<int>((available + kTabCardGap) / (tabH + kTabCardGap)));
+    if (tabCount <= fit) {
+        m_tabFirst = 0;
+        return 0;
+    }
+    const int sel = std::clamp(m_tabIndex, 0, tabCount - 1);
+    if (sel < m_tabFirst)
+        m_tabFirst = sel;
+    if (sel >= m_tabFirst + fit)
+        m_tabFirst = sel - fit + 1;
+    m_tabFirst = std::clamp(m_tabFirst, 0, tabCount - fit);
+    return m_tabFirst;
 }
 
 void TabbedOverlayScreen::rebuildTabBar() {
@@ -437,8 +457,11 @@ void TabbedOverlayScreen::rebuildTabBar() {
     float tabY = tr.y + kTabRailInset;
     float tabW = std::max(0.f, tr.width - kTabRailInset * 2.f);
     float tabH = tabCardHeight((int)m_tabs.size(), tr);
+    const int firstTab = updateTabScroll((int)m_tabs.size(), tr, tabH);
+    tabY -= static_cast<float>(firstTab) * (tabH + kTabCardGap);
 
-    const bool hasBottomPinnedTab = (m_mode == ScreenMode::ThemeShop && m_pinBottomTab && m_tabs.size() > 1);
+    const bool hasBottomPinnedTab = (m_mode == ScreenMode::ThemeShop && m_pinBottomTab && m_tabs.size() > 1
+                                     && m_tabFirst == 0 && !tabsOverflow((int)m_tabs.size(), tr, tabH));
 
     for (int i = 0; i < (int)m_tabs.size(); ++i) {
         auto tabBox = std::make_shared<SettingsTabWidget>(m_tabs[i].name);
@@ -681,7 +704,9 @@ void TabbedOverlayScreen::syncDebugWireframeRects(const nxui::Rect& panel) {
     float tabY = tr.y + kTabRailInset;
     float tabW = std::max(0.f, tr.width - kTabRailInset * 2.f);
     float tabH = tabCardHeight((int)tabChildren.size(), tr);
-    const bool hasBottomPinnedTab = (m_mode == ScreenMode::ThemeShop && m_pinBottomTab && tabChildren.size() > 1);
+    tabY -= static_cast<float>(m_tabFirst) * (tabH + kTabCardGap);
+    const bool hasBottomPinnedTab = (m_mode == ScreenMode::ThemeShop && m_pinBottomTab && tabChildren.size() > 1
+                                     && !tabsOverflow((int)tabChildren.size(), tr, tabH));
     for (int i = 0; i < (int)tabChildren.size(); ++i) {
         float currentY = (hasBottomPinnedTab && i == (int)tabChildren.size() - 1)
             ? (tr.bottom() - kTabRailInset - tabH)
@@ -748,11 +773,16 @@ void TabbedOverlayScreen::drawTabs(nxui::Renderer& ren, const nxui::Rect& panel,
     // This is the height that actually reaches the screen: drawTabs() sets the
     // child rects again every frame, so shrinking the cards in rebuildTabBar()
     // and in the layout pass alone left the last tab hanging off the panel.
-    float tabH = tabCardHeight((int)std::min(tabChildren.size(), m_tabs.size()), tr);
+    const int shownTabs = (int)std::min(tabChildren.size(), m_tabs.size());
+    float tabH = tabCardHeight(shownTabs, tr);
+    const int firstTab = updateTabScroll(shownTabs, tr, tabH);
+    const bool overflow = tabsOverflow(shownTabs, tr, tabH);
+    tabY -= static_cast<float>(firstTab) * (tabH + kTabCardGap);
     float rowOpacity = opacity * reveal;
     float rowYOffset = (1.f - reveal) * 6.f;
 
-    const bool hasBottomPinnedTab = (m_mode == ScreenMode::ThemeShop && m_pinBottomTab && tabChildren.size() > 1);
+    const bool hasBottomPinnedTab = (m_mode == ScreenMode::ThemeShop && m_pinBottomTab && tabChildren.size() > 1
+                                     && !overflow);
 
     for (int i = 0; i < (int)tabChildren.size() && i < (int)m_tabs.size(); ++i) {
         auto* tab = static_cast<SettingsTabWidget*>(tabChildren[i].get());
@@ -777,7 +807,28 @@ void TabbedOverlayScreen::drawTabs(nxui::Renderer& ren, const nxui::Rect& panel,
         m_focusCursor.moveTo(tabChildren[m_tabIndex]->rect().expanded(1.f), 16.f, 0.08f);
     }
 
+    // Rows scrolled out of the rail are clipped to it; small arrows say more
+    // rows sit above or below.
+    ren.pushClipRect(tr);
     m_tabBar->render(ren);
+    ren.popClipRect();
+    if (overflow) {
+        const nxui::Color arrow = m_theme->textSecondary.withAlpha(0.8f * opacity);
+        const float cx = tr.x + tr.width * 0.5f;
+        if (firstTab > 0)
+            ren.drawTriangle({cx - 8.f, tr.y + 10.f}, {cx + 8.f, tr.y + 10.f}, {cx, tr.y + 3.f}, arrow);
+        const float available = std::max(0.f, tr.height - kTabRailInset * 2.f);
+        const int fit = std::max(1, static_cast<int>((available + kTabCardGap) / (tabH + kTabCardGap)));
+        if (firstTab + fit < shownTabs)
+            ren.drawTriangle({cx - 8.f, tr.bottom() - 10.f}, {cx + 8.f, tr.bottom() - 10.f},
+                             {cx, tr.bottom() - 3.f}, arrow);
+    }
+}
+
+bool TabbedOverlayScreen::tabsOverflow(int tabCount, const nxui::Rect& rail, float tabH) const {
+    const float available = std::max(0.f, rail.height - kTabRailInset * 2.f);
+    return static_cast<float>(tabCount) * tabH + kTabCardGap * static_cast<float>(std::max(0, tabCount - 1))
+           > available + 0.5f;
 }
 
 void TabbedOverlayScreen::drawContent(nxui::Renderer& ren, const nxui::Rect& panel, float opacity) {

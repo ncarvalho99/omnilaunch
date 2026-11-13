@@ -5537,7 +5537,7 @@ void WiiUMenuApp::activateApplication(GlossyIcon* source, AppEntry* entry,
             }
         }
     }
-    if (m_launcher.isAppSuspended(titleId)) {
+    if (gridTitleSuspended(titleId)) {
         resumeSuspendedApplication(titleId, launchTitle);
         return;
     }
@@ -5921,8 +5921,7 @@ std::shared_ptr<GlossyIcon> WiiUMenuApp::makeIcon(const AppEntry& entry) {
     }
 
 #ifdef SWITCHU_MENU
-    if (m_launcher.suspendedTitleId() != 0 &&
-        entry.titleId == m_launcher.suspendedTitleId())
+    if (suspendedGridId() != 0 && entry.titleId == suspendedGridId())
         icon->setSuspended(true);
 
     GlossyIcon* raw = icon.get();
@@ -5930,7 +5929,7 @@ std::shared_ptr<GlossyIcon> WiiUMenuApp::makeIcon(const AppEntry& entry) {
         switchu::smi::LaunchTransitionTrace transitionTrace{};
         transitionTrace.activation_tick = armGetSystemTick();
         uint64_t tid = raw->titleId();
-        if (m_launcher.isAppSuspended(tid)) {
+        if (gridTitleSuspended(tid)) {
             transitionTrace.user_selected_tick = transitionTrace.activation_tick;
             const std::string resumeTitle = raw->title();
             auto continueResume = [this, tid, resumeTitle]() {
@@ -6426,7 +6425,7 @@ void WiiUMenuApp::buildGrid() {
         // A suspended game is the better anchor when there is one: it is where
         // the person actually was. The remembered page covers everything else --
         // a game closed rather than suspended, an applet, the menu restarting.
-        std::uint64_t pageAnchor = m_launcher.suspendedTitleId();
+        std::uint64_t pageAnchor = suspendedGridId();
         if (pageAnchor == 0)
             pageAnchor = m_config.lastPageTitleId;
 
@@ -7018,7 +7017,7 @@ void WiiUMenuApp::buildGrid() {
     // match the splash. Calling focusTitle(suspended) afterward would reopen a
     // folder under a mismatched root splash when returning from applets.
     if (!restoredLeaveSession) {
-        if (!focusTitle(m_launcher.suspendedTitleId())) {
+        if (!focusTitle(suspendedGridId())) {
             if (auto* firstIcon = m_grid->focusManager().current())
                 focusManager().setFocus(firstIcon);
         }
@@ -7027,7 +7026,7 @@ void WiiUMenuApp::buildGrid() {
             focusManager().setFocus(firstIcon);
     }
 #else
-    if (!focusTitle(m_launcher.suspendedTitleId())) {
+    if (!focusTitle(suspendedGridId())) {
         if (auto* firstIcon = m_grid->focusManager().current())
             focusManager().setFocus(firstIcon);
     }
@@ -9220,6 +9219,20 @@ std::vector<WiiUMenuApp::ActionHint> WiiUMenuApp::buildActionHints() {
         return hints;
     }
 
+    if (m_launcherScreen && m_launcherScreen->isActive()) {
+        // Homebrew / System lists (F4): same glyph capsules as every overlay.
+        add(dpadGlyph(), i18n.tr("hint.navigate", "Navigate"));
+        if (m_launcherScreen->selectedHasAction())
+            add(buttonGlyph(nxui::Button::A), i18n.tr("hint.open", "Open"));
+        if (m_launcherScreen->selectedHasOptions())
+            add(buttonGlyph(nxui::Button::X), i18n.tr("hint.options", "Options"));
+        if (m_launcherScreen->previewScrolls())
+            add(buttonGlyph(nxui::Button::ZL) + buttonGlyph(nxui::Button::ZR), i18n.tr("hint.scroll", "Scroll"));
+        add(buttonGlyph(nxui::Button::B), i18n.tr("hint.back", "Back"));
+        addVoiceControls();
+        return hints;
+    }
+
     if ((m_controllerTest && m_controllerTest->isActive()) ||
         (m_textEntry && m_textEntry->isActive()) ||
         (m_gameOptions && m_gameOptions->isActive()) ||
@@ -9272,7 +9285,7 @@ std::vector<WiiUMenuApp::ActionHint> WiiUMenuApp::buildActionHints() {
             auto* icon = static_cast<GlossyIcon*>(cur);
             if (icon->titleId() >= 0xF000000000000000ULL || icon->entryKind() == GridEntryKind::Folder) {
                 add(buttonGlyph(nxui::Button::A), i18n.tr("hint.open", "Open"));
-            } else if (m_launcher.isAppSuspended(icon->titleId())) {
+            } else if (gridTitleSuspended(icon->titleId())) {
                 add(buttonGlyph(nxui::Button::A), i18n.tr("hint.resume", "Resume"));
             } else {
                 add(buttonGlyph(nxui::Button::A), i18n.tr("hint.launch", "Launch"));
@@ -9298,16 +9311,20 @@ std::vector<WiiUMenuApp::ActionHint> WiiUMenuApp::buildActionHints() {
             } else if (entry && entry->isWidget()) {
                 if (switchu::widgets::isLauncherWidget(entry->widgetType))
                     add(buttonGlyph(nxui::Button::A), i18n.tr("hint.open", "Open"));
+#ifdef SWITCHU_MENU
+                if (gridTitleSuspended(icon->titleId()))
+                    add(buttonGlyph(nxui::Button::X), i18n.tr("hint.close", "Close"));
+#endif
                 add(buttonGlyph(nxui::Button::Plus), i18n.tr("hint.options", "Options"));
                 if (m_openFolderId == 0)
                     add(buttonGlyph(nxui::Button::Y), i18n.tr("hint.move", "Move"));
             } else {
 #ifdef SWITCHU_MENU
             add(buttonGlyph(nxui::Button::A),
-                m_launcher.isAppSuspended(icon->titleId())
+                gridTitleSuspended(icon->titleId())
                     ? i18n.tr("hint.resume", "Resume")
                     : i18n.tr("hint.launch", "Launch"));
-            if (m_launcher.isAppSuspended(icon->titleId()))
+            if (gridTitleSuspended(icon->titleId()))
                 add(buttonGlyph(nxui::Button::X), i18n.tr("hint.close", "Close"));
             else if (m_openFolderId != 0)
                 add(buttonGlyph(nxui::Button::X), i18n.tr("folder.remove_game", "Remove from folder"));

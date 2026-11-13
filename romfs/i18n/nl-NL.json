@@ -220,7 +220,8 @@
     "section": "Sectie",
     "hold": "(vasthouden)",
     "switch_to_cards": "Cards",
-    "switch_to_classic": "Classic"
+    "switch_to_classic": "Classic",
+    "scroll": "Scrollen"
   },
   "settings": {
     "omnilaunch": {
@@ -1399,7 +1400,22 @@
     "no_messages": "No messages yet. Press A or X to send one!",
     "type_hint": "Press (A) or (X) to type a message...",
     "y_accounts": "  (Y: Accounts)",
-    "loading_image": "[Afbeelding laden...]"
+    "loading_image": "[Afbeelding laden...]",
+    "call_missed": "Gemiste oproep",
+    "call_ended": "Oproep beëindigd",
+    "call_ongoing": "Bezig",
+    "call_seconds": "een paar seconden",
+    "call_minute": "minuut",
+    "call_minutes": "minuten",
+    "image_unavailable": "[Afbeelding niet beschikbaar]",
+    "file": "Bestand",
+    "sticker": "Sticker",
+    "sys_added": "heeft iemand aan de groep toegevoegd",
+    "sys_left": "heeft de groep verlaten",
+    "sys_renamed": "heeft de naam gewijzigd",
+    "sys_icon": "heeft het pictogram gewijzigd",
+    "sys_pinned": "heeft een bericht vastgemaakt",
+    "sys_joined": "is de server binnengekomen"
   },
   "cards": {
     "moved_back": "Terug naar zijn pagina",
@@ -1417,6 +1433,7 @@
     "set_auto_brightness": "Automatische helderheid",
     "set_auto_brightness_desc": "In handheldmodus volgt hij het omgevingslicht",
     "hb_kind": "Homebrew",
+    "running": "Geopend",
     "hb_by": "Homebrew van {author}",
     "hb_update_to": "Bijwerken naar {version} (+)",
     "music_shuffle": "Willekeurig",

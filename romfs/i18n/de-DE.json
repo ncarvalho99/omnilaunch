@@ -220,7 +220,8 @@
     "section": "Bereich",
     "hold": "(halten)",
     "switch_to_cards": "Cards",
-    "switch_to_classic": "Classic"
+    "switch_to_classic": "Classic",
+    "scroll": "Blättern"
   },
   "settings": {
     "omnilaunch": {
@@ -1399,7 +1400,22 @@
     "no_messages": "No messages yet. Press A or X to send one!",
     "type_hint": "Press (A) or (X) to type a message...",
     "y_accounts": "  (Y: Accounts)",
-    "loading_image": "[Bild wird geladen...]"
+    "loading_image": "[Bild wird geladen...]",
+    "call_missed": "Verpasster Anruf",
+    "call_ended": "Anruf beendet",
+    "call_ongoing": "Läuft",
+    "call_seconds": "wenige Sekunden",
+    "call_minute": "Minute",
+    "call_minutes": "Minuten",
+    "image_unavailable": "[Bild nicht verfügbar]",
+    "file": "Datei",
+    "sticker": "Sticker",
+    "sys_added": "hat jemanden zur Gruppe hinzugefügt",
+    "sys_left": "hat die Gruppe verlassen",
+    "sys_renamed": "hat den Namen geändert",
+    "sys_icon": "hat das Symbol geändert",
+    "sys_pinned": "hat eine Nachricht angeheftet",
+    "sys_joined": "ist dem Server beigetreten"
   },
   "cards": {
     "moved_back": "Zurück auf seine Seite",
@@ -1417,6 +1433,7 @@
     "set_auto_brightness": "Automatische Helligkeit",
     "set_auto_brightness_desc": "Im Handheld-Modus folgt sie dem Umgebungslicht",
     "hb_kind": "Homebrew",
+    "running": "Geöffnet",
     "hb_by": "Homebrew von {author}",
     "hb_update_to": "Auf {version} aktualisieren (+)",
     "music_shuffle": "Zufall",

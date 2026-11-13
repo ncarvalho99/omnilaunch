@@ -220,7 +220,8 @@
     "section": "Seção",
     "hold": "(segure)",
     "switch_to_cards": "Cards",
-    "switch_to_classic": "Classic"
+    "switch_to_classic": "Classic",
+    "scroll": "Rolar"
   },
   "settings": {
     "omnilaunch": {
@@ -1399,7 +1400,22 @@
     "no_messages": "Nenhuma mensagem ainda. A ou X para enviar!",
     "type_hint": "A ou X para escrever uma mensagem...",
     "y_accounts": "  (Y: Contas)",
-    "loading_image": "[Carregando imagem...]"
+    "loading_image": "[Carregando imagem...]",
+    "call_missed": "Chamada perdida",
+    "call_ended": "Chamada encerrada",
+    "call_ongoing": "Em andamento",
+    "call_seconds": "poucos segundos",
+    "call_minute": "minuto",
+    "call_minutes": "minutos",
+    "image_unavailable": "[Imagem indisponível]",
+    "file": "Arquivo",
+    "sticker": "Figurinha",
+    "sys_added": "adicionou alguém ao grupo",
+    "sys_left": "saiu do grupo",
+    "sys_renamed": "mudou o nome",
+    "sys_icon": "mudou o ícone",
+    "sys_pinned": "fixou uma mensagem",
+    "sys_joined": "entrou no servidor"
   },
   "cards": {
     "moved_back": "Voltou para a página dele",
@@ -1417,6 +1433,7 @@
     "set_auto_brightness": "Brilho automático",
     "set_auto_brightness_desc": "No portátil acompanha a luz do ambiente",
     "hb_kind": "Homebrew",
+    "running": "Aberto",
     "hb_by": "Homebrew de {author}",
     "hb_update_to": "Atualizar para {version} (+)",
     "music_shuffle": "Aleatório",

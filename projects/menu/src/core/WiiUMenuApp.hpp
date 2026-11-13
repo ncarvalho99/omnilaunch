@@ -323,6 +323,11 @@ private:
                               std::uint64_t previewSuspendedTitleId = 0);
     /// Visual-only suspended outline for leave-frame capture (no focus move).
     void setSuspendedIconVisuals(std::uint64_t titleId);
+    // The grid entry that stands for the suspended software. A homebrew runs
+    // inside a borrowed host game, so the host's own icon is not it: the
+    // Homebrew launcher tile is (0 when the grid has none).
+    std::uint64_t suspendedGridId() const;
+    bool gridTitleSuspended(std::uint64_t titleId) const;
     LeaveFrameSession captureLeaveSession() const;
     bool saveLeaveFrame(nxui::Renderer& ren);
     void restoreLeaveSession();

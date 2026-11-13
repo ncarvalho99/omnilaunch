@@ -307,6 +307,10 @@ protected:
     // does not fit at the natural height is shrunk to fit instead of being
     // clipped off the bottom of the panel.
     float      tabCardHeight(int tabCount, const nxui::Rect& rail) const;
+    // First tab row shown when the rail overflows; keeps the selection in view.
+    int        updateTabScroll(int tabCount, const nxui::Rect& rail, float tabH);
+    bool       tabsOverflow(int tabCount, const nxui::Rect& rail, float tabH) const;
+    int        m_tabFirst = 0;
     nxui::Rect contentRect() const;
     nxui::Rect contentRect(const nxui::Rect& panel) const;
     float      contentTotalHeight() const;

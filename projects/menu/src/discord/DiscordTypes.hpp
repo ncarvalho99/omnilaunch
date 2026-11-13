@@ -91,6 +91,7 @@ struct Channel {
     std::string status = "offline";
     int unreadCount = 0;
     int mentions = 0;
+    bool muted = false;
 };
 
 struct Guild {
@@ -101,6 +102,7 @@ struct Guild {
     std::vector<Channel> channels;
     int unreadCount = 0;
     int mentions = 0;
+    bool muted = false;
 
     std::string iconUrl(int size = 128) const {
         if (!icon.empty()) {
@@ -133,23 +135,53 @@ struct MessageImage {
 };
 
 struct MessageEmbed {
+    std::string provider;   // site name shown above the title (link previews)
+    std::string author;
     std::string title;
     std::string description;
     std::string footer;
     std::uint32_t color = 0;
 };
 
+// Discord message types the chat draws as something other than plain text.
+enum class MessageType : int {
+    Default = 0,
+    RecipientAdd = 1,
+    RecipientRemove = 2,
+    Call = 3,
+    ChannelNameChange = 4,
+    ChannelIconChange = 5,
+    ChannelPinnedMessage = 6,
+    UserJoin = 7,
+    Reply = 19,
+};
+
 struct Message {
     Snowflake id = 0;
     Snowflake channelId = 0;
+    int type = 0;
     User author;
     std::string content;
     std::string timestamp;
     std::vector<std::string> attachmentUrls;
     std::vector<MessageImage> images;
     std::vector<MessageEmbed> embeds;
+    std::string sticker;                    // first sticker name, if any
+    // Voice call record (type 3): who took part and when it ended. A call the
+    // current user is not a participant of was missed.
+    bool hasCall = false;
+    std::vector<Snowflake> callParticipants;
+    std::string callEndedTimestamp;
+    std::vector<Snowflake> mentionIds;
+    bool mentionEveryone = false;
     bool mentionsMe = false;
     bool mine = false;
+};
+
+// Per-channel read marker from the gateway READY payload.
+struct ReadState {
+    Snowflake lastReadId = 0;
+    int mentions = 0;
 };
 
 struct Alert {

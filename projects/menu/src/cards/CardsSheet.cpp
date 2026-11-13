@@ -20,9 +20,17 @@ constexpr float kMultiW  = 1040.f;
 constexpr float kMultiH  = 616.f;
 constexpr float kRowH = 54.f;
 constexpr int kVisibleRows = 7;
+// The Settings content card is 506 px tall: nine rows fit, and the rows past
+// them were only reachable by walking down blind (no sign they existed).
+constexpr int kVisibleRowsTwoCols = 9;
 constexpr float kRepeatDelay = 0.35f;
 constexpr float kRepeatRate = 0.075f;
 } // namespace
+
+int CardsSheet::visibleRows() const {
+    const bool twoCols = m_sections.size() > 1 && !m_sections.front().icon.empty();
+    return twoCols ? kVisibleRowsTwoCols : kVisibleRows;
+}
 
 void CardsSheet::open(std::string title, std::vector<Section> sections, int section, int row) {
     const bool refreshing = m_open && m_title == title;
@@ -53,10 +61,11 @@ void CardsSheet::clampFocus() {
     m_section = std::clamp(m_section, 0, static_cast<int>(m_sections.size()) - 1);
     const int n = static_cast<int>(m_sections[static_cast<std::size_t>(m_section)].rows.size());
     m_row = n > 0 ? std::clamp(m_row, 0, n - 1) : 0;
+    const int visible = visibleRows();
     if (m_row < m_scroll)
         m_scroll = m_row;
-    if (m_row >= m_scroll + kVisibleRows)
-        m_scroll = m_row - kVisibleRows + 1;
+    if (m_row >= m_scroll + visible)
+        m_scroll = m_row - visible + 1;
     m_scroll = std::max(0, m_scroll);
 }
 
@@ -177,7 +186,7 @@ bool CardsSheet::handleInput(nxui::Input& in, float dt) {
         const float top = py + 78.f + (twoCols ? 0.f : (m_sections.size() > 1 ? 52.f : 0.f));
         const float rowLeft = twoCols ? (kX + 268.f + 14.f) : (kX + 24.f);
         const float rowRight = twoCols ? (kX + kW - 20.f) : (kX + kW - 24.f);
-        if (x >= rowLeft && x <= rowRight && y >= top && y < top + kVisibleRows * kRowH) {
+        if (x >= rowLeft && x <= rowRight && y >= top && y < top + visibleRows() * kRowH) {
             const int i = m_scroll + static_cast<int>((y - top) / kRowH);
             const auto& list = m_sections[static_cast<std::size_t>(m_section)].rows;
             if (i < static_cast<int>(list.size())) {
@@ -336,7 +345,7 @@ void CardsSheet::render(nxui::Renderer& ren, CardsChrome& chrome) const {
 
         const auto& rows = m_sections[static_cast<std::size_t>(m_section)].rows;
         if (!rows.empty()) {
-            const int last = std::min(static_cast<int>(rows.size()), m_scroll + kVisibleRows);
+            const int last = std::min(static_cast<int>(rows.size()), m_scroll + kVisibleRowsTwoCols);
             float ry = contentR.y + 10.f;
             for (int i = m_scroll; i < last; ++i) {
                 const auto& row = rows[static_cast<std::size_t>(i)];
@@ -368,6 +377,23 @@ void CardsSheet::render(nxui::Renderer& ren, CardsChrome& chrome) const {
                     chrome.textMid(ren, sf, chrome.fit(sf, row.detail, r.width - vw - 36.f), r.x + 14.f, r.y + 35.f, dim);
                 }
                 ry += kRowH;
+            }
+            // More rows above / below: arrows and a thin scroll bar.
+            const int total = static_cast<int>(rows.size());
+            if (total > kVisibleRowsTwoCols) {
+                const nxui::Color arrow = dim.withAlpha(0.9f * a);
+                const float cx = contentR.x + contentR.width * 0.5f;
+                if (m_scroll > 0)
+                    ren.drawTriangle({cx - 8.f, contentR.y + 8.f}, {cx + 8.f, contentR.y + 8.f},
+                                     {cx, contentR.y + 1.f}, arrow);
+                if (last < total)
+                    ren.drawTriangle({cx - 8.f, contentR.bottom() - 8.f}, {cx + 8.f, contentR.bottom() - 8.f},
+                                     {cx, contentR.bottom() - 1.f}, arrow);
+                const float trackH = contentR.height - 24.f;
+                const float thumbH = std::max(30.f, trackH * kVisibleRowsTwoCols / static_cast<float>(total));
+                const float t = static_cast<float>(m_scroll) / static_cast<float>(total - kVisibleRowsTwoCols);
+                ren.drawRoundedRect({contentR.right() - 7.f, contentR.y + 12.f + (trackH - thumbH) * t, 4.f, thumbH},
+                                    {1.f, 1.f, 1.f, 0.35f * a}, 2.f);
             }
         }
 

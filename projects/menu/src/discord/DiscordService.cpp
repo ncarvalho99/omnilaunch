@@ -7,6 +7,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
+
 namespace discord {
 
 DiscordService::DiscordService() = default;
@@ -62,6 +64,7 @@ void DiscordService::connectAccount(home::HomeCore& core, const Account& acc) {
                 std::lock_guard<std::mutex> lk(m_mu);
                 if (current(session)) {
                     m_dms = std::make_shared<const std::vector<Channel>>(std::move(dms));
+                    applyReadStatesLocked();
                     bump();
                     DebugLog::log("[discord] REST fetched %zu DMs", n);
                 }
@@ -71,7 +74,12 @@ void DiscordService::connectAccount(home::HomeCore& core, const Account& acc) {
                 const std::size_t n = guilds.size();
                 std::lock_guard<std::mutex> lk(m_mu);
                 if (current(session)) {
+                    // The REST list has no channels; keep the ones READY gave.
+                    for (auto& g : guilds)
+                        for (const auto& old : *m_guilds)
+                            if (old.id == g.id && g.channels.empty()) g.channels = old.channels;
                     m_guilds = std::make_shared<const std::vector<Guild>>(std::move(guilds));
+                    applyReadStatesLocked();
                     bump();
                     DebugLog::log("[discord] REST fetched %zu guilds", n);
                 }
@@ -94,6 +102,9 @@ void DiscordService::endSession() {
     m_guilds = std::make_shared<const std::vector<Guild>>();
     m_messages.clear();
     m_presences.clear();
+    m_readStates.clear();
+    m_mutedGuilds.clear();
+    m_mutedChannels.clear();
     m_hasAlert = false;
     m_pendingAlert = Alert{};
 }
@@ -208,6 +219,38 @@ void DiscordService::processEvent(const DiscordGateway::Event& ev) {
                     }
                 }
             }
+            if (d.contains("read_state")) {
+                m_readStates.clear();
+                api::parseReadStatesJson(d["read_state"].dump(), m_readStates);
+            }
+            if (d.contains("user_guild_settings")) {
+                // Muted servers and channels show no unread mark (as on the phone).
+                const auto& ugs = d["user_guild_settings"];
+                const nlohmann::json* entries = ugs.is_array() ? &ugs
+                    : (ugs.is_object() && ugs.contains("entries") && ugs["entries"].is_array()) ? &ugs["entries"] : nullptr;
+                m_mutedGuilds.clear();
+                m_mutedChannels.clear();
+                if (entries) {
+                    for (const auto& s : *entries) {
+                        if (!s.is_object()) continue;
+                        const auto gid = s.find("guild_id");
+                        const auto muted = s.find("muted");
+                        if (gid != s.end() && gid->is_string() && muted != s.end() && muted->is_boolean() &&
+                            muted->get<bool>())
+                            m_mutedGuilds.push_back(stringToSnowflake(gid->get<std::string>()));
+                        const auto ov = s.find("channel_overrides");
+                        if (ov == s.end() || !ov->is_array()) continue;
+                        for (const auto& o : *ov) {
+                            if (!o.is_object()) continue;
+                            const auto cid = o.find("channel_id");
+                            const auto cm = o.find("muted");
+                            if (cid != o.end() && cid->is_string() && cm != o.end() && cm->is_boolean() &&
+                                cm->get<bool>())
+                                m_mutedChannels.push_back(stringToSnowflake(cid->get<std::string>()));
+                        }
+                    }
+                }
+            }
             if (d.contains("merged_presences") && d["merged_presences"].is_object()) {
                 const auto& mp = d["merged_presences"];
                 if (mp.contains("friends") && mp["friends"].is_array()) {
@@ -220,9 +263,11 @@ void DiscordService::processEvent(const DiscordGateway::Event& ev) {
                     }
                 }
             }
+            applyReadStatesLocked();
             m_version++;
-            DebugLog::log("[discord] Gateway READY: user=%s dms=%zu guilds=%zu presences=%zu",
-                          m_currentUser.username.c_str(), m_dms->size(), m_guilds->size(), m_presences.size());
+            DebugLog::log("[discord] Gateway READY: user=%s dms=%zu guilds=%zu presences=%zu read_states=%zu",
+                          m_currentUser.username.c_str(), m_dms->size(), m_guilds->size(), m_presences.size(),
+                          m_readStates.size());
         }
     } else if (ev.name == "PRESENCE_UPDATE") {
         const auto j = nlohmann::json::parse(ev.rawJson, nullptr, false);
@@ -262,6 +307,7 @@ void DiscordService::processEvent(const DiscordGateway::Event& ev) {
                 }
                 if (!found) next->push_back(std::move(g));
                 m_guilds = std::move(next);
+                applyReadStatesLocked();
                 m_version++;
             }
         }
@@ -273,35 +319,137 @@ void DiscordService::processEvent(const DiscordGateway::Event& ev) {
             if (api::parseMessagesJson(wrapped, tmp) && !tmp.empty()) {
                 Message m = std::move(tmp.front());
                 const Snowflake chanId = m.channelId;
+                const Snowflake guildId = j["d"].contains("guild_id") && j["d"]["guild_id"].is_string()
+                    ? stringToSnowflake(j["d"]["guild_id"].get<std::string>()) : 0;
                 {
                     std::lock_guard<std::mutex> lk(m_mu);
                     const bool fromOther = (m.author.id != 0 && m.author.id != m_currentUser.id);
-                    m_messages[chanId].push_back(m);
-                    if (m_messages[chanId].size() > 50) {
-                        m_messages[chanId].erase(m_messages[chanId].begin());
-                    }
+                    const bool mentionsMe = m.mentionEveryone ||
+                        std::find(m.mentionIds.begin(), m.mentionIds.end(), m_currentUser.id) != m.mentionIds.end();
+                    const Snowflake msgId = m.id;
+                    const std::string author = m.author.displayName(), text = m.content;
+                    const std::string avatar = m.author.avatarUrl(64);
+                    // Only a chat that was opened keeps its messages here; the
+                    // others are fetched when opened.
+                    if (m_messages.count(chanId))
+                        addMessageLocked(std::move(m));
 
-                    if (fromOther) {
-                        m_pendingAlert.channelId = chanId;
-                        m_pendingAlert.title = m.author.displayName();
-                        m_pendingAlert.text = m.content;
-                        m_pendingAlert.avatarUrl = m.author.avatarUrl(64);
-                        m_hasAlert = true;
+                    // Unread markers: the newest message of the channel moves,
+                    // a message of mine counts as read.
+                    auto& rs = m_readStates[chanId];
+                    if (!fromOther) {
+                        rs.lastReadId = std::max(rs.lastReadId, msgId);
+                        rs.mentions = 0;
+                    } else if (guildId == 0 || mentionsMe) {
+                        ++rs.mentions; // every DM counts, as on Discord
+                    }
+                    bool knownDm = false;
+                    {
                         auto next = std::make_shared<std::vector<Channel>>(*m_dms);
-                        for (auto& dm : *next) {
-                            if (dm.id == chanId) {
-                                dm.unreadCount++;
-                                dm.mentions++;
-                                break;
-                            }
-                        }
+                        for (auto& dm : *next)
+                            if (dm.id == chanId) { dm.lastMessageId = std::max(dm.lastMessageId, msgId); knownDm = true; }
                         m_dms = std::move(next);
                     }
+                    if (guildId != 0) {
+                        auto next = std::make_shared<std::vector<Guild>>(*m_guilds);
+                        for (auto& g : *next)
+                            if (g.id == guildId)
+                                for (auto& c : g.channels)
+                                    if (c.id == chanId) c.lastMessageId = std::max(c.lastMessageId, msgId);
+                        m_guilds = std::move(next);
+                    }
+                    applyReadStatesLocked();
+
+                    if (fromOther && (guildId == 0 || mentionsMe)) {
+                        m_pendingAlert.channelId = chanId;
+                        m_pendingAlert.guildId = guildId;
+                        m_pendingAlert.title = author;
+                        m_pendingAlert.text = text;
+                        m_pendingAlert.avatarUrl = avatar;
+                        m_hasAlert = true;
+                    }
+                    (void)knownDm;
                     m_version++;
                 }
             }
         }
     }
+}
+
+void DiscordService::addMessageLocked(Message m) {
+    auto& list = m_messages[m.channelId];
+    for (auto& existing : list) {
+        if (existing.id == m.id) {
+            existing = std::move(m); // same message from the other path
+            return;
+        }
+    }
+    // Keep chronological order (a send reply can arrive after the echo of a
+    // later message).
+    auto pos = std::upper_bound(list.begin(), list.end(), m.id,
+                                [](Snowflake id, const Message& x) { return id < x.id; });
+    list.insert(pos, std::move(m));
+    if (list.size() > 100)
+        list.erase(list.begin());
+}
+
+void DiscordService::applyReadStatesLocked() {
+    auto muted = [](const std::vector<Snowflake>& v, Snowflake id) {
+        return std::find(v.begin(), v.end(), id) != v.end();
+    };
+    auto dms = std::make_shared<std::vector<Channel>>(*m_dms);
+    for (auto& dm : *dms) {
+        const auto it = m_readStates.find(dm.id);
+        // No marker: Discord never saw it opened; treat old DMs as read.
+        const bool unread = it != m_readStates.end() && dm.lastMessageId > it->second.lastReadId;
+        dm.mentions = it != m_readStates.end() ? it->second.mentions : 0;
+        dm.muted = muted(m_mutedChannels, dm.id);
+        dm.unreadCount = unread && !dm.muted ? 1 : 0;
+        if (dm.muted) dm.mentions = 0;
+    }
+    // Newest conversation first, like the phone.
+    std::stable_sort(dms->begin(), dms->end(),
+                     [](const Channel& a, const Channel& b) { return a.lastMessageId > b.lastMessageId; });
+    m_dms = std::move(dms);
+
+    auto guilds = std::make_shared<std::vector<Guild>>(*m_guilds);
+    for (auto& g : *guilds) {
+        g.muted = muted(m_mutedGuilds, g.id);
+        g.unreadCount = 0;
+        g.mentions = 0;
+        for (auto& c : g.channels) {
+            if (c.type != ChannelType::GuildText && c.type != ChannelType::GuildAnnouncement) continue;
+            const auto it = m_readStates.find(c.id);
+            c.muted = muted(m_mutedChannels, c.id) ||
+                      (c.parentId != 0 && muted(m_mutedChannels, c.parentId));
+            c.mentions = it != m_readStates.end() ? it->second.mentions : 0;
+            const bool unread = it != m_readStates.end() && c.lastMessageId > it->second.lastReadId;
+            c.unreadCount = unread && !c.muted ? 1 : 0;
+            if (!g.muted && c.unreadCount > 0) ++g.unreadCount;
+            g.mentions += c.mentions; // mentions show even in a muted server
+        }
+    }
+    m_guilds = std::move(guilds);
+}
+
+void DiscordService::markRead(Snowflake channelId) {
+    std::lock_guard<std::mutex> lk(m_mu);
+    Snowflake last = 0;
+    for (const auto& dm : *m_dms)
+        if (dm.id == channelId) last = dm.lastMessageId;
+    for (const auto& g : *m_guilds)
+        for (const auto& c : g.channels)
+            if (c.id == channelId) last = c.lastMessageId;
+    const auto it = m_messages.find(channelId);
+    if (it != m_messages.end() && !it->second.empty())
+        last = std::max(last, it->second.back().id);
+    auto& rs = m_readStates[channelId];
+    if (rs.lastReadId >= last && rs.mentions == 0)
+        return; // nothing changed: no version bump (the panel calls this often)
+    rs.lastReadId = std::max(rs.lastReadId, last);
+    rs.mentions = 0;
+    applyReadStatesLocked();
+    m_version++;
 }
 
 std::string DiscordService::presenceStatus(Snowflake userId) const {
@@ -407,7 +555,9 @@ void DiscordService::sendMessage(home::HomeCore& core, Snowflake channelId, cons
         if (api::sendMessage(core.net(), token, channelId, text, outMsg, err)) {
             std::lock_guard<std::mutex> lk(m_mu);
             if (!current(session)) return;
-            m_messages[channelId].push_back(outMsg);
+            auto& rs = m_readStates[channelId];
+            rs.lastReadId = std::max(rs.lastReadId, outMsg.id);
+            addMessageLocked(std::move(outMsg));
             m_version++;
         } else {
             DebugLog::log("[discord] sendMessage error: %s", err.c_str());
@@ -436,6 +586,7 @@ void DiscordService::fetchGuildChannelsAsync(home::HomeCore& core, Snowflake gui
                 }
             }
             m_guilds = std::move(next);
+            applyReadStatesLocked();
             m_version++;
             DebugLog::log("[discord] fetched %zu channels for guild %llu",
                           n, (unsigned long long)guildId);
@@ -458,7 +609,11 @@ void DiscordService::fetchMessagesAsync(home::HomeCore& core, Snowflake channelI
             const std::size_t n = msgs.size();
             std::lock_guard<std::mutex> lk(m_mu);
             if (!current(session)) return;
+            // Messages that arrived on the gateway while the request ran are
+            // merged by id instead of being dropped or doubled.
+            auto live = std::move(m_messages[channelId]);
             m_messages[channelId] = std::move(msgs);
+            for (auto& m : live) addMessageLocked(std::move(m));
             m_version++;
             DebugLog::log("[discord] fetched %zu messages for channel %llu",
                           n, (unsigned long long)channelId);

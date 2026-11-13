@@ -151,8 +151,26 @@ bool parseMessagesJson(const std::string& json, std::vector<Message>& outMessage
         Message m;
         m.id = snowflake(item, "id");
         m.channelId = snowflake(item, "channel_id");
+        m.type = num<int>(item, "type", 0);
         m.content = str(item, "content");
         m.timestamp = str(item, "timestamp");
+        if (item.contains("call") && item["call"].is_object()) {
+            // Voice call record: participants and the end time (null while it
+            // is still ringing or running).
+            const auto& call = item["call"];
+            m.hasCall = true;
+            m.callEndedTimestamp = str(call, "ended_timestamp");
+            if (call.contains("participants") && call["participants"].is_array())
+                for (const auto& p : call["participants"])
+                    if (p.is_string()) m.callParticipants.push_back(stringToSnowflake(p.get<std::string>()));
+        }
+        m.mentionEveryone = flag(item, "mention_everyone", false);
+        if (item.contains("mentions") && item["mentions"].is_array())
+            for (const auto& u : item["mentions"])
+                if (u.is_object()) m.mentionIds.push_back(snowflake(u, "id"));
+        if (item.contains("sticker_items") && item["sticker_items"].is_array() && !item["sticker_items"].empty() &&
+            item["sticker_items"][0].is_object())
+            m.sticker = str(item["sticker_items"][0], "name");
         if (item.contains("author") && item["author"].is_object()) {
             parseUserJson(item["author"].dump(), m.author);
         }
@@ -169,10 +187,17 @@ bool parseMessagesJson(const std::string& json, std::vector<Message>& outMessage
             for (const auto& attachment : item["attachments"]) {
                 if (!attachment.is_object()) continue;
                 const auto url = str(attachment, "url");
-                if (!url.empty() && m.attachmentUrls.size() < 10) m.attachmentUrls.push_back(url);
                 const auto mime = str(attachment, "content_type");
-                if (mime.rfind("image/", 0) == 0 || (num<int>(attachment, "width", 0) > 0 &&
-                                                   num<int>(attachment, "height", 0) > 0)) addImage(attachment);
+                const bool image = mime.rfind("image/", 0) == 0 ||
+                    (mime.empty() && num<int>(attachment, "width", 0) > 0 && num<int>(attachment, "height", 0) > 0);
+                if (image) {
+                    addImage(attachment);
+                } else if (m.attachmentUrls.size() < 10) {
+                    // Files the chat cannot show: listed by name.
+                    const auto name = str(attachment, "filename");
+                    if (!name.empty()) m.attachmentUrls.push_back(name);
+                    else if (!url.empty()) m.attachmentUrls.push_back(url.substr(url.find_last_of('/') + 1));
+                }
             }
         }
         if (item.contains("embeds") && item["embeds"].is_array()) {
@@ -183,12 +208,43 @@ bool parseMessagesJson(const std::string& json, std::vector<Message>& outMessage
                 e.description = str(embed, "description");
                 e.color = num<std::uint32_t>(embed, "color", 0) & 0xffffffu;
                 if (embed.contains("footer") && embed["footer"].is_object()) e.footer = str(embed["footer"], "text");
-                if (!e.title.empty() || !e.description.empty() || !e.footer.empty()) m.embeds.push_back(std::move(e));
-                if (embed.contains("image")) addImage(embed["image"]);
-                else if (embed.contains("thumbnail")) addImage(embed["thumbnail"]);
+                if (embed.contains("provider") && embed["provider"].is_object()) e.provider = str(embed["provider"], "name");
+                if (embed.contains("author") && embed["author"].is_object()) e.author = str(embed["author"], "name");
+                if (!e.title.empty() || !e.description.empty() || !e.footer.empty() || !e.provider.empty() ||
+                    !e.author.empty())
+                    m.embeds.push_back(std::move(e));
+                // Link previews: the large image, else the thumbnail (a video
+                // embed carries its poster frame as the thumbnail).
+                if (embed.contains("image") && embed["image"].is_object()) addImage(embed["image"]);
+                else if (embed.contains("thumbnail") && embed["thumbnail"].is_object()) addImage(embed["thumbnail"]);
             }
         }
         if (m.id != 0) outMessages.push_back(std::move(m));
+    }
+    return true;
+}
+
+bool parseReadStatesJson(const std::string& json, std::map<Snowflake, ReadState>& out) {
+    const auto j = nlohmann::json::parse(json, nullptr, false);
+    if (j.is_discarded()) return false;
+    // Either a bare array or {"entries": [...], "partial": ..., "version": ...}.
+    const nlohmann::json* entries = &j;
+    if (j.is_object()) {
+        const auto it = j.find("entries");
+        if (it == j.end() || !it->is_array()) return false;
+        entries = &*it;
+    }
+    if (!entries->is_array()) return false;
+    for (const auto& e : *entries) {
+        if (!e.is_object()) continue;
+        // Type 0 (or absent) is a channel; other types track guild events etc.
+        if (num<int>(e, "read_state_type", 0) != 0) continue;
+        const Snowflake id = snowflake(e, "id");
+        if (id == 0) continue;
+        ReadState rs;
+        rs.lastReadId = snowflake(e, "last_message_id");
+        rs.mentions = std::max(0, num<int>(e, "mention_count", 0));
+        out[id] = rs;
     }
     return true;
 }

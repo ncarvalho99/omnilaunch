@@ -1,3 +1,4 @@
+#include <map>
 #include "discord/DiscordAccounts.hpp"
 #include "discord/DiscordApi.hpp"
 #include "discord/DiscordPresentation.hpp"
@@ -187,6 +188,36 @@ int main() {
     assert(parseAccountsJson(R"({"current":null,"accounts":[{"id":"9001","token":"t","username":"n","avatar":null,"globalName":null}]})",
                              nullAccs, nullCur));
     assert(nullAccs.size() == 1 && nullCur == "9001"); // null current falls back to the first account
+    // 8. Call records, link previews, files, mentions and read states.
+    std::vector<Message> rich;
+    assert(api::parseMessagesJson(R"([
+        {"id":"9001","channel_id":"1","type":3,"content":"","timestamp":"2019-09-20T05:31:00+00:00",
+         "author":{"id":"5001","username":"pal"},
+         "call":{"participants":["5001"],"ended_timestamp":"2019-09-20T05:41:00+00:00"}},
+        {"id":"9002","channel_id":"1","type":0,"content":"https://e.com/x","timestamp":null,
+         "author":{"id":"5001","username":"pal"},"mention_everyone":false,
+         "mentions":[{"id":"7001","username":"me"}],
+         "embeds":[{"type":"link","provider":{"name":"E-RECOVERY"},"title":"HD em modo RAW",
+                    "thumbnail":{"url":"https://example.com/t.png","proxy_url":"https://images-ext-1.discordapp.net/external/x/t.png","width":10,"height":10}}],
+         "attachments":[{"url":"https://cdn.discordapp.com/attachments/1/2/a.zip","filename":"a.zip","content_type":"application/zip"}]}
+    ])", rich));
+    assert(rich.size() == 2);
+    assert(rich[0].type == 3 && rich[0].hasCall && rich[0].callParticipants.size() == 1);
+    assert(rich[0].callEndedTimestamp == "2019-09-20T05:41:00+00:00");
+    assert(rich[1].embeds.size() == 1 && rich[1].embeds[0].provider == "E-RECOVERY");
+    assert(rich[1].images.size() == 1); // the link thumbnail through Discord's proxy
+    assert(rich[1].attachmentUrls.size() == 1 && rich[1].attachmentUrls[0] == "a.zip");
+    assert(rich[1].mentionIds.size() == 1 && rich[1].mentionIds[0] == 7001ULL);
+
+    std::map<Snowflake, ReadState> rs;
+    assert(api::parseReadStatesJson(R"({"version":1,"partial":false,"entries":[
+        {"id":"1","last_message_id":"9001","mention_count":2},
+        {"id":"2","last_message_id":null,"mention_count":null},
+        {"id":"3","read_state_type":1,"last_message_id":"5"}]})", rs));
+    assert(rs.size() == 2 && rs[1].lastReadId == 9001ULL && rs[1].mentions == 2 && rs[2].lastReadId == 0);
+    std::map<Snowflake, ReadState> rsArray;
+    assert(api::parseReadStatesJson(R"([{"id":"4","last_message_id":"8"}])", rsArray) && rsArray[4].lastReadId == 8);
+
     std::cout << "discord_core_test: all passed" << std::endl;
     return 0;
 }

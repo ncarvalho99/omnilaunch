@@ -56,6 +56,7 @@ public:
     void render(nxui::Renderer& ren, CardsChrome& chrome) const;
 
 private:
+    int visibleRows() const;
     void clampFocus();
     void moveRow(int dir);
 

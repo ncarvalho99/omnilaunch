@@ -37,6 +37,10 @@ public:
     // With no entries the right side shows emptyTitle / emptyMessage.
     void setEntries(std::vector<Entry> entries, std::string emptyTitle, std::string emptyMessage);
     void scrollPreview(float dy) { scrollBy(dy); }
+    // What the selected entry answers to, for the button hint bar.
+    bool selectedHasAction() const { const Entry* e = currentEntry(); return e && e->onActivate; }
+    bool selectedHasOptions() const { const Entry* e = currentEntry(); return e && e->onSecondary; }
+    bool previewScrolls() const { return m_contentHeight > m_viewHeight + 1.f; }
 
 protected:
     void setupActions() override;

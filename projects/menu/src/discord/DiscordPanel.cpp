@@ -11,11 +11,17 @@
 #include <nxui/core/Input.hpp>
 #include <nxui/core/Renderer.hpp>
 
+#include <webp/decode.h>
+
 #include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <sstream>
+#ifdef __SWITCH__
+#include <switch.h>
+#endif
 
 namespace discord {
 
@@ -57,16 +63,59 @@ inline nxui::Color blurple(float a = 1.f)     { return rgb(88, 101, 242, a); }
 inline nxui::Color green(float a = 1.f)       { return rgb(35, 165, 90, a); }
 inline nxui::Color red(float a = 1.f)         { return rgb(242, 63, 67, a); }
 
+// "2019-09-20T05:31:12.345+00:00" -> seconds since 1970 (UTC); -1 when not ISO.
+static long long parseIsoUtc(const std::string& ts) {
+    if (ts.size() < 19 || ts[4] != '-' || ts[7] != '-' || ts[10] != 'T') return -1;
+    auto n = [&](std::size_t at, std::size_t len) { return std::atoi(ts.substr(at, len).c_str()); };
+    int y = n(0, 4);
+    const unsigned m = static_cast<unsigned>(n(5, 2)), d = static_cast<unsigned>(n(8, 2));
+    // days_from_civil (Howard Hinnant)
+    y -= m <= 2;
+    const int era = (y >= 0 ? y : y - 399) / 400;
+    const unsigned yoe = static_cast<unsigned>(y - era * 400);
+    const unsigned doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+    const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    const long long days = static_cast<long long>(era) * 146097 + static_cast<long long>(doe) - 719468;
+    long long secs = days * 86400 + n(11, 2) * 3600 + n(14, 2) * 60 + n(17, 2);
+    // Discord sends +00:00; honour any other offset anyway.
+    const auto tz = ts.find_first_of("+-", 19);
+    if (tz != std::string::npos && ts.size() >= tz + 6) {
+        const int off = n(tz + 1, 2) * 3600 + n(tz + 4, 2) * 60;
+        secs += ts[tz] == '+' ? -off : off;
+    }
+    return secs;
+}
+
+// Discord timestamps are UTC; the phone shows them in the console's time zone.
 static std::string formatDiscordTimestamp(const std::string& ts) {
     if (ts.empty()) return {};
-    if (ts.size() >= 16 && ts[4] == '-' && ts[7] == '-' && ts[10] == 'T') {
-        std::string year = ts.substr(0, 4);
-        std::string month = ts.substr(5, 2);
-        std::string day = ts.substr(8, 2);
-        std::string time = ts.substr(11, 5);
-        return day + "/" + month + "/" + year + " " + time;
+    const long long utc = parseIsoUtc(ts);
+    if (utc < 0) return ts;
+    char buf[32];
+#ifdef __SWITCH__
+    TimeCalendarTime cal{};
+    TimeCalendarAdditionalInfo info{};
+    if (R_SUCCEEDED(timeToCalendarTimeWithMyRule(static_cast<u64>(utc), &cal, &info))) {
+        std::snprintf(buf, sizeof(buf), "%02d/%02d/%04d %02d:%02d", cal.day, cal.month, cal.year, cal.hour,
+                      cal.minute);
+        return buf;
     }
-    return ts;
+#endif
+    return ts.substr(8, 2) + "/" + ts.substr(5, 2) + "/" + ts.substr(0, 4) + " " + ts.substr(11, 5);
+}
+
+// "a few seconds", "10 minutes", "1 h 05 min" for a call record.
+static std::string callDuration(long long seconds) {
+    auto& t = nxui::I18n::instance();
+    if (seconds < 60) return t.tr("discord_ui.call_seconds", "a few seconds");
+    if (seconds < 3600) {
+        const long long m = seconds / 60;
+        return std::to_string(m) + " " + (m == 1 ? t.tr("discord_ui.call_minute", "minute")
+                                                 : t.tr("discord_ui.call_minutes", "minutes"));
+    }
+    char buf[24];
+    std::snprintf(buf, sizeof(buf), "%lld h %02lld min", seconds / 3600, (seconds % 3600) / 60);
+    return buf;
 }
 
 std::string cleanText(const std::string& s) {
@@ -211,8 +260,30 @@ const nxui::Texture* DiscordPanel::requestImage(const std::string& url, int maxS
                 req.attempts = 1;
                 auto res = m_core->net().request(req);
                 if (res.ok() && !res.body.empty()) {
-                    *dec = nxui::Texture::decodeMemory(reinterpret_cast<const uint8_t*>(res.body.data()),
-                                                       res.body.size(), maxSide);
+                    const auto* bytes = reinterpret_cast<const uint8_t*>(res.body.data());
+                    *dec = nxui::Texture::decodeMemory(bytes, res.body.size(), maxSide);
+                    int w = 0, h = 0;
+                    // Discord's media proxy answers many images as WebP, which
+                    // the stb decoder does not read.
+                    if (!dec->valid() && WebPGetInfo(bytes, res.body.size(), &w, &h) && w > 0 && h > 0 &&
+                        w <= 8192 && h <= 8192) {
+                        if (uint8_t* rgba = WebPDecodeRGBA(bytes, res.body.size(), &w, &h)) {
+                            int dw = w, dh = h;
+                            if (maxSide > 0 && (w > maxSide || h > maxSide)) {
+                                const float s = std::min(static_cast<float>(maxSide) / w, static_cast<float>(maxSide) / h);
+                                dw = std::max(1, static_cast<int>(w * s));
+                                dh = std::max(1, static_cast<int>(h * s));
+                            }
+                            dec->width = dw;
+                            dec->height = dh;
+                            dec->rgba.resize(static_cast<std::size_t>(dw) * dh * 4);
+                            for (int y = 0; y < dh; ++y)
+                                for (int x = 0; x < dw; ++x)
+                                    std::memcpy(dec->rgba.data() + (static_cast<std::size_t>(y) * dw + x) * 4,
+                                                rgba + (static_cast<std::size_t>(y * h / dh) * w + x * w / dw) * 4, 4);
+                            WebPFree(rgba);
+                        }
+                    }
                 }
             } catch (...) {}
         });
@@ -220,6 +291,11 @@ const nxui::Texture* DiscordPanel::requestImage(const std::string& url, int maxS
         slot.failed = true;
     }
     return nullptr;
+}
+
+bool DiscordPanel::imageFailed(const std::string& url) const {
+    const auto it = m_images.find(url);
+    return it != m_images.end() && it->second.failed;
 }
 
 void DiscordPanel::pumpImages(nxui::GpuDevice& gpu, nxui::Renderer& ren) const {
@@ -295,9 +371,11 @@ void DiscordPanel::openChat(Snowflake channelId, Snowflake guildId, const std::s
     m_chatId = channelId;
     m_chatGuildId = guildId;
     m_chatName = clean(name);
-    m_chatScroll = 0.f;
+    m_chatScroll = 1e9f; // start at the newest message, as the phone does
+    m_chatAtBottom = true;
     if (m_service && m_core) {
         m_service->fetchMessagesAsync(*m_core, channelId);
+        m_service->markRead(channelId);
     }
 }
 
@@ -306,6 +384,7 @@ void DiscordPanel::bindInput() {
     addDirectionAction(nxui::FocusDirection::UP, [this]() {
         if (m_view == View::Chat) {
             m_chatScroll = std::max(0.f, m_chatScroll - 40.f);
+            m_chatAtBottom = false;
         } else {
             if (listFocused()) move(-1); else moveRail(-1);
         }
@@ -605,6 +684,8 @@ void DiscordPanel::rebuildRows() {
                             r.kind = Row::Channel;
                             r.text = clean(c.name);
                             r.id = c.id;
+                            r.mentions = c.mentions;
+                            r.unread = c.unreadCount > 0 || c.mentions > 0;
                             m_rows.push_back(std::move(r));
                         }
                     }
@@ -651,9 +732,11 @@ void DiscordPanel::onUpdate(float dt) {
 
     const auto st = m_service->state();
     const auto ver = m_service->version();
+    if (m_view == View::Chat && m_chatId != 0 && ver != m_lastVersion)
+        m_service->markRead(m_chatId); // what arrives in the open chat is read
     if (st != m_lastState || ver != m_lastVersion || m_view != m_lastView || m_railSel != m_lastRailSel) {
-        m_lastState = st;
-        m_lastVersion = ver;
+        m_lastState = m_service->state();
+        m_lastVersion = m_service->version();
         m_lastView = m_view;
         m_lastRailSel = m_railSel;
         rebuildRows();
@@ -795,9 +878,15 @@ void DiscordPanel::drawRail(nxui::Renderer& ren, const nxui::Rect& p, float a) {
         ren.drawCircle({cx + 6.f, y + 24.f}, 3.5f, dmSel ? blurple(a) : bgPrimary(a), 16);
     }
     int totalDmMentions = 0;
+    bool dmUnread = false;
     if (m_service) {
-        for (const auto& dm : m_service->dms()) totalDmMentions += dm.mentions;
+        for (const auto& dm : m_service->dms()) {
+            totalDmMentions += dm.mentions;
+            dmUnread = dmUnread || dm.unreadCount > 0;
+        }
     }
+    if (dmUnread && !dmSel)
+        ren.drawRoundedRect({p.x + 1.f, dmHit.y + 20.f, 4.f, 8.f}, nxui::Color::white().withAlpha(a), 2.f);
     if (totalDmMentions > 0) {
         const std::string n = totalDmMentions > 99 ? "99+" : std::to_string(totalDmMentions);
         const float nw = m_smallFont ? m_smallFont->measure(n).x * 0.7f : 14.f;
@@ -833,6 +922,8 @@ void DiscordPanel::drawRail(nxui::Renderer& ren, const nxui::Rect& p, float a) {
                 const float textW = m_smallFont->measure(inits).x;
                 drawLabel(ren, m_smallFont, cx - textW * 0.5f, y + 14.f, inits, nxui::Color(1.f, 1.f, 1.f, a));
             }
+            if (guilds[i].unreadCount > 0 && !sel) // unread pill left of the server
+                ren.drawRoundedRect({p.x + 1.f, gHit.y + 20.f, 4.f, 8.f}, nxui::Color::white().withAlpha(a), 2.f);
             if (guilds[i].mentions > 0) {
                 const std::string n = guilds[i].mentions > 99 ? "99+" : std::to_string(guilds[i].mentions);
                 const float nw = m_smallFont ? m_smallFont->measure(n).x * 0.7f : 14.f;
@@ -919,6 +1010,17 @@ void DiscordPanel::drawRows(nxui::Renderer& ren, const nxui::Rect& area, float a
             drawLabel(ren, m_font, rowRect.x + 11.f, cy - 12.f, "#", ic, 0.78f);
             const float tw = rowRect.width - 44.f - (r.mentions > 0 ? 36.f : 0.f);
             drawLabel(ren, m_font, rowRect.x + 34.f, cy - 11.f, fit(m_font, r.text, tw, 0.7f), ic, 0.7f);
+            if (r.mentions > 0) {
+                const std::string n = r.mentions > 99 ? "99+" : std::to_string(r.mentions);
+                const float nw = m_smallFont ? m_smallFont->measure(n).x * 0.7f : 14.f;
+                const float bw = std::max(20.f, nw + 10.f);
+                ren.drawRoundedRect({rowRect.right() - 8.f - bw, cy - 10.f, bw, 20.f}, red(a), 10.f);
+                if (m_smallFont)
+                    drawLabel(ren, m_smallFont, rowRect.right() - 8.f - bw + (bw - nw) * 0.5f, cy - 8.f, n,
+                              nxui::Color::white().withAlpha(a), 0.7f);
+            }
+            if (r.unread) // Discord's white pill at the left edge
+                ren.drawRoundedRect({area.x + 2.f, cy - 4.f, 4.f, 8.f}, nxui::Color::white().withAlpha(a), 2.f);
             m_hits.push_back({static_cast<int>(i), rowRect});
             continue;
         }
@@ -1101,6 +1203,7 @@ void DiscordPanel::drawChat(nxui::Renderer& ren, const nxui::Rect& p, float a) {
     const nxui::Rect chatArea{p.x + 8.f, chatY, p.width - 16.f, chatH};
 
     const auto msgs = m_service ? m_service->messages(m_chatId) : std::vector<Message>{};
+    const Snowflake meId = m_service ? m_service->currentUser().id : 0;
 
     if (msgs.empty()) {
         if (m_smallFont) {
@@ -1112,48 +1215,95 @@ void DiscordPanel::drawChat(nxui::Renderer& ren, const nxui::Rect& p, float a) {
             }
         }
     } else {
+        // One block per message. A call record or a system notice is a card
+        // (no author header); a message from the same author within a few
+        // minutes continues the previous block without repeating the header,
+        // as the phone app does.
         struct MsgLayout {
+            enum Kind { Normal, CallCard, System } kind = Normal;
+            bool grouped = false;
             std::vector<std::string> lines;
             std::vector<std::string> images;
-            std::vector<std::pair<std::string, bool>> embedLines; // text, is title
+            std::vector<std::pair<std::string, int>> embedLines; // text, 0 body / 1 title / 2 provider
+            std::vector<std::string> files;
             std::string author;
+            std::string cardTitle, cardDetail;
+            bool missed = false;
             float height = 0.f;
         };
         const float maxTextW = chatArea.width - 70.f;
         std::vector<MsgLayout> layouts(msgs.size());
         float totalMsgH = 16.f;
-        float curTop = 8.f;
         for (std::size_t i = 0; i < msgs.size(); ++i) {
             auto& lay = layouts[i];
             const auto& m = msgs[i];
             lay.author = clean(m.author.displayName());
             if (lay.author.empty()) lay.author = "?";
-            lay.lines = wrapLines(m_smallFont, clean(cleanText(messageText(m.content))), maxTextW);
-            for (const auto& emb : m.embeds) {
-                for (const auto& l : wrapLines(m_smallFont, clean(emb.title), maxTextW)) lay.embedLines.push_back({l, true});
-                auto desc = wrapLines(m_smallFont, clean(cleanText(emb.description)), maxTextW);
-                if (desc.size() > 4) { desc.resize(4); desc.back() = fit(m_smallFont, desc.back() + " ...", maxTextW); }
-                for (const auto& l : desc) lay.embedLines.push_back({l, false});
-            }
-            for (const auto& img : m.images) {
-                lay.images.push_back(img.url);
-            }
-            if (lay.images.empty()) {
-                for (const auto& att : m.attachmentUrls) {
-                    if (isDiscordImageUrl(att)) lay.images.push_back(att);
+            const auto mt = static_cast<MessageType>(m.type);
+            if (mt == MessageType::Call || m.hasCall) {
+                lay.kind = MsgLayout::CallCard;
+                const bool joined = std::find(m.callParticipants.begin(), m.callParticipants.end(), meId) !=
+                                    m.callParticipants.end();
+                lay.missed = !joined && m.author.id != meId;
+                lay.cardTitle = lay.missed ? T("discord_ui.call_missed", "Missed call")
+                                           : T("discord_ui.call_ended", "Call ended");
+                const long long t0 = parseIsoUtc(m.timestamp);
+                const long long t1 = parseIsoUtc(m.callEndedTimestamp);
+                std::string detail;
+                if (m.callEndedTimestamp.empty())
+                    detail = T("discord_ui.call_ongoing", "In progress");
+                else if (t0 >= 0 && t1 >= t0)
+                    detail = callDuration(t1 - t0);
+                lay.cardDetail = detail + (detail.empty() ? "" : " - ") + formatDiscordTimestamp(m.timestamp);
+                lay.height = 58.f;
+            } else if (mt == MessageType::RecipientAdd || mt == MessageType::RecipientRemove ||
+                       mt == MessageType::ChannelNameChange || mt == MessageType::ChannelIconChange ||
+                       mt == MessageType::ChannelPinnedMessage || mt == MessageType::UserJoin) {
+                lay.kind = MsgLayout::System;
+                switch (mt) {
+                case MessageType::RecipientAdd: lay.cardTitle = lay.author + " " + T("discord_ui.sys_added", "added someone to the group"); break;
+                case MessageType::RecipientRemove: lay.cardTitle = lay.author + " " + T("discord_ui.sys_left", "left the group"); break;
+                case MessageType::ChannelNameChange: lay.cardTitle = lay.author + " " + T("discord_ui.sys_renamed", "changed the name") + ": " + clean(m.content); break;
+                case MessageType::ChannelIconChange: lay.cardTitle = lay.author + " " + T("discord_ui.sys_icon", "changed the icon"); break;
+                case MessageType::ChannelPinnedMessage: lay.cardTitle = lay.author + " " + T("discord_ui.sys_pinned", "pinned a message"); break;
+                default: lay.cardTitle = lay.author + " " + T("discord_ui.sys_joined", "joined the server"); break;
                 }
+                lay.cardTitle = fit(m_smallFont, lay.cardTitle, chatArea.width - 40.f, 0.78f);
+                lay.height = 30.f;
+            } else {
+                if (i > 0 && layouts[i - 1].kind == MsgLayout::Normal && msgs[i - 1].author.id == m.author.id) {
+                    const long long prev = parseIsoUtc(msgs[i - 1].timestamp), cur = parseIsoUtc(m.timestamp);
+                    lay.grouped = prev >= 0 && cur >= prev && cur - prev < 7 * 60;
+                }
+                lay.lines = wrapLines(m_smallFont, clean(cleanText(messageText(m.content))), maxTextW);
+                if (!m.sticker.empty())
+                    lay.lines.push_back("[" + T("discord_ui.sticker", "Sticker") + ": " + clean(m.sticker) + "]");
+                for (const auto& emb : m.embeds) {
+                    if (!emb.provider.empty())
+                        lay.embedLines.push_back({fit(m_smallFont, clean(emb.provider), maxTextW - 16.f, 0.8f), 2});
+                    else if (!emb.author.empty())
+                        lay.embedLines.push_back({fit(m_smallFont, clean(emb.author), maxTextW - 16.f, 0.8f), 2});
+                    for (const auto& l : wrapLines(m_smallFont, clean(emb.title), maxTextW - 16.f))
+                        lay.embedLines.push_back({l, 1});
+                    auto desc = wrapLines(m_smallFont, clean(cleanText(messageText(emb.description))), maxTextW - 16.f);
+                    if (desc.size() > 4) { desc.resize(4); desc.back() = fit(m_smallFont, desc.back() + " ...", maxTextW - 16.f); }
+                    for (const auto& l : desc) lay.embedLines.push_back({l, 0});
+                }
+                for (const auto& img : m.images) lay.images.push_back(img.url);
+                for (const auto& file : m.attachmentUrls) lay.files.push_back(clean(file));
+                float h = lay.grouped ? 2.f : 28.f;
+                h += static_cast<float>(lay.lines.size()) * 20.f;
+                h += static_cast<float>(lay.embedLines.size()) * 20.f + (lay.embedLines.empty() ? 0.f : 8.f);
+                h += static_cast<float>(lay.images.size()) * 156.f;
+                h += static_cast<float>(lay.files.size()) * 22.f;
+                lay.height = lay.grouped ? std::max(h, 22.f) : std::max(h, 46.f);
             }
-            float h = 28.f;
-            h += static_cast<float>(lay.lines.size()) * 20.f;
-            h += static_cast<float>(lay.embedLines.size()) * 20.f;
-            h += static_cast<float>(lay.images.size()) * 156.f;
-            h = std::max(h, 46.f);
-            lay.height = h;
-            totalMsgH += h + 8.f;
+            totalMsgH += lay.height + (lay.grouped ? 2.f : 8.f);
         }
 
         const float maxScroll = std::max(0.f, totalMsgH - chatH + 10.f);
-        if (m_chatScroll > maxScroll) m_chatScroll = maxScroll;
+        if (m_chatAtBottom || m_chatScroll > maxScroll) m_chatScroll = maxScroll;
+        if (m_chatScroll >= maxScroll - 1.f) m_chatAtBottom = true;
 
         ren.pushClipRect(chatArea);
 
@@ -1163,31 +1313,59 @@ void DiscordPanel::drawChat(nxui::Renderer& ren, const nxui::Rect& p, float a) {
             const auto& lay = layouts[i];
             const float mh = lay.height;
             if (y + mh >= chatArea.y - 20.f && y <= chatArea.bottom() + 20.f) {
-                // Avatar
-                const nxui::Texture* avTex = requestImage(m.author.avatarUrl(64), 64);
-                const nxui::Rect avRect{chatArea.x + 8.f, y + 4.f, 34.f, 34.f};
-                if (avTex) {
-                    ren.drawTextureRounded(avTex, avRect, 17.f, {1.f, 1.f, 1.f, a});
-                } else {
-                    ren.drawCircle({avRect.x + 17.f, avRect.y + 17.f}, 17.f, blurple(a), 24);
-                    std::string init = lay.author.substr(0, 1);
-                    if (!init.empty() && static_cast<unsigned char>(init[0]) >= 0x80) init = "?";
+                if (lay.kind == MsgLayout::CallCard) {
+                    const nxui::Rect card{chatArea.x + 8.f, y, chatArea.width - 16.f, mh - 4.f};
+                    ren.drawRoundedRect(card, bgTertiary(a), 10.f);
+                    // Phone handset: green for a call that happened, red for a missed one.
+                    const nxui::Color ic = lay.missed ? red(a) : green(a);
+                    const float cx = card.x + 24.f, cy = card.y + card.height * 0.5f;
+                    ren.drawCircle({cx, cy}, 13.f, ic.withAlpha(0.22f * a), 20);
+                    ren.drawRoundedRect({cx - 8.f, cy - 2.f, 16.f, 5.f}, ic, 2.5f);
+                    ren.drawRoundedRect({cx - 9.f, cy - 5.f, 5.f, 8.f}, ic, 2.f);
+                    ren.drawRoundedRect({cx + 4.f, cy - 5.f, 5.f, 8.f}, ic, 2.f);
+                    drawLabel(ren, m_font, card.x + 48.f, card.y + 6.f,
+                              fit(m_font, lay.cardTitle, card.width - 60.f, 0.74f), textNormal(a), 0.74f);
                     if (m_smallFont)
-                        drawLabel(ren, m_smallFont, avRect.x + 12.f, avRect.y + 10.f, init, textNormal(a));
+                        drawLabel(ren, m_smallFont, card.x + 48.f, card.y + 30.f,
+                                  fit(m_smallFont, lay.cardDetail, card.width - 60.f, 0.70f), textMuted(a), 0.70f);
+                    y += mh + 8.f;
+                    continue;
+                }
+                if (lay.kind == MsgLayout::System) {
+                    if (m_smallFont)
+                        drawLabel(ren, m_smallFont, chatArea.x + 18.f, y + 6.f, lay.cardTitle, textMuted(a), 0.78f);
+                    y += mh + 8.f;
+                    continue;
                 }
 
-                // Author name & time, kept inside the column.
-                const std::string fts = formatDiscordTimestamp(m.timestamp);
-                const float tsW = (m_smallFont && !fts.empty()) ? m_smallFont->measure(fts).x * 0.72f + 10.f : 0.f;
-                const std::string author = fit(m_font, lay.author, maxTextW - tsW, 0.78f);
-                drawLabel(ren, m_font, chatArea.x + 50.f, y + 2.f, author, blurple(a), 0.78f);
-                if (m_smallFont && !fts.empty()) {
-                    const float nw = m_font ? m_font->measure(author).x * 0.78f : 80.f;
-                    drawLabel(ren, m_smallFont, chatArea.x + 50.f + nw + 10.f, y + 6.f, fts, textMuted(a), 0.72f);
+                float ly = y + 2.f;
+                if (!lay.grouped) {
+                    // Avatar
+                    const nxui::Texture* avTex = requestImage(m.author.avatarUrl(64), 64);
+                    const nxui::Rect avRect{chatArea.x + 8.f, y + 4.f, 34.f, 34.f};
+                    if (avTex) {
+                        ren.drawTextureRounded(avTex, avRect, 17.f, {1.f, 1.f, 1.f, a});
+                    } else {
+                        ren.drawCircle({avRect.x + 17.f, avRect.y + 17.f}, 17.f, blurple(a), 24);
+                        std::string init = lay.author.substr(0, 1);
+                        if (!init.empty() && static_cast<unsigned char>(init[0]) >= 0x80) init = "?";
+                        if (m_smallFont)
+                            drawLabel(ren, m_smallFont, avRect.x + 12.f, avRect.y + 10.f, init, textNormal(a));
+                    }
+
+                    // Author name & time, kept inside the column.
+                    const std::string fts = formatDiscordTimestamp(m.timestamp);
+                    const float tsW = (m_smallFont && !fts.empty()) ? m_smallFont->measure(fts).x * 0.72f + 10.f : 0.f;
+                    const std::string author = fit(m_font, lay.author, maxTextW - tsW, 0.78f);
+                    drawLabel(ren, m_font, chatArea.x + 50.f, y + 2.f, author, blurple(a), 0.78f);
+                    if (m_smallFont && !fts.empty()) {
+                        const float nw = m_font ? m_font->measure(author).x * 0.78f : 80.f;
+                        drawLabel(ren, m_smallFont, chatArea.x + 50.f + nw + 10.f, y + 6.f, fts, textMuted(a), 0.72f);
+                    }
+                    ly = y + 24.f;
                 }
 
                 // Content lines
-                float ly = y + 24.f;
                 for (const auto& line : lay.lines) {
                     if (m_smallFont) {
                         drawLabel(ren, m_smallFont, chatArea.x + 50.f, ly, line, textNormal(a));
@@ -1195,34 +1373,58 @@ void DiscordPanel::drawChat(nxui::Renderer& ren, const nxui::Rect& p, float a) {
                     ly += 20.f;
                 }
 
-                // Embeds: title in blurple, description muted, both wrapped.
+                // Embeds (link previews): a card with the site, title in blue
+                // and the description muted, as on the phone.
                 if (!lay.embedLines.empty()) {
-                    const float eh = lay.embedLines.size() * 20.f;
-                    ren.drawRoundedRect({chatArea.x + 46.f, ly, 3.f, eh}, blurple(a), 1.5f);
-                }
-                for (const auto& [line, title] : lay.embedLines) {
-                    drawLabel(ren, m_smallFont, chatArea.x + 56.f, ly, line, title ? blurple(a) : textMuted(a));
-                    ly += 20.f;
+                    const float eh = lay.embedLines.size() * 20.f + 8.f;
+                    const nxui::Rect ecard{chatArea.x + 46.f, ly, maxTextW + 4.f, eh};
+                    ren.drawRoundedRect(ecard, bgTertiary(0.8f * a), 6.f);
+                    ren.drawRoundedRect({ecard.x, ecard.y, 3.f, ecard.height}, blurple(a), 1.5f);
+                    float ey = ly + 4.f;
+                    for (const auto& [line, kind] : lay.embedLines) {
+                        const nxui::Color c = kind == 1 ? rgb(0, 168, 252, a) : kind == 2 ? textNormal(a) : textMuted(a);
+                        drawLabel(ren, m_smallFont, chatArea.x + 56.f, ey, line, c, kind == 2 ? 0.8f : 1.f);
+                        ey += 20.f;
+                    }
+                    ly += eh;
                 }
 
-                // Attachment images
+                // Pictures (attachments and link thumbnails)
                 for (const auto& imgUrl : lay.images) {
-                    const nxui::Rect imgBox{chatArea.x + 50.f, ly + 4.f, std::min(maxTextW, 260.f), 144.f};
                     const nxui::Texture* imgTex = requestImage(imgUrl, 320);
+                    float bw = std::min(maxTextW, 260.f), bh = 144.f;
+                    if (imgTex && imgTex->width() > 0 && imgTex->height() > 0) {
+                        const float s = std::min(bw / imgTex->width(), bh / imgTex->height());
+                        bw = imgTex->width() * s;
+                        bh = imgTex->height() * s;
+                    }
+                    const nxui::Rect imgBox{chatArea.x + 50.f, ly + 4.f, bw, bh};
                     if (imgTex) {
                         ren.drawTextureRounded(imgTex, imgBox, 8.f, {1.f, 1.f, 1.f, a});
                     } else {
                         ren.drawRoundedRect(imgBox, bgTertiary(a), 8.f);
                         ren.drawRoundedRectOutline(imgBox, {1.f, 1.f, 1.f, 0.12f * a}, 8.f, 1.f);
                         if (m_smallFont) {
+                            const bool failed = imageFailed(imgUrl);
                             drawLabel(ren, m_smallFont, imgBox.x + 16.f, imgBox.y + imgBox.height * 0.5f - 8.f,
-                                      T("discord_ui.loading_image", "[Carregando imagem...]"), textMuted(a));
+                                      failed ? T("discord_ui.image_unavailable", "[Image unavailable]")
+                                             : T("discord_ui.loading_image", "[Loading image...]"),
+                                      textMuted(a));
                         }
                     }
-                    ly += 154.f;
+                    ly += 156.f;
+                }
+
+                // Other files: their name, the menu cannot open them.
+                for (const auto& file : lay.files) {
+                    if (m_smallFont)
+                        drawLabel(ren, m_smallFont, chatArea.x + 50.f, ly + 2.f,
+                                  fit(m_smallFont, "[" + T("discord_ui.file", "File") + "] " + file, maxTextW, 0.8f),
+                                  rgb(0, 168, 252, a), 0.8f);
+                    ly += 22.f;
                 }
             }
-            y += mh + 8.f;
+            y += mh + (lay.grouped ? 2.f : 8.f);
         }
 
         ren.popClipRect();
