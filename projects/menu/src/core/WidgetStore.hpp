@@ -15,7 +15,17 @@ enum class WidgetType : std::uint8_t {
     RandomScreenshot,
     ImagePin,
     Batteries,
+    // Launcher tiles (F4): A opens a list of every .nro on the SD card, or of
+    // the console applets (Album, Controllers, Mii Maker, Internet, Users,
+    // Settings, News). Stored like any widget, so they move, resize and are
+    // deleted from their Plus menu; a build without them skips the entry.
+    HomebrewApps,
+    SystemApplets,
 };
+
+inline constexpr bool isLauncherWidget(WidgetType type) {
+    return type == WidgetType::HomebrewApps || type == WidgetType::SystemApplets;
+}
 
 struct WidgetSize {
     int columns = 1;

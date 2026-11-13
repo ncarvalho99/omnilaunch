@@ -19,6 +19,7 @@ public:
         std::string footer;
         std::string actionHint;          // e.g. "Press A to launch"; shown when onActivate is set
         std::function<void()> onActivate; // A inside the entry
+        std::function<void()> onSecondary; // X inside the entry (options)
         std::shared_ptr<nxui::Texture> image;
         // Loads `image` the first time the entry is selected (keeps opening fast).
         std::function<std::shared_ptr<nxui::Texture>()> lazyImage;
@@ -47,6 +48,7 @@ protected:
     void onContentUpdate(float dt) override;
     void onContentRender(nxui::Renderer& ren) override;
     bool handleCustomPressA() override;
+    bool handleCustomPressX() override;
     bool handleCustomNavUp() override;
     bool handleCustomNavDown() override;
     bool handleCustomNavLeft() override;

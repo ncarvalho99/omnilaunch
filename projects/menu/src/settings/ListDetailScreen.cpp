@@ -252,6 +252,16 @@ bool ListDetailScreen::handleCustomPressA() {
     return true;
 }
 
+bool ListDetailScreen::handleCustomPressX() {
+    const Entry* e = currentEntry();
+    if (e && e->onSecondary) {
+        if (m_activateSfxCb) m_activateSfxCb();
+        auto run = e->onSecondary; // may replace the entries
+        run();
+    }
+    return true;
+}
+
 // The preview isn't selectable: left/right do nothing, up/down stay in the list.
 bool ListDetailScreen::handleCustomNavRight() { return true; }
 bool ListDetailScreen::handleCustomNavLeft() { return true; }

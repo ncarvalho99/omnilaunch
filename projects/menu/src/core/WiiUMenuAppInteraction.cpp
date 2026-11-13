@@ -202,6 +202,8 @@ void WiiUMenuApp::closeActiveOverlays(bool preserveDialog) {
         m_profileCarousel->hide();
     if (m_newsScreen && m_newsScreen->isActive())
         m_newsScreen->hide();
+    if (m_launcherScreen && m_launcherScreen->isActive())
+        m_launcherScreen->hide();
     if (m_social && m_social->isActive())
         m_social->hide();
     if (!preserveDialog && m_dialog && m_dialog->isActive())
@@ -265,6 +267,7 @@ nxui::Widget* WiiUMenuApp::focusRoot() {
     if (m_profileCarousel && m_profileCarousel->isOpen()) return m_profileCarousel.get();
     if (m_social && m_social->isOpen()) return m_social.get();
     if (m_newsScreen && m_newsScreen->isActive()) return m_newsScreen.get();
+    if (m_launcherScreen && m_launcherScreen->isActive()) return m_launcherScreen.get();
     if (m_steamGridDbPicker && m_steamGridDbPicker->isActive()) return m_steamGridDbPicker.get();
     if (m_mediaCenterScreen && m_mediaCenterScreen->isActive()) return m_mediaCenterScreen.get();
     if (m_controllerTest && m_controllerTest->isActive()) return m_controllerTest.get();

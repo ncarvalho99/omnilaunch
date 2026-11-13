@@ -979,6 +979,27 @@ void GlossyIcon::onContentRender(nxui::Renderer& ren) {
             return;
         }
 
+        if (switchu::widgets::isLauncherWidget(m_widgetType)) {
+            // Homebrew / System launcher tile: its picture and its name.
+            const float contentRadius = std::max(8.f, rad - 5.f);
+            ren.drawRoundedRect(inner, m_loadingColor.withAlpha(0.16f * m_opacity), contentRadius);
+            const float labelH = m_font ? m_font->measure("Ag").y * 0.52f * s : 0.f;
+            const float side = std::min(inner.width, inner.height - labelH - 10.f * s) * 0.78f;
+            if (m_widgetGameIcon && m_widgetGameIcon->valid() && side > 4.f) {
+                const nxui::Rect pic{inner.x + (inner.width - side) * 0.5f,
+                                     inner.y + (inner.height - labelH - 6.f * s - side) * 0.5f, side, side};
+                ren.drawTexture(m_widgetGameIcon, pic, nxui::Color::white().withAlpha(m_opacity));
+            }
+            if (m_font && !m_widgetHeader.empty()) {
+                const float scale = 0.52f * s;
+                const float w = m_font->measure(m_widgetHeader).x * scale;
+                ren.drawText(m_widgetHeader,
+                             {inner.x + (inner.width - w) * 0.5f, inner.bottom() - labelH - 6.f * s}, m_font,
+                             nxui::Color::white().withAlpha(0.94f * m_opacity), scale);
+            }
+            return;
+        }
+
         if (m_widgetType == switchu::widgets::WidgetType::RecentPlaytime) {
             ren.drawRoundedRect(inner, m_loadingColor.withAlpha(0.13f * m_opacity),
                                 std::max(9.f, rad - 5.f));

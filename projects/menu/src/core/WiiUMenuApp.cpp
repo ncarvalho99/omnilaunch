@@ -849,6 +849,8 @@ bool WiiUMenuApp::onCreate() {
 // the reboot, leaving the console black and needing RCM.
 void WiiUMenuApp::quiesceWritersForPowerAction() {
     m_browserFetch.stop();
+    m_launcherFetch.stop();
+    stopLauncherHomebrewJob();
     if (m_configSaveFuture.valid())
         m_configSaveFuture.get();
     if (m_themePackageTransferFuture.valid()) {
@@ -913,6 +915,8 @@ void WiiUMenuApp::onDestroy() {
     m_appLoader.setPendingTransform({});
     m_iconStreamer.cancelPending();
     m_browserFetch.stop();
+    m_launcherFetch.stop();
+    stopLauncherHomebrewJob();
 
     // Release frontend-owned background media (frames, arena, video player)
     // on the render thread before Activity destruction so GPU image memory
@@ -2767,7 +2771,7 @@ void WiiUMenuApp::updateGridXmbContext() {
     // Internet Settings shortcut under a false Web Browser label; layoutXmb()
     // only adds the browser row when this callback is present.
     ctx.onOpenWebBrowser = {};
-    ctx.onOpenHbMenu = [this]() { m_launcher.launchAlbum(); };
+    ctx.onOpenHbMenu = [this]() { openHomebrewLauncher(); };
 
     m_grid->setXmbContext(ctx);
 }
@@ -3545,6 +3549,10 @@ std::string WiiUMenuApp::widgetTypeLabel(switchu::widgets::WidgetType type) cons
             return i18n.tr("widget.image_pin", "Image pin");
         case switchu::widgets::WidgetType::Batteries:
             return i18n.tr("widget.batteries", "Batteries");
+        case switchu::widgets::WidgetType::HomebrewApps:
+            return i18n.tr("cards.page_homebrew", "Homebrew");
+        case switchu::widgets::WidgetType::SystemApplets:
+            return i18n.tr("widget.system_applets", "System");
     }
     return i18n.tr("widget.title", "Widget");
 }
@@ -4680,7 +4688,9 @@ void WiiUMenuApp::showWidgetTypeMenu(int targetSlot, const nxui::Rect& anchor) {
                       switchu::widgets::WidgetType::RecentlyPlayed,
                       switchu::widgets::WidgetType::RecentPlaytime,
                       switchu::widgets::WidgetType::ImagePin,
-                      switchu::widgets::WidgetType::Batteries}) {
+                      switchu::widgets::WidgetType::Batteries,
+                      switchu::widgets::WidgetType::HomebrewApps,
+                      switchu::widgets::WidgetType::SystemApplets}) {
         if (switchu::widgets::supportedSizes(type, m_appLayoutMode).empty())
             continue;
         items.push_back({widgetTypeLabel(type),
@@ -5794,6 +5804,28 @@ std::shared_ptr<GlossyIcon> WiiUMenuApp::makeIcon(const AppEntry& entry) {
                                       &m_batteryControllerTex);
         icon->setConsoleBattery(m_consoleBatteryPercent, m_consoleBatteryCharging);
         icon->setWidgetHeader(widgetTypeLabel(entry.widgetType));
+        if (switchu::widgets::isLauncherWidget(entry.widgetType)) {
+            // F4: the Cards Homebrew page and Nintendo tiles as Classic tiles.
+            ensureXmbTextures();
+            const bool hb = entry.widgetType == switchu::widgets::WidgetType::HomebrewApps;
+            nxui::Texture* picture = hb ? &m_xmbHomebrewTex : &m_xmbSettingsTex;
+            icon->setWidgetData(entry.widgetType, entry.widgetColumns, entry.widgetRows,
+                                std::string(), std::string(), std::string(), nullptr, nullptr, true);
+            icon->setWidgetGameTextures(0, nullptr, nullptr, picture->valid() ? picture : nullptr);
+            icon->setNotLaunchable(false);
+            icon->setAccessibilityLabel(widgetTypeLabel(entry.widgetType));
+            icon->setAccessibilityRole(widgetI18n.tr("widget.title", "Widget"));
+            icon->setAccessibilityHint(widgetI18n.tr("widget.launcher_hint",
+                                                     "A to open. Plus for options. Y to move."));
+            icon->setOnActivate([this, hb]() {
+                m_audio.playSfx(Sfx::Activate);
+                if (hb)
+                    openHomebrewLauncher();
+                else
+                    openSystemLauncher();
+            });
+            return icon;
+        }
 
         std::string primary;
         std::string secondary;
@@ -8415,6 +8447,7 @@ void WiiUMenuApp::onUpdate(float dt) {
     syncUpdateCheck();
     syncUpdateDownload();
     syncBrowserFetch();
+    syncLauncherWork();
     if (!lockScreenUp)
         handleFrontendSwitchHold(dt);
 #ifdef SWITCHU_MENU
@@ -9263,6 +9296,8 @@ std::vector<WiiUMenuApp::ActionHint> WiiUMenuApp::buildActionHints() {
                 if (m_openFolderId == 0)
                     add(buttonGlyph(nxui::Button::Y), i18n.tr("hint.move", "Move"));
             } else if (entry && entry->isWidget()) {
+                if (switchu::widgets::isLauncherWidget(entry->widgetType))
+                    add(buttonGlyph(nxui::Button::A), i18n.tr("hint.open", "Open"));
                 add(buttonGlyph(nxui::Button::Plus), i18n.tr("hint.options", "Options"));
                 if (m_openFolderId == 0)
                     add(buttonGlyph(nxui::Button::Y), i18n.tr("hint.move", "Move"));

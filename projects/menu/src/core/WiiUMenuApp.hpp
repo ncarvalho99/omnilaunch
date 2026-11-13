@@ -509,6 +509,29 @@ private:
     void syncBrowserFetch();
     home::AppFetch m_browserFetch;
     bool m_browserOpenWhenReady = false;
+    // F4 launcher tiles (WiiUMenuAppLaunchers.cpp): the Cards Homebrew page and
+    // Nintendo tiles in Classic, shown in a list screen opened from a tile.
+    void openHomebrewLauncher();
+    void openSystemLauncher();
+    void ensureLauncherScreen();
+    void openSystemApplet(int tile);
+    void launchHomebrewNro(const std::string& path, const std::string& title);
+    void showHomebrewEntryOptions(const std::string& path, const std::string& title,
+                                  const std::string& version);
+    void startLauncherHomebrewScan();
+    void startLauncherHomebrewJob(bool install, std::vector<std::string> paths);
+    void stopLauncherHomebrewJob();
+    void fetchLauncherApp(const std::string& url, const std::string& dest, const std::string& name);
+    void syncLauncherWork();
+    struct LauncherHbScan;
+    struct LauncherHbJob;
+    std::shared_ptr<ListDetailScreen> m_launcherScreen;
+    std::shared_ptr<LauncherHbScan> m_launcherScan;
+    std::future<void> m_launcherScanFuture;
+    std::shared_ptr<LauncherHbJob> m_launcherHbJob;
+    std::future<void> m_launcherHbFuture;
+    home::AppFetch m_launcherFetch;
+    bool m_launcherShowsHomebrew = false;
     void syncMediaCenterState();
     void refreshPlazaCommunities();
     void reloadThemePresets(bool forceFullScan = false);
