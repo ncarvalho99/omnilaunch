@@ -253,7 +253,7 @@ bool GpuDevice::createFramebuffers() {
         .setFlags(DkImageFlags_UsageRender | DkImageFlags_UsagePresent |
                   DkImageFlags_Usage2DEngine)
         .setFormat(DkImageFormat_RGBA8_Unorm)
-        .setDimensions(FB_WIDTH, FB_HEIGHT)
+        .setDimensions(physicalWidth(), physicalHeight())
         .initialize(fbLayout);
 
     uint64_t fbSize  = fbLayout.getSize();
@@ -281,7 +281,7 @@ bool GpuDevice::createDepthStencil() {
     dk::ImageLayoutMaker{m_dev}
         .setFlags(DkImageFlags_UsageRender)
         .setFormat(DkImageFormat_S8)
-        .setDimensions(FB_WIDTH, FB_HEIGHT)
+        .setDimensions(physicalWidth(), physicalHeight())
         .initialize(dsLayout);
 
     uint32_t dsSize = dsLayout.getSize();
@@ -429,7 +429,8 @@ void GpuDevice::endFrame() {
 
     if (m_frameDumpArmed && m_frameDumpBuffers[0] && m_frameDumpBuffers[1]) {
         auto& cmd = m_cmdbuf[m_slot];
-        const DkImageRect rect{0, 0, 0, (uint32_t)FB_WIDTH, (uint32_t)FB_HEIGHT, 1};
+        const uint32_t dumpW = (uint32_t)physicalWidth(), dumpH = (uint32_t)physicalHeight();
+        const DkImageRect rect{0, 0, 0, dumpW, dumpH, 1};
         cmd.barrier(DkBarrier_Full, DkInvalidateFlags_Image);
         // Both copies read the same image with the same barriers around them,
         // so any difference between them is produced by the readback path
@@ -438,8 +439,8 @@ void GpuDevice::endFrame() {
             cmd.copyImageToBuffer(
                 dk::ImageView{m_fbImages[m_slot]}, rect,
                 DkCopyBuf{m_frameDumpBuffers[i].getGpuAddr(),
-                          (uint32_t)(FB_WIDTH * 4u),
-                          (uint32_t)(FB_WIDTH * FB_HEIGHT * 4u)});
+                          dumpW * 4u,
+                          dumpW * dumpH * 4u});
             cmd.barrier(DkBarrier_Full, DkInvalidateFlags_Image);
         }
         cmd.barrier(DkBarrier_Full, DkInvalidateFlags_L2Cache);
@@ -470,7 +471,7 @@ void GpuDevice::endFrame() {
 
 bool GpuDevice::requestFrameDump() {
     if (!m_frameDumpBuffers[0] || !m_frameDumpBuffers[1]) {
-        constexpr uint32_t frameDumpSize = FB_WIDTH * FB_HEIGHT * 4u;
+        const uint32_t frameDumpSize = (uint32_t)(physicalWidth() * physicalHeight() * 4);
         for (int i = 0; i < 2; ++i) {
             traceAlloc("frame-dump", frameDumpSize);
             m_frameDumpBuffers[i] = dk::MemBlockMaker{m_dev, frameDumpSize}
@@ -497,7 +498,7 @@ bool GpuDevice::takeFrameDump(std::vector<std::uint8_t>& rgba) {
     // endFrame submitted the copy before present. A dump is diagnostic and
     // deliberately trades one visible hitch for an exact, fully-composed frame.
     m_queue.waitIdle();
-    constexpr uint32_t kBytes = FB_WIDTH * FB_HEIGHT * 4u;
+    const uint32_t kBytes = (uint32_t)(physicalWidth() * physicalHeight() * 4);
     const auto* a = static_cast<const std::uint8_t*>(m_frameDumpBuffers[0].getCpuAddr());
     const auto* b = static_cast<const std::uint8_t*>(m_frameDumpBuffers[1].getCpuAddr());
 
@@ -601,6 +602,8 @@ bool GpuDevice::downloadFramebufferRgba(std::vector<uint8_t>& outRgba,
 
     const int fullW = FB_WIDTH;
     const int fullH = FB_HEIGHT;
+    const uint32_t srcW = (uint32_t)physicalWidth();
+    const uint32_t srcH = (uint32_t)physicalHeight();
     const bool useHalf = halfRes && m_offscreenReady;
     outW = useHalf ? fullW / 2 : fullW;
     outH = useHalf ? fullH / 2 : fullH;
@@ -647,9 +650,7 @@ bool GpuDevice::downloadFramebufferRgba(std::vector<uint8_t>& outRgba,
     cmd.barrier(DkBarrier_Full, DkInvalidateFlags_Image);
     if (useHalf) {
         dk::ImageView dstView{m_offImages[0]};
-        const DkImageRect srcRect{0, 0, 0,
-                                  static_cast<uint32_t>(fullW),
-                                  static_cast<uint32_t>(fullH), 1};
+        const DkImageRect srcRect{0, 0, 0, srcW, srcH, 1};
         const DkImageRect dstRect{0, 0, 0,
                                   static_cast<uint32_t>(outW),
                                   static_cast<uint32_t>(outH), 1};
@@ -658,10 +659,11 @@ bool GpuDevice::downloadFramebufferRgba(std::vector<uint8_t>& outRgba,
         srcView = dk::ImageView{m_offImages[0]};
     } else {
         dk::ImageView dstView{tempImage};
+        const DkImageRect srcRect{0, 0, 0, srcW, srcH, 1};
         const DkImageRect rect{0, 0, 0,
                                static_cast<uint32_t>(fullW),
                                static_cast<uint32_t>(fullH), 1};
-        cmd.blitImage(srcView, rect, dstView, rect, 0);
+        cmd.blitImage(srcView, srcRect, dstView, rect, 0);
         cmd.barrier(DkBarrier_Full, DkInvalidateFlags_Image);
         srcView = dstView;
     }
@@ -708,12 +710,13 @@ void GpuDevice::beginBulkTeardown() {
 
 uint64_t GpuDevice::s_imageBudget = GpuDevice::kDefaultImageBudget;
 
+
 dk::UniqueMemBlock GpuDevice::allocImageMemory(uint32_t size) {
     size = (size + kGpuAlign - 1) & ~(kGpuAlign - 1);
-    if (m_imageMemUsed + size > s_imageBudget) {
+    if (m_imageMemUsed + size > imageBudget()) {
         std::fprintf(stderr, "[GpuDevice] image budget exceeded (%llu + %u > %llu), skipping\n",
                      (unsigned long long)m_imageMemUsed, size,
-                     (unsigned long long)s_imageBudget);
+                     (unsigned long long)imageBudget());
         return {};  // return empty MemBlock — caller should check validity
     }
     // Do not treat TotalMemorySize - UsedMemorySize as malloc headroom here.
@@ -723,7 +726,7 @@ dk::UniqueMemBlock GpuDevice::allocImageMemory(uint32_t size) {
     // allocation below is the authoritative availability test.
 
     if (size >= kTraceMinBytes)
-        traceAlloc("image", size, m_imageMemUsed, s_imageBudget, m_imageChunks.size());
+        traceAlloc("image", size, m_imageMemUsed, imageBudget(), m_imageChunks.size());
     auto blk = dk::MemBlockMaker{m_dev, size}
         .setFlags(DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image)
         .create();
@@ -751,10 +754,10 @@ void GpuDevice::freeImageMemory(uint32_t size) {
 GpuDevice::ImageAlloc GpuDevice::allocImageFromPool(uint32_t size, uint32_t alignment) {
     if (alignment < kGpuAlign) alignment = kGpuAlign;
     size = (size + kGpuAlign - 1) & ~(kGpuAlign - 1);
-    if (m_imageMemUsed + size > s_imageBudget) {
+    if (m_imageMemUsed + size > imageBudget()) {
         std::fprintf(stderr, "[GpuDevice] pool budget exceeded (%llu + %u > %llu)\n",
                      (unsigned long long)m_imageMemUsed, size,
-                     (unsigned long long)s_imageBudget);
+                     (unsigned long long)imageBudget());
         return {};
     }
     // Try to fit in an existing chunk
@@ -770,7 +773,7 @@ GpuDevice::ImageAlloc GpuDevice::allocImageFromPool(uint32_t size, uint32_t alig
     // Allocate a new chunk
     uint32_t chunkSize = std::max(kImageChunkSize, size);
     chunkSize = (chunkSize + kGpuAlign - 1) & ~(kGpuAlign - 1);
-    traceAlloc("pool-chunk", chunkSize, m_imageMemUsed, s_imageBudget, m_imageChunks.size());
+    traceAlloc("pool-chunk", chunkSize, m_imageMemUsed, imageBudget(), m_imageChunks.size());
     auto blk = dk::MemBlockMaker{m_dev, chunkSize}
         .setFlags(DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image)
         .create();
@@ -869,7 +872,7 @@ bool GpuDevice::uploadTexture(dk::Image& dst, const void* pixels, uint32_t size,
         srcGpu = m_uploadStagingPool[slot].gpuAddr(offset);
     } else {
         const uint32_t allocSize = (uploadBytes + kGpuAlign - 1) & ~(kGpuAlign - 1);
-        traceAlloc("upload-staging", allocSize, m_imageMemUsed, s_imageBudget, m_imageChunks.size());
+        traceAlloc("upload-staging", allocSize, m_imageMemUsed, imageBudget(), m_imageChunks.size());
         m_uploadTempStaging[slot] = dk::MemBlockMaker{m_dev, allocSize}
             .setFlags(DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached)
             .create();
@@ -971,10 +974,10 @@ void GpuDevice::shutdown() {
 GpuDevice::ImageAlloc GpuDevice::allocFromArena(ImageArena& arena, uint32_t size, uint32_t alignment) {
     if (alignment < kGpuAlign) alignment = kGpuAlign;
     size = (size + kGpuAlign - 1) & ~(kGpuAlign - 1);
-    if (m_imageMemUsed + size > s_imageBudget) {
+    if (m_imageMemUsed + size > imageBudget()) {
         std::fprintf(stderr, "[GpuDevice] arena budget exceeded (%llu + %u > %llu)\n",
                      (unsigned long long)m_imageMemUsed, size,
-                     (unsigned long long)s_imageBudget);
+                     (unsigned long long)imageBudget());
         return {};
     }
     if (!arena.chunks.empty()) {
@@ -989,7 +992,7 @@ GpuDevice::ImageAlloc GpuDevice::allocFromArena(ImageArena& arena, uint32_t size
     }
     uint32_t chunkSize = std::max(kArenaChunkSize, size);
     chunkSize = (chunkSize + kGpuAlign - 1) & ~(kGpuAlign - 1);
-    traceAlloc("arena-chunk", chunkSize, m_imageMemUsed, s_imageBudget, arena.chunks.size());
+    traceAlloc("arena-chunk", chunkSize, m_imageMemUsed, imageBudget(), arena.chunks.size());
     GpuPool pool;
     pool.create(m_dev, chunkSize, DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image);
     if (!pool.block) {

@@ -463,6 +463,7 @@ private:
     void updateProjection();
     void bindRenderTarget(int offscreenIdx, float logicalW = 0.f, float logicalH = 0.f);
     void restoreRenderTarget();
+    DkScissor physicalScissor(const Rect& r) const;
 #endif
 
     GpuDevice& m_gpu;

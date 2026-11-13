@@ -2257,6 +2257,15 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
             settings::system_prefs::setTvResolution((settings::system_prefs::tvResolution() + d + n) % n);
         };
         s.rows.push_back(std::move(tvRes));
+        Row native;
+        native.label = i18n.tr("settings.omnilaunch.docked_1080p", "1080p on the TV");
+        native.detail = i18n.tr("settings.omnilaunch.docked_1080p_desc",
+            "Docked, HOME is drawn at 1920x1080. Sharper, uses more memory. Applies the next time HOME starts.");
+        native.toggle = []() { return settings::system_prefs::dockedNativeRender(); };
+        native.onChange = [](int) {
+            settings::system_prefs::setDockedNativeRender(!settings::system_prefs::dockedNativeRender());
+        };
+        s.rows.push_back(std::move(native));
 #endif
         Row tut;
         tut.label = i18n.tr("cards.set_tutorial", "Show the welcome tour again");

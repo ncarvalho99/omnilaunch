@@ -39,4 +39,10 @@ Result setManualDateTime(const DateTime& value);
 /// True when the user clock is corrected from the network.
 bool internetTimeSync();
 
+/// Docked 1080p rendering (J2): HOME draws at 1920x1080 on a TV instead of
+/// scaling a 1280x720 frame. Read when HOME starts, so a change applies at the
+/// next start. Off by default.
+bool dockedNativeRender();
+bool setDockedNativeRender(bool enabled);
+
 } // namespace settings::system_prefs

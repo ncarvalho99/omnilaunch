@@ -2,6 +2,8 @@
 #include "smi_commands.hpp"
 #include <algorithm>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 
 namespace settings::system_prefs {
 
@@ -92,6 +94,24 @@ Result setManualDateTime(const DateTime& value) {
 bool internetTimeSync() {
     bool on = false;
     return R_SUCCEEDED(setsysIsUserSystemClockAutomaticCorrectionEnabled(&on)) && on;
+}
+
+namespace {
+constexpr const char* kDockedNativeFlag = "sdmc:/config/OmniLaunch/docked_1080p";
+}
+
+bool dockedNativeRender() {
+    std::error_code ec;
+    return std::filesystem::exists(kDockedNativeFlag, ec);
+}
+
+bool setDockedNativeRender(bool enabled) {
+    std::error_code ec;
+    if (!enabled)
+        return std::filesystem::remove(kDockedNativeFlag, ec) || !std::filesystem::exists(kDockedNativeFlag, ec);
+    std::filesystem::create_directories("sdmc:/config/OmniLaunch", ec);
+    std::ofstream(kDockedNativeFlag) << "1";
+    return dockedNativeRender();
 }
 
 } // namespace settings::system_prefs

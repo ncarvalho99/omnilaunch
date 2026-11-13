@@ -673,12 +673,14 @@ void WiiUMenuApp::syncFrameDumpCapture() {
         });
 
         // Offload lossless zlib compression and writing to the background thread pool
-        m_threadPool.submit([outPath, data = std::move(pixels)]() {
+        const uint32_t dumpW = static_cast<uint32_t>(app().gpu().fbWidth());
+        const uint32_t dumpH = static_cast<uint32_t>(app().gpu().fbHeight());
+        m_threadPool.submit([outPath, dumpW, dumpH, data = std::move(pixels)]() {
             uLongf compBound = compressBound(static_cast<uLong>(data.size()));
             std::vector<std::uint8_t> compBuf(16 + compBound);
             std::memcpy(compBuf.data(), "ZRAW", 4);
-            const uint32_t w = 1280;
-            const uint32_t h = 720;
+            const uint32_t w = dumpW;
+            const uint32_t h = dumpH;
             const uint32_t rawSize = static_cast<uint32_t>(data.size());
             std::memcpy(compBuf.data() + 4, &w, 4);
             std::memcpy(compBuf.data() + 8, &h, 4);

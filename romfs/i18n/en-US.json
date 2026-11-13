@@ -237,7 +237,9 @@
       "icon_size": "Icon size",
       "icon_size_desc": "Size of the HOME icons in the Classic views (grid, line and Flow).",
       "sidebar_size": "Side button size",
-      "sidebar_size_desc": "Size of the buttons in the Classic side columns."
+      "sidebar_size_desc": "Size of the buttons in the Classic side columns.",
+      "docked_1080p": "1080p on the TV",
+      "docked_1080p_desc": "Docked, HOME is drawn at 1920x1080. Sharper, uses more memory. Applies the next time HOME starts."
     },
     "layout": {
       "grid": "Grid",

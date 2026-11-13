@@ -34,7 +34,8 @@ bool Font::load(GpuDevice& gpu, Renderer& ren,
         return false;
     }
     SDL_RWops* rw = SDL_RWFromConstMem(data.data(), static_cast<int>(data.size()));
-    TTF_Font* newFont = rw ? TTF_OpenFontRW(rw, 1, ptSize) : nullptr;
+    const int rasterPt = static_cast<int>(ptSize * GpuDevice::renderScale() + 0.5f);
+    TTF_Font* newFont = rw ? TTF_OpenFontRW(rw, 1, rasterPt) : nullptr;
     if (!newFont) {
         // SDL_ttf closes the stream itself on failure when freesrc is set
         // (SDL_ttf 2.0.15+), so it is not closed again here.
@@ -50,7 +51,8 @@ bool Font::loadFromMemory(GpuDevice& gpu, Renderer& ren,
                           const void* data, std::size_t size, int ptSize)
 {
     SDL_RWops* rw = SDL_RWFromConstMem(data, static_cast<int>(size));
-    TTF_Font* newFont = rw ? TTF_OpenFontRW(rw, 1, ptSize) : nullptr;
+    const int rasterPt = static_cast<int>(ptSize * GpuDevice::renderScale() + 0.5f);
+    TTF_Font* newFont = rw ? TTF_OpenFontRW(rw, 1, rasterPt) : nullptr;
     if (!newFont) {
         std::fprintf(stderr, "[Font] TTF_OpenFontRW failed: %s\n", TTF_GetError());
         return false;
@@ -72,6 +74,8 @@ void Font::adopt(GpuDevice& gpu, Renderer& ren, TTF_Font* newFont, int ptSize) {
     m_gpu = &gpu;
     m_ren = &ren;
     m_ptSize = ptSize;
+    // Text is laid out in logical pixels; a 1.5x frame gets 1.5x glyphs.
+    m_rasterScale = GpuDevice::renderScale();
     ++m_revision;
     clearCache();
 }
@@ -82,14 +86,14 @@ Vec2 Font::measure(const std::string& text) const {
     // SDL_ttf again for every label on every frame.
     const auto cached = m_lruMap.find(text);
     if (cached != m_lruMap.end())
-        return {static_cast<float>(cached->second->w),
-                static_cast<float>(cached->second->h)};
+        return {static_cast<float>(cached->second->w) / m_rasterScale,
+                static_cast<float>(cached->second->h) / m_rasterScale};
     const auto known = m_measureCache.find(text);
     if (known != m_measureCache.end())
         return known->second;
     int w = 0, h = 0;
     TTF_SizeUTF8(m_font, text.c_str(), &w, &h);
-    const Vec2 size{(float)w, (float)h};
+    const Vec2 size{(float)w / m_rasterScale, (float)h / m_rasterScale};
     // Wrapped-text layout measures every growing prefix of a line, every
     // frame; keep the answers. Bounded: cleared when it grows past the cap.
     if (m_measureCache.size() >= kMeasureCacheMax)
@@ -194,8 +198,8 @@ void Font::draw(Renderer& ren, const std::string& text,
     Texture* tex = getOrRender(*m_gpu, ren, text);
     if (!tex || !tex->valid()) return;
 
-    float w = tex->width()  * scale;
-    float h = tex->height() * scale;
+    float w = tex->width()  * scale / m_rasterScale;
+    float h = tex->height() * scale / m_rasterScale;
     ren.drawTexture(tex, {pos.x, pos.y, w, h}, color);
 }
 

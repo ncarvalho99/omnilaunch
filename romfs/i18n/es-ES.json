@@ -238,7 +238,9 @@
       "icon_size": "Tamaño de los iconos",
       "icon_size_desc": "Tamaño de los iconos del HOME en las vistas de Classic (cuadrícula, línea y Flow).",
       "sidebar_size": "Tamaño de los botones laterales",
-      "sidebar_size_desc": "Tamaño de los botones de las columnas laterales de Classic."
+      "sidebar_size_desc": "Tamaño de los botones de las columnas laterales de Classic.",
+      "docked_1080p": "1080p en la TV",
+      "docked_1080p_desc": "En la base, HOME se dibuja a 1920x1080. Más nítido, usa más memoria. Se aplica la próxima vez que se inicie HOME."
     },
     "layout": {
       "grid": "Cuadrícula",

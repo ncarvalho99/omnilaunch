@@ -237,7 +237,9 @@
       "icon_size": "Taille des icônes",
       "icon_size_desc": "Taille des icônes du HOME dans les vues Classic (grille, ligne et Flow).",
       "sidebar_size": "Taille des boutons latéraux",
-      "sidebar_size_desc": "Taille des boutons des colonnes latérales de Classic."
+      "sidebar_size_desc": "Taille des boutons des colonnes latérales de Classic.",
+      "docked_1080p": "1080p sur la TV",
+      "docked_1080p_desc": "Sur la station, HOME est dessiné en 1920x1080. Plus net, utilise plus de mémoire. S'applique au prochain démarrage de HOME."
     },
     "layout": {
       "grid": "Grille",

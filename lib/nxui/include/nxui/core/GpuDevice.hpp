@@ -58,9 +58,23 @@ struct GpuPool {
 
 class GpuDevice {
 public:
+    // Logical layout size: every coordinate the UI passes is in 1280x720.
     static constexpr int FB_WIDTH  = 1280;
     static constexpr int FB_HEIGHT = 720;
     static constexpr int NUM_FB    = 2;
+
+    // Render scale (homenx_todo J2): the framebuffers and the offscreen targets
+    // are created at FB_* times this (1.5 = native 1080p docked). Layout,
+    // projection and width()/height() stay logical; viewports, scissors and
+    // blits use the physical size. Set once, before initialize().
+    static float renderScale() { return s_renderScale; }
+    static inline void setRenderScale(float scale);
+    static int physicalWidth()  { return (int)(FB_WIDTH * s_renderScale + 0.5f); }
+    static int physicalHeight() { return (int)(FB_HEIGHT * s_renderScale + 0.5f); }
+    /// Bytes of render targets (framebuffers, depth, offscreen) at a scale.
+    static inline uint64_t renderTargetBytes(float scale);
+    static inline float s_renderScale = 1.f;
+    static inline uint64_t s_renderTargetExtra = 0; // render-target bytes above scale 1
 
     static constexpr int MAX_TEXTURES   = 2048;
     static constexpr int MAX_SAMPLERS   = 16;
@@ -167,6 +181,8 @@ public:
 
     int  width()  const { return FB_WIDTH; }
     int  height() const { return FB_HEIGHT; }
+    int  fbWidth()  const { return physicalWidth(); }
+    int  fbHeight() const { return physicalHeight(); }
 
 #ifdef NXUI_BACKEND_DEKO3D
     // deko3d-specific accessors
@@ -277,7 +293,11 @@ public:
     static DebugSink debugSink()            { return s_debugSink; }
     static void setDebugSink(DebugSink s)   { s_debugSink = s; }
 
-    static uint64_t imageBudget()          { return s_imageBudget; }
+    // Larger render targets come out of the same heap as images, so the extra
+    // they take at a render scale above 1 is taken off the image budget.
+    static uint64_t imageBudget() {
+        return s_imageBudget > s_renderTargetExtra ? s_imageBudget - s_renderTargetExtra : 0;
+    }
     static void setImageBudget(uint64_t b) { s_imageBudget = b; }
 
     uint64_t imageMemoryUsed() const { return m_imageMemUsed; }
@@ -335,8 +355,8 @@ public:
     static constexpr bool offscreenIsOverlay(int i) {
         return i != OFF_SCENE && i != OFF_BG_BLUR;
     }
-    static constexpr int  offscreenWidth(int i)  { return offscreenIsFullRes(i) ? FB_WIDTH  : FB_WIDTH  / 2; }
-    static constexpr int  offscreenHeight(int i) { return offscreenIsFullRes(i) ? FB_HEIGHT : FB_HEIGHT / 2; }
+    static int offscreenWidth(int i)  { return offscreenIsFullRes(i) ? physicalWidth()  : physicalWidth()  / 2; }
+    static int offscreenHeight(int i) { return offscreenIsFullRes(i) ? physicalHeight() : physicalHeight() / 2; }
 
     dk::Image&       offscreenImage(int i)       { return m_offImages[i]; }
     const dk::Image& offscreenImage(int i) const { return m_offImages[i]; }
@@ -479,5 +499,22 @@ private:
     uint64_t m_lastFenceWaitNs = 0;
     bool m_bulkTeardown = false;
 };
+
+inline uint64_t GpuDevice::renderTargetBytes(float scale) {
+    const uint64_t w = (uint64_t)(FB_WIDTH * scale + 0.5f);
+    const uint64_t h = (uint64_t)(FB_HEIGHT * scale + 0.5f);
+    const uint64_t full = w * h * 4u;
+    const uint64_t half = (w / 2u) * (h / 2u) * 4u;
+    // NUM_FB framebuffers, five full-res and two half-res offscreen targets
+    // (OFF_SCENE, OFF_BG_BLUR), and the S8 depth-stencil.
+    return full * (uint64_t)(NUM_FB + 5) + half * 2u + w * h;
+}
+
+inline void GpuDevice::setRenderScale(float scale) {
+    s_renderScale = scale < 1.f ? 1.f : (scale > 1.5f ? 1.5f : scale);
+    const uint64_t at = renderTargetBytes(s_renderScale);
+    const uint64_t base = renderTargetBytes(1.f);
+    s_renderTargetExtra = at > base ? at - base : 0;
+}
 
 } // namespace nxui

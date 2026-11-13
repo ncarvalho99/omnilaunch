@@ -411,8 +411,9 @@ void DebugImGuiOverlay::renderDrawData(nxui::Renderer& ren, ImDrawData* drawData
     dk::ImageView colorTarget{gpu.fbImage(slot)};
     dk::ImageView dsTarget{gpu.dsImage()};
     cmd.bindRenderTargets(&colorTarget, &dsTarget);
-    cmd.setViewports(0, DkViewport{0.0f, 0.0f, (float)gpu.width(), (float)gpu.height(), 0.0f, 1.0f});
-    cmd.setScissors(0, DkScissor{0, 0, (uint32_t)gpu.width(), (uint32_t)gpu.height()});
+    cmd.setViewports(0, DkViewport{0.0f, 0.0f, (float)gpu.fbWidth(), (float)gpu.fbHeight(), 0.0f, 1.0f});
+    cmd.setScissors(0, DkScissor{0, 0, (uint32_t)gpu.fbWidth(), (uint32_t)gpu.fbHeight()});
+    const float clipScale = nxui::GpuDevice::renderScale();
     cmd.bindShaders(DkStageFlag_GraphicsMask, {&m_vertexShader, &m_fragmentShader});
     cmd.bindRasterizerState(dk::RasterizerState{}.setCullMode(DkFace_None));
     cmd.bindColorState(dk::ColorState{}.setBlendEnable(0, true));
@@ -477,8 +478,9 @@ void DebugImGuiOverlay::renderDrawData(nxui::Renderer& ren, ImDrawData* drawData
             }
 
             int texSlot = (int)(intptr_t)drawCmd.GetTexID();
-            cmd.setScissors(0, DkScissor{(uint32_t)clipX, (uint32_t)clipY,
-                                         (uint32_t)(clipZ - clipX), (uint32_t)(clipW - clipY)});
+            cmd.setScissors(0, DkScissor{(uint32_t)(clipX * clipScale), (uint32_t)(clipY * clipScale),
+                                         (uint32_t)((clipZ - clipX) * clipScale),
+                                         (uint32_t)((clipW - clipY) * clipScale)});
             cmd.bindTextures(DkStage_Fragment, 0, dkMakeTextureHandle(texSlot, 0));
             cmd.drawIndexed(DkPrimitive_Triangles,
                             drawCmd.ElemCount,

@@ -237,7 +237,9 @@
       "icon_size": "Pictogramgrootte",
       "icon_size_desc": "Grootte van de HOME-pictogrammen in de Classic-weergaven (raster, rij en Flow).",
       "sidebar_size": "Grootte zijknoppen",
-      "sidebar_size_desc": "Grootte van de knoppen in de zijkolommen van Classic."
+      "sidebar_size_desc": "Grootte van de knoppen in de zijkolommen van Classic.",
+      "docked_1080p": "1080p op de tv",
+      "docked_1080p_desc": "In het dock wordt HOME op 1920x1080 getekend. Scherper, gebruikt meer geheugen. Geldt vanaf de volgende start van HOME."
     },
     "layout": {
       "grid": "Raster",

@@ -1,4 +1,5 @@
 #include "ThemeShopTabBuilders.hpp"
+#include "settings/SystemPrefs.hpp"
 #include <nxui/core/I18n.hpp>
 #include <algorithm>
 #include <cmath>
@@ -137,6 +138,19 @@ ThemeShopScreen::Tab OmniLaunchTab::build(ThemeShopScreen& screen) {
                 std::filesystem::remove(kAppletFlag, err);
             else
                 std::ofstream(kAppletFlag) << "settings";
+        };
+        t.items.push_back(std::move(it));
+    }
+    {
+        SettingItem it;
+        it.label = i18n.tr("settings.omnilaunch.docked_1080p", "1080p on the TV");
+        it.description = i18n.tr("settings.omnilaunch.docked_1080p_desc",
+            "Docked, HOME is drawn at 1920x1080. Sharper, uses more memory. Applies the next time HOME starts.");
+        it.type = ItemType::Toggle;
+        it.boolVal = settings::system_prefs::dockedNativeRender();
+        it.onChange = [](SettingItem& self) {
+            if (settings::system_prefs::setDockedNativeRender(self.boolVal) != self.boolVal)
+                self.boolVal = !self.boolVal;
         };
         t.items.push_back(std::move(it));
     }

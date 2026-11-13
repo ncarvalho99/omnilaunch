@@ -237,7 +237,9 @@
       "icon_size": "Symbolgröße",
       "icon_size_desc": "Größe der HOME-Symbole in den Classic-Ansichten (Raster, Zeile und Flow).",
       "sidebar_size": "Größe der Seitentasten",
-      "sidebar_size_desc": "Größe der Tasten in den seitlichen Spalten von Classic."
+      "sidebar_size_desc": "Größe der Tasten in den seitlichen Spalten von Classic.",
+      "docked_1080p": "1080p am Fernseher",
+      "docked_1080p_desc": "Im Dock wird HOME in 1920x1080 gezeichnet. Schärfer, braucht mehr Speicher. Gilt ab dem nächsten Start von HOME."
     },
     "layout": {
       "grid": "Raster",

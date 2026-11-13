@@ -13,6 +13,7 @@
 #include <switchu/file_log.hpp>
 #ifdef SWITCHU_MENU
 #include <nxui/core/GpuDevice.hpp>
+#include "settings/SystemPrefs.hpp"
 #include <nxui/core/Renderer.hpp>
 #include <switchu/smi_protocol.hpp>
 #endif
@@ -434,6 +435,14 @@ int main(int argc, char* argv[]) {
             DebugLog::log("%s", msg);
             switchu::FileLog::flush();
         });
+        // J2: native 1080p on a TV when the owner turned it on. The layer is
+        // already 1920x1080 (__appInit); handheld keeps the 720p frame.
+        if (settings::system_prefs::dockedNativeRender() &&
+            appletGetOperationMode() == AppletOperationMode_Console)
+            nxui::GpuDevice::setRenderScale(1.5f);
+        DebugLog::log("[menu] render %dx%d (scale %.2f, image budget %.1f MB)",
+                      nxui::GpuDevice::physicalWidth(), nxui::GpuDevice::physicalHeight(),
+                      nxui::GpuDevice::renderScale(), nxui::GpuDevice::imageBudget() / 1048576.0);
         if (app.initialize()) {
             if (homeCore.config().mtpEnabled) {
                 DebugLog::log("[menu] starting USB MTP server...");

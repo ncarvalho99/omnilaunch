@@ -68,6 +68,7 @@ private:
     static constexpr std::size_t kMeasureCacheMax = 4096;
     mutable std::unordered_map<std::string, Vec2> m_measureCache;
     int       m_ptSize = 0;
+    float     m_rasterScale = 1.f; // glyphs rasterized at ptSize * this
     GpuDevice* m_gpu = nullptr;
     Renderer*  m_ren = nullptr;
     std::uint64_t m_revision = 0;

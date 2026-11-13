@@ -237,7 +237,9 @@
       "icon_size": "Tamanho dos ícones",
       "icon_size_desc": "Tamanho dos ícones do HOME nas visualizações do Classic (grade, linha e Flow).",
       "sidebar_size": "Tamanho dos botões laterais",
-      "sidebar_size_desc": "Tamanho dos botões das colunas laterais do Classic."
+      "sidebar_size_desc": "Tamanho dos botões das colunas laterais do Classic.",
+      "docked_1080p": "1080p na TV",
+      "docked_1080p_desc": "Na base, o HOME é desenhado em 1920x1080. Mais nítido, usa mais memória. Vale na próxima vez que o HOME iniciar."
     },
     "layout": {
       "grid": "Grade",

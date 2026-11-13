@@ -20,6 +20,18 @@ static void ortho(float* m, float w, float h) {
     m[15] =  1.f;
 }
 
+// Logical (1280x720) rect to framebuffer pixels: outer edges rounded out so
+// a clip never cuts a pixel the logical rect touches.
+DkScissor Renderer::physicalScissor(const Rect& r) const {
+    const float s = GpuDevice::renderScale();
+    const float x0 = std::max(0.f, std::floor(r.x * s));
+    const float y0 = std::max(0.f, std::floor(r.y * s));
+    const float x1 = std::min((float)m_gpu.fbWidth(), std::ceil(r.right() * s));
+    const float y1 = std::min((float)m_gpu.fbHeight(), std::ceil(r.bottom() * s));
+    return DkScissor{(uint32_t)x0, (uint32_t)y0, (uint32_t)std::max(0.f, x1 - x0),
+                     (uint32_t)std::max(0.f, y1 - y0)};
+}
+
 Renderer::Renderer(GpuDevice& gpu) : m_gpu(gpu) {
     m_clipStack.reserve(8);
     // Reserved once, here, so that recording a frame never allocates: an
@@ -357,8 +369,8 @@ void Renderer::beginFrame() {
     cmd.bindRenderTargets(&colorTarget, &dsTarget);
 
     cmd.setViewports(0, DkViewport{0.f, 0.f,
-        (float)m_gpu.width(), (float)m_gpu.height(), 0.f, 1.f});
-    cmd.setScissors(0, DkScissor{0, 0, (uint32_t)m_gpu.width(), (uint32_t)m_gpu.height()});
+        (float)m_gpu.fbWidth(), (float)m_gpu.fbHeight(), 0.f, 1.f});
+    cmd.setScissors(0, DkScissor{0, 0, (uint32_t)m_gpu.fbWidth(), (uint32_t)m_gpu.fbHeight()});
 
     cmd.clearColor(0, DkColorMask_RGBA, 0.05f, 0.08f, 0.15f, 1.f);
     cmd.clearDepthStencil(false, 0.f, 0xFF, 0);
@@ -661,13 +673,11 @@ void Renderer::restoreRenderTarget() {
     cmd.bindRenderTargets(&colorTarget, &dsTarget);
 
     cmd.setViewports(0, DkViewport{0.f, 0.f,
-        (float)m_gpu.width(), (float)m_gpu.height(), 0.f, 1.f});
+        (float)m_gpu.fbWidth(), (float)m_gpu.fbHeight(), 0.f, 1.f});
     if (m_clipStack.empty()) {
-        cmd.setScissors(0, DkScissor{0, 0, (uint32_t)m_gpu.width(), (uint32_t)m_gpu.height()});
+        cmd.setScissors(0, DkScissor{0, 0, (uint32_t)m_gpu.fbWidth(), (uint32_t)m_gpu.fbHeight()});
     } else {
-        auto& r = m_clipStack.back();
-        cmd.setScissors(0, DkScissor{(uint32_t)std::max(0.f, r.x), (uint32_t)std::max(0.f, r.y),
-                                     (uint32_t)std::max(0.f, r.width), (uint32_t)std::max(0.f, r.height)});
+        cmd.setScissors(0, physicalScissor(m_clipStack.back()));
     }
 
     if (m_journalEnabled) {
@@ -719,8 +729,8 @@ void Renderer::captureToOffscreen(bool reuseIfValid) {
         0,
         0,
         0,
-        (uint32_t)m_gpu.width(),
-        (uint32_t)m_gpu.height(),
+        (uint32_t)m_gpu.fbWidth(),
+        (uint32_t)m_gpu.fbHeight(),
         1,
     };
     DkImageRect dstRect{
@@ -755,8 +765,8 @@ void Renderer::captureToOffscreenSharp() {
     dk::ImageView dst{m_gpu.offscreenImage(GpuDevice::OFF_SHARP_A)};
     DkImageRect rect{
         0, 0, 0,
-        (uint32_t)m_gpu.width(),
-        (uint32_t)m_gpu.height(),
+        (uint32_t)m_gpu.fbWidth(),
+        (uint32_t)m_gpu.fbHeight(),
         1,
     };
     cmd.blitImage(src, rect, dst, rect, 0);
@@ -1566,9 +1576,7 @@ void Renderer::pushClipRect(const Rect& r) {
         clip = {x0, y0, std::max(0.f, x1 - x0), std::max(0.f, y1 - y0)};
     }
     m_clipStack.push_back(clip);
-    m_gpu.cmdBuf().setScissors(0, DkScissor{
-        (uint32_t)std::max(0.f, clip.x), (uint32_t)std::max(0.f, clip.y),
-        (uint32_t)std::max(0.f, clip.width), (uint32_t)std::max(0.f, clip.height)});
+    m_gpu.cmdBuf().setScissors(0, physicalScissor(clip));
     if (m_journalEnabled) {
         m_journalScissor = clip;
         journalEvent(JournalKind::ClipPush);
@@ -1580,12 +1588,9 @@ void Renderer::popClipRect() {
     if (!m_clipStack.empty()) m_clipStack.pop_back();
     if (m_clipStack.empty()) {
         m_gpu.cmdBuf().setScissors(0, DkScissor{
-            0, 0, (uint32_t)m_gpu.width(), (uint32_t)m_gpu.height()});
+            0, 0, (uint32_t)m_gpu.fbWidth(), (uint32_t)m_gpu.fbHeight()});
     } else {
-        auto& r = m_clipStack.back();
-        m_gpu.cmdBuf().setScissors(0, DkScissor{
-            (uint32_t)std::max(0.f, r.x), (uint32_t)std::max(0.f, r.y),
-            (uint32_t)std::max(0.f, r.width), (uint32_t)std::max(0.f, r.height)});
+        m_gpu.cmdBuf().setScissors(0, physicalScissor(m_clipStack.back()));
     }
     if (m_journalEnabled) {
         m_journalScissor = m_clipStack.empty()
