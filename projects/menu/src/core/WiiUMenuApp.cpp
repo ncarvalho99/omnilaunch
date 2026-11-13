@@ -1652,7 +1652,8 @@ WiiUMenuApp::GridLayoutMetrics WiiUMenuApp::computeGridLayoutMetrics() const {
 }
 
 WiiUMenuApp::GridLayoutMetrics WiiUMenuApp::computeGridLayoutMetrics(int cols,
-                                                                      int rows) const {
+                                                                      int rows,
+                                                                      bool applyIconScale) const {
     cols = std::clamp(cols, 3, 8);
     rows = std::clamp(rows, 2, 5);
 
@@ -1664,15 +1665,45 @@ WiiUMenuApp::GridLayoutMetrics WiiUMenuApp::computeGridLayoutMetrics(int cols,
 
     const float scaleW = safeW / baseGridW;
     const float scaleH = safeH / baseGridH;
-    // The player's icon size scales the fitted size, never past the safe area.
-    const float user = std::clamp(m_config.iconScalePercent, 80, 130) / 100.f;
-    const float scale = std::min(std::min(scaleW, scaleH), std::min(1.f, std::min(scaleW, scaleH)) * user);
+    const float fit = std::min(1.f, std::min(scaleW, scaleH));
 
     GridLayoutMetrics m;
-    m.cellW = std::max(88.f, kGridBaseCellW * scale);
-    m.cellH = std::max(88.f, kGridBaseCellH * scale);
-    m.padX = std::max(8.f, kGridBasePadX * scale);
-    m.padY = std::max(8.f, kGridBasePadY * scale);
+    m.padX = std::max(8.f, kGridBasePadX * fit);
+    m.padY = std::max(8.f, kGridBasePadY * fit);
+    float cell = kGridBaseCellW * fit;
+
+    // Player icon size. Smaller simply shrinks the cells. Larger can never
+    // come from the default fit alone: at the default 5x3 the grid already
+    // fills the safe area, which is why 130 % used to change nothing. It
+    // takes the gutters down to their minimum and the space up to the page
+    // arrows (centre 152 px from the edge, 54 px wide) and the top bar /
+    // title pill instead, so the cap is what the columns and rows allow.
+    const float user = applyIconScale ? std::clamp(m_config.iconScalePercent, 80, 130) / 100.f : 1.f;
+    if (user < 1.f) {
+        cell *= user;
+    } else if (user > 1.f) {
+        constexpr float kGrownSideMargin = 186.f;
+        constexpr float kGrownTopBottomMargin = 8.f;
+        constexpr float kGrownPad = 8.f;
+        const float roomW = kGridRectW - kGrownSideMargin * 2.f;
+        const float roomH = kGridRectH - kGrownTopBottomMargin * 2.f;
+        const float maxCell = std::min((roomW - (cols - 1) * kGrownPad) / cols,
+                                       (roomH - (rows - 1) * kGrownPad) / rows);
+        const float want = cell * user;
+        if (want > cell && maxCell > cell) {
+            const float grown = std::min(want, maxCell);
+            // Gutters shrink in step with the growth actually taken.
+            const float t = (grown - cell) / std::max(1.f, want - cell);
+            m.padX = std::max(kGrownPad, m.padX + (kGrownPad - m.padX) * t);
+            m.padY = std::max(kGrownPad, m.padY + (kGrownPad - m.padY) * t);
+            cell = grown;
+        }
+    }
+    // A dense grid is already near the old 88 px floor; a smaller icon size
+    // gets a lower one so it still has an effect there.
+    const float floorPx = user < 1.f ? 64.f : 88.f;
+    m.cellW = std::max(floorPx, cell);
+    m.cellH = std::max(floorPx, cell * (kGridBaseCellH / kGridBaseCellW));
     return m;
 }
 
@@ -3163,7 +3194,7 @@ void WiiUMenuApp::applyDisplayModel(GridModel model, std::uint64_t focusId, bool
     int rows = std::clamp(m_config.gridRows, 2, 5);
     if (m_openFolderId != 0)
         std::tie(columns, rows) = folderGridDimensions(m_openFolderId);
-    auto metrics = computeGridLayoutMetrics(columns, rows);
+    auto metrics = computeGridLayoutMetrics(columns, rows, m_openFolderId == 0);
     if (m_openFolderId != 0) {
         // Reserve a real title band above and a title-pill band below. Scaling
         // the cells, rather than merely shrinking the grid rect, prevents the
@@ -9317,9 +9348,11 @@ std::vector<WiiUMenuApp::ActionHint> WiiUMenuApp::buildActionHints() {
             add(buttonGlyph(nxui::Button::LStick),
                 i18n.tr("quicksettings.hint_shortcut", "Quick Settings"));
         }
+        // The icon font holds only button glyphs: "(hold)" belongs in the
+        // label, or it renders as a row of missing-glyph boxes.
         if (m_openFolderId == 0)
-            add(buttonGlyph(nxui::Button::Minus) + " " + i18n.tr("hint.hold", "(hold)"),
-                i18n.tr("hint.switch_to_cards", "Cards"));
+            add(buttonGlyph(nxui::Button::Minus),
+                i18n.tr("hint.hold", "(hold)") + " " + i18n.tr("hint.switch_to_cards", "Cards"));
     }
     addVoiceControls();
 

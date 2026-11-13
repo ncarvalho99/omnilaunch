@@ -237,7 +237,10 @@ public:
     void setMetroUpTarget(nxui::Widget* target);
     /// Player icon size for the line and Flow views (grid cells come from
     /// the cell size given to setup()). 0.8..1.3.
-    void setItemScale(float scale) { m_itemScale = scale < 0.8f ? 0.8f : (scale > 1.3f ? 1.3f : scale); }
+    void setItemScale(float scale) {
+        m_itemScale = scale < 0.8f ? 0.8f : (scale > 1.3f ? 1.3f : scale);
+        m_lineLayoutCacheCount = -1; // line/Flow rects (focus, touch) re-placed next update
+    }
     void setMetroTileSpans(const std::unordered_map<std::uint64_t, std::pair<int, int>>& spans) {
         m_metroTileSpans = spans;
     }

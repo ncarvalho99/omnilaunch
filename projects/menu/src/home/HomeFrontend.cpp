@@ -1,6 +1,7 @@
 #include "home/HomeFrontend.hpp"
 #include "cards/CardsHomeActivity.hpp"
 #include "core/DebugLog.hpp"
+#include "core/LeaveFrameCache.hpp"
 #include "core/WiiUMenuApp.hpp"
 #include "home/HomeCore.hpp"
 #include <nxui/Application.hpp>
@@ -83,6 +84,10 @@ bool switchFrontend(nxui::Application& app, HomeCore& core, HomeStyle style) {
     switchu::commitSdCard("home style switch");
 #endif
     DebugLog::log("[home] switching frontend to '%s'", homeStyleName(style));
+    // The leave snapshot belongs to the frontend that saved it. Left in place,
+    // Classic would open its next return on a Cards frame (or the reverse) for
+    // the splash hold before its own UI replaced it.
+    LeaveFrameCache::clear();
     core.markFrontendSwitch();
     app.requestActivity(makeFrontend(core, style));
     return true;

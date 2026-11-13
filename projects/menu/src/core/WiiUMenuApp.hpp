@@ -145,7 +145,8 @@ private:
     void ensureClockFont();
     void setupLockScreen();
     GridLayoutMetrics computeGridLayoutMetrics() const;
-    GridLayoutMetrics computeGridLayoutMetrics(int columns, int rows) const;
+    // applyIconScale=false for folder grids: their panel has a fixed size.
+    GridLayoutMetrics computeGridLayoutMetrics(int columns, int rows, bool applyIconScale = true) const;
     std::pair<int, int> folderGridDimensions(std::uint32_t folderId) const;
     void reflowHomeGrid();
     void buildGrid();

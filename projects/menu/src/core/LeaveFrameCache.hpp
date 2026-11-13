@@ -36,4 +36,8 @@ bool load(LeaveFrameSession& session, LeaveFrameImage& image);
 
 bool loadSessionOnly(LeaveFrameSession& session);
 
+/// Drops the snapshot. A frame (and page index) saved by one frontend must
+/// never be painted as the return splash of the other one.
+void clear();
+
 } // namespace LeaveFrameCache

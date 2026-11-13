@@ -1,5 +1,6 @@
 #include "cards/CardsMusicSheet.hpp"
 #include "core/AudioManager.hpp"
+#include "core/ButtonGlyph.hpp"
 #include "core/Config.hpp"
 #include <nxui/core/GpuDevice.hpp>
 #include <nxui/core/I18n.hpp>
@@ -274,9 +275,16 @@ void CardsMusicSheet::render(nxui::Renderer& ren, CardsChrome& chrome, const Aud
     // Header.
     chrome.icon(ren, "music", kCard.x + 46.f, kCard.y + 46.f + dy, 28.f, white.withAlpha(a));
     chrome.textMid(ren, tf, i18n.tr("cards.music_title", "Music"), kCard.x + 72.f, kCard.y + 46.f + dy, white.withAlpha(a));
-    const std::string hints = i18n.tr("cards.music_hints", "A Choose   B Back");
-    chrome.textMid(ren, sf, hints, kCard.x + kCard.width - 36.f - sf.measure(hints).x, kCard.y + 46.f + dy,
-                   muted.withAlpha(0.8f * a));
+    {
+        // Glyph capsules, as in the other Cards sheets (not plain "A ... B ..." text).
+        const std::vector<ui::glyph::ActionHint> hints = {
+            {ui::glyph::button(nxui::Button::A), i18n.tr("hint.select", "Select")},
+            {ui::glyph::button(nxui::Button::B), i18n.tr("hint.back", "Back")},
+        };
+        // Bottom edge 97 px: clear of the Playlist heading below it (y 106).
+        ui::glyph::drawHintBar(ren, chrome.iconFont(), sf, hints, kCard.x + kCard.width - 36.f,
+                               kCard.y + 51.f + dy, a);
+    }
 
     // The record: it turns while music plays; its glow beats with the bass.
     const nxui::Vec2 c{kCard.x + 190.f, 262.f + dy};

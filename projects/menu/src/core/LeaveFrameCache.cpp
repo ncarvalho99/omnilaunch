@@ -120,6 +120,13 @@ bool load(LeaveFrameSession& session, LeaveFrameImage& image) {
     return image.valid();
 }
 
+void clear() {
+    std::error_code ec;
+    std::filesystem::remove(kPath, ec);
+    std::filesystem::remove(std::string(kPath) + ".tmp", ec);
+    std::filesystem::remove(kLegacyPath, ec);
+}
+
 bool loadSessionOnly(LeaveFrameSession& session) {
     session = {};
     std::ifstream in(kPath, std::ios::binary);
