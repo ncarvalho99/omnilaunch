@@ -54,10 +54,18 @@ bool chain(const std::string& path) {
     return true;
 }
 
+// The loader (this file) is parked first and only removed once the original
+// is back, so a failed rename never leaves sdmc:/hbmenu.nro missing.
 void restoreHbmenu() {
     if (!exists(kOriginal)) return;
-    std::remove(kHbmenu);
-    std::rename(kOriginal, kHbmenu);
+    const char* parked = "sdmc:/hbmenu.nro.omnilaunch-loader";
+    std::remove(parked);
+    if (exists(kHbmenu) && std::rename(kHbmenu, parked) != 0) return;
+    if (std::rename(kOriginal, kHbmenu) != 0) {
+        std::rename(parked, kHbmenu);
+        return;
+    }
+    std::remove(parked);
 }
 
 } // namespace

@@ -3,6 +3,7 @@
 #include "homebrew/HomebrewStore.hpp"
 #include "usb/Mtp.hpp"
 #include <switchu/file_log.hpp>
+#include <switchu/sd_commit.hpp>
 #include <algorithm>
 #include <cstring>
 #include <filesystem>
@@ -57,6 +58,8 @@ void AppletLauncher::setStartupStatus(uint64_t suspendedTitleId, bool appRunning
     m_runningHomebrew.clear();
     if (suspendedTitleId == 0) {
         forgetRunningHomebrew();
+        if (!appRunning)
+            restoreUserHbmenu();
     } else if (FILE* f = std::fopen(kRunningNro, "r")) {
         char buf[512] = {};
         if (std::fgets(buf, sizeof(buf), f)) {
@@ -437,6 +440,11 @@ bool AppletLauncher::prepareHbl() {
     return gotMain && gotNpdm;
 }
 
+// sdmc:/hbmenu.nro belongs to the player. It is swapped for the loader only
+// while a homebrew is launched from HOME, and every step below keeps one of
+// two states recoverable: the original at its place, or the loader at its place
+// with the original kept as hbmenu.nro.omnilaunch-original. Nothing is removed
+// before its replacement is verified on the card.
 bool AppletLauncher::installLoader() {
     const std::vector<std::uint8_t> loader = readFileBytes(kLoaderNro);
     if (loader.empty()) {
@@ -444,34 +452,122 @@ bool AppletLauncher::installLoader() {
         return false;
     }
     std::error_code ec;
-    if (std::filesystem::exists(kHbmenu, ec)) {
-        if (readFileBytes(kHbmenu) == loader) return true;
-        if (!nroNamed(kHbmenu, "OmniLaunch-Loader") && !nroNamed(kHbmenu, "HomeNX-Loader")) {
-            std::filesystem::remove(kHbmenuOriginal, ec);
-            ec.clear();
-            std::filesystem::rename(kHbmenu, kHbmenuOriginal, ec);
-            if (ec) DebugLog::log("[launcher] backup hbmenu.nro failed ec=%d", ec.value());
-        }
-    }
+    if (std::filesystem::exists(kHbmenu, ec) && readFileBytes(kHbmenu) == loader)
+        return true;
+
+    // 1. Stage the loader next to its destination and verify it.
     const std::string tmp = std::string(kHbmenu) + ".omnilaunch-tmp";
+    std::remove(tmp.c_str());
     FILE* f = std::fopen(tmp.c_str(), "wb");
-    if (!f) return false;
-    const bool written = std::fwrite(loader.data(), 1, loader.size(), f) == loader.size();
-    std::fclose(f);
-    ec.clear();
-    if (written) {
-        std::filesystem::remove(kHbmenu, ec);
-        ec.clear();
-        std::filesystem::rename(tmp, kHbmenu, ec);
-    }
-    if (!written || ec || readFileBytes(kHbmenu) != loader) {
-        std::filesystem::remove(tmp, ec);
+    if (!f)
+        return false;
+    bool staged = std::fwrite(loader.data(), 1, loader.size(), f) == loader.size();
+    staged = (std::fclose(f) == 0) && staged;
+    if (!staged || readFileBytes(tmp.c_str()) != loader) {
+        std::remove(tmp.c_str());
+        DebugLog::log("[launcher] loader staging failed");
         return false;
     }
+
+    // 2. Put the player's hbmenu aside (an older loader is simply replaced).
+    const std::string previousBackup = std::string(kHbmenuOriginal) + ".prev";
+    const std::string parkedLoader = std::string(kHbmenu) + ".omnilaunch-loader";
+    bool movedOriginal = false;
+    bool parkedOldLoader = false;
+    bool keptPreviousBackup = false;
+    if (std::filesystem::exists(kHbmenu, ec)) {
+        const bool isLoader = nroNamed(kHbmenu, "OmniLaunch-Loader") || nroNamed(kHbmenu, "HomeNX-Loader");
+        if (isLoader) {
+            // Parked, not deleted, until the new loader is verified in place.
+            std::remove(parkedLoader.c_str());
+            if (std::rename(kHbmenu, parkedLoader.c_str()) != 0) {
+                std::remove(tmp.c_str());
+                DebugLog::log("[launcher] could not set the old loader aside");
+                return false;
+            }
+            parkedOldLoader = true;
+        } else {
+            // A newer hbmenu than the kept one: it becomes the backup, and the
+            // older backup is only dropped once that worked.
+            if (std::filesystem::exists(kHbmenuOriginal, ec)) {
+                std::remove(previousBackup.c_str());
+                if (std::rename(kHbmenuOriginal, previousBackup.c_str()) != 0) {
+                    std::remove(tmp.c_str());
+                    DebugLog::log("[launcher] could not set the old hbmenu backup aside");
+                    return false;
+                }
+                keptPreviousBackup = true;
+            }
+            if (std::rename(kHbmenu, kHbmenuOriginal) != 0) {
+                if (keptPreviousBackup)
+                    std::rename(previousBackup.c_str(), kHbmenuOriginal);
+                std::remove(tmp.c_str());
+                DebugLog::log("[launcher] backup hbmenu.nro failed; nothing replaced");
+                return false;
+            }
+            movedOriginal = true;
+        }
+    }
+
+    // 3. The loader into place; on failure the original goes straight back.
+    if (std::rename(tmp.c_str(), kHbmenu) != 0 || readFileBytes(kHbmenu) != loader) {
+        std::remove(tmp.c_str());
+        bool restored = true;
+        if (movedOriginal || parkedOldLoader) {
+            // Only a file we just placed is in the way; the one set aside
+            // goes back. A failed rename keeps it where restoreUserHbmenu()
+            // (original) or the next install (parked loader) finds it.
+            if (std::filesystem::exists(kHbmenu, ec) && readFileBytes(kHbmenu) == loader)
+                std::remove(kHbmenu);
+            const char* back = movedOriginal ? kHbmenuOriginal : parkedLoader.c_str();
+            restored = std::rename(back, kHbmenu) == 0;
+            if (restored && keptPreviousBackup)
+                restored = std::rename(previousBackup.c_str(), kHbmenuOriginal) == 0;
+        }
+        switchu::commitSdCard("hbmenu loader rollback");
+        DebugLog::log("[launcher] loader install failed; previous hbmenu.nro %s",
+                      restored ? "restored" : "kept aside for recovery");
+        return false;
+    }
+    if (keptPreviousBackup)
+        std::remove(previousBackup.c_str());
+    if (parkedOldLoader)
+        std::remove(parkedLoader.c_str());
+    switchu::commitSdCard("hbmenu loader installed");
     DebugLog::log("[launcher] OmniLaunch Loader installed as hbmenu.nro (%zu bytes)", loader.size());
     return true;
 }
 
+// Puts the player's hbmenu.nro back once no homebrew runs from HOME. Also the
+// recovery for a launch or install that was cut short: whatever state is
+// found, the result is the original at sdmc:/hbmenu.nro.
+void AppletLauncher::restoreUserHbmenu() {
+    std::error_code ec;
+    const std::string previousBackup = std::string(kHbmenuOriginal) + ".prev";
+    if (!std::filesystem::exists(kHbmenuOriginal, ec) && std::filesystem::exists(previousBackup, ec))
+        std::rename(previousBackup.c_str(), kHbmenuOriginal);
+    std::remove((std::string(kHbmenu) + ".omnilaunch-tmp").c_str());
+    if (!std::filesystem::exists(kHbmenuOriginal, ec))
+        return; // nothing of ours to undo (the loader alone chains to nothing)
+    const bool hbmenuPresent = std::filesystem::exists(kHbmenu, ec);
+    if (hbmenuPresent && !nroNamed(kHbmenu, "OmniLaunch-Loader") && !nroNamed(kHbmenu, "HomeNX-Loader"))
+        return; // the player put a new hbmenu there; keep it, keep the backup
+    const std::string parked = std::string(kHbmenu) + ".omnilaunch-loader";
+    std::remove(parked.c_str());
+    if (hbmenuPresent && std::rename(kHbmenu, parked.c_str()) != 0)
+        return;
+    if (std::rename(kHbmenuOriginal, kHbmenu) != 0) {
+        if (hbmenuPresent)
+            std::rename(parked.c_str(), kHbmenu);
+        DebugLog::log("[launcher] hbmenu.nro restore failed; loader kept");
+        return;
+    }
+    std::remove(parked.c_str());
+    std::remove(previousBackup.c_str());
+    std::filesystem::remove(kChained, ec);
+    switchu::commitSdCard("hbmenu restored");
+    DebugLog::log("[launcher] player's hbmenu.nro restored");
+}
 bool AppletLauncher::launchNro(const std::string& path, uint64_t hostTitleId, AccountUid uid,
                                bool applicationOnly) {
     if (!prepareHbl()) {
@@ -529,6 +625,7 @@ void AppletLauncher::reboot()                  {}
 bool AppletLauncher::launchNro(const std::string&, uint64_t, AccountUid, bool) { return false; }
 bool AppletLauncher::prepareHbl()              { return false; }
 bool AppletLauncher::installLoader()           { return false; }
+void AppletLauncher::restoreUserHbmenu()       {}
 Result AppletLauncher::requestSelfUninstall()  {
     return MAKERESULT(Module_Libnx, LibnxError_NotInitialized);
 }

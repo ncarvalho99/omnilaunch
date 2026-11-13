@@ -288,7 +288,7 @@ void CardsHomeActivity::initPerfLog(bool isSwitch, bool isColdBoot) {
                                 : (isColdBoot ? "(HOME, console start)"
                                               : "(HOME, back from game or applet)");
     char head[128];
-    std::snprintf(head, sizeof(head), "=== OmniLaunch Cards 1.2.2 %s ===", kind);
+    std::snprintf(head, sizeof(head), "=== OmniLaunch Cards %s %s ===", SWITCHU_VERSION, kind);
     perfLine(head);
 
     u64 total = 0, used = 0;
@@ -386,6 +386,8 @@ bool CardsHomeActivity::onCreate() {
     m_core.setFrontendQuiesce([this] {
         stopSpeedTest();
         stopHomebrewUpdates();
+        waitSelfUpdate();
+        stopBrowserDownload();
         m_saveAllStop.store(true);
         if (m_saveAllFuture.valid())
             m_saveAllFuture.wait();
@@ -652,6 +654,8 @@ void CardsHomeActivity::onDestroy() {
         m_netCheck.wait(); // the scope closed above cancels the request
     stopSpeedTest();
     stopHomebrewUpdates();
+    waitSelfUpdate();
+    stopBrowserDownload();
     if (m_detailsFuture.valid())
         m_detailsFuture.wait();
     m_saveAllStop.store(true);
@@ -682,6 +686,7 @@ void CardsHomeActivity::onDestroy() {
         m_userSelect->hide();
     // The pool is idle (above), so a delete worker has finished with `this`.
     m_deleteProgress.reset();
+    m_selfUpdateProgress.reset();
     m_sheet.close();
     m_musicSheet.close();
     m_newsSheet.close();
@@ -908,6 +913,8 @@ void CardsHomeActivity::onUpdate(float dt) {
     pollNetCheck();
     pollArtJobs();
     pollHomebrewUpdates();
+    pollSelfUpdate();
+    pollBrowserDownload();
     m_core.nextendo().update(m_core, m_core.net().online());
     m_core.discord().update(m_core);
     discord::Alert discordAlert;
@@ -977,6 +984,8 @@ void CardsHomeActivity::onUpdate(float dt) {
         }
         if (m_deleteProgress)
             m_deleteProgress->update(dt);
+        if (m_selfUpdateProgress)
+            m_selfUpdateProgress->update(dt);
         pollDeleteSoftware();
 #endif
         // D2/D4: input is held off during the switch fade, leaving launch animation,
@@ -1255,7 +1264,8 @@ void CardsHomeActivity::updateLock(float dt) {
     // off while a title runs or a launch is under way; the black low-power
     // frame stops presentation after one frame.
 #ifdef SWITCHU_MENU
-    const bool sleepSuppressed = m_launching || m_core.launcher().isAppRunning() ||
+    const bool sleepSuppressed = m_launching || m_core.launcher().isAppRunning() || m_selfUpdateJob ||
+                                 m_browserDownloadState->load() == 1 ||
                                  (!app().renderEnabled() && !m_lockLowPowerPrimed);
     m_sleepPlanTimer += dt;
     if (m_sleepPlanTimer >= 3.f) {
@@ -2255,6 +2265,8 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
         m_userSelect->render(ren);
     if (m_deleteProgress && m_deleteProgress->isActive())
         m_deleteProgress->render(ren);
+    if (m_selfUpdateProgress && m_selfUpdateProgress->isActive())
+        m_selfUpdateProgress->render(ren);
     // D2 switch: fade to black on the way out, from black on the way in.
     float black = m_fadeIn;
     if (m_switchFade >= 0.f)

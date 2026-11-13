@@ -1,13 +1,31 @@
 
-Views & Artwork
-- Unified Backdrop Pipeline: Custom manual game backgrounds are now handled directly inside the core SteamGridDbBackdrop pipeline instead of a separate legacy widget. This eliminates any disparity in opacity, shaders, or color between manual and automatic backgrounds (fixes 3).
-- Instant Raw Backdrop Caching: Manual backgrounds now generate and utilize fast .1280x720.rgba-cache files on the SD card (pre-generated immediately upon selecting an image in Game Gallery), reducing SD read latency from ~500ms to under 10ms (fixes 3).
-- Neighbor Title Prefetching: Games with custom backgrounds now participate in the home grid prefetch queue, loading adjacent titles into RAM before navigation occurs for instant, stutter-free transitions.
-- Smooth Crossfades: Custom backgrounds now transition with the same smooth 0.52s cubic crossfade curve as automatic artwork.
+Cards HOME style
+- New frontend: card row with Games, Homebrew, Nintendo and Media pages, page dots, Move mode, sort, card options per software type, achievements, art sources (GameTDB covers, SteamGridDB pickers, batch save) and a welcome tour.
+- Sheets: music player, News, notifications, users, quick settings, power menu (including restart to Hekate) and a Settings sheet with MTP, language, sounds and lock screen rows.
+- Homebrew from HOME: .nro apps open in full application mode through the OmniLaunch Loader. Your own hbmenu.nro is kept aside while a homebrew runs and put back afterwards (and on uninstall).
+- Browser tile: opens BrowseNX; the first use downloads it from its author's GitHub release.
+- Updates: the Cards Settings now checks for, downloads and stages OmniLaunch updates just like Classic, and lists homebrew updates from the Homebrew App Store and GitHub releases.
+
+Social and network
+- Discord: sign in with QR code or token, servers, channels, direct messages and notifications. Sign-in tokens are no longer copied into the configuration backup.
+- Network layer: HTTPS with bundled root certificates as a fallback, WebSocket support, connection test and Nextendo integration.
+
+Classic and system
+- Notification bell, users picker, Social screen, sidebar order options in ThemeShop > OmniLaunch, SteamGridDB switches per view.
+- Smoother text and overlays, deferred texture release, a watchdog that gives the screen back to a suspended game when the menu fails to start, and translations for every supported language.
 --pt-BR--
 
-Visualizações e Arte
-- Pipeline Unificado de Fundos: Imagens de fundo manuais agora são gerenciadas diretamente pelo renderizador principal SteamGridDbBackdrop, em vez de um widget legado separado. Isso elimina qualquer diferença de opacidade, shaders ou tonalidade entre fundos manuais e automáticos (corrige 3).
-- Carregamento Instantâneo via Cache Bruto: Fundos manuais agora geram e utilizam cache binário .1280x720.rgba-cache no cartão SD (criado em segundo plano no momento da escolha na Galeria), reduzindo o tempo de carregamento de ~500ms para menos de 10ms (corrige 3).
-- Pré-carregamento de Vizinhos: Jogos com fundos customizados agora entram na fila de prefetch da tela inicial, carregando títulos adjacentes na RAM antes da navegação para transições instantâneas e sem engasgos.
-- Transições Suaves em Crossfade: Fundos manuais agora alternam com a mesma curva cúbica suave de crossfade de 0.52s das artes automáticas.
+Estilo de HOME Cards
+- Novo frontend: fileira de cartões com as páginas Jogos, Homebrew, Nintendo e Mídia, pontos de página, modo Mover, ordenação, opções por tipo de software, conquistas, fontes de arte (capas GameTDB, seletores SteamGridDB, salvar em lote) e tour de boas-vindas.
+- Painéis: player de música, Notícias, notificações, usuários, ajustes rápidos, menu de energia (inclusive reiniciar no Hekate) e Configurações com MTP, idioma, sons e tela de bloqueio.
+- Homebrew pela HOME: apps .nro abrem em modo de aplicativo completo pelo OmniLaunch Loader. O seu hbmenu.nro fica guardado enquanto o homebrew roda e volta ao lugar depois (e também ao desinstalar).
+- Bloco Navegador: abre o BrowseNX; no primeiro uso ele é baixado do release do autor no GitHub.
+- Atualizações: as Configurações do Cards agora verificam, baixam e preparam atualizações do OmniLaunch igual ao Classic, e listam atualizações de homebrew da Homebrew App Store e de releases do GitHub.
+
+Social e rede
+- Discord: login por QR code ou token, servidores, canais, mensagens diretas e notificações. Os tokens de login não são mais copiados para o backup da configuração.
+- Camada de rede: HTTPS com certificados raiz incluídos como reserva, suporte a WebSocket, teste de conexão e integração com o Nextendo.
+
+Classic e sistema
+- Sino de notificações, seletor de usuários, tela Social, ordem da barra lateral em ThemeShop > OmniLaunch, chaves do SteamGridDB por visualização.
+- Texto e sobreposições mais suaves, liberação adiada de texturas, watchdog que devolve a tela ao jogo suspenso quando o menu não inicia e traduções para todos os idiomas suportados.

@@ -42,6 +42,54 @@ bool requestIsValid() {
         && std::memcmp(contents, kRequestContents, expectedSize) == 0;
 }
 
+bool sameFile(const char* a, const char* b) {
+    std::FILE* fa = std::fopen(a, "rb");
+    if (!fa) return false;
+    std::FILE* fb = std::fopen(b, "rb");
+    if (!fb) { std::fclose(fa); return false; }
+    bool same = true;
+    char ba[4096], bb[4096];
+    while (same) {
+        const size_t na = std::fread(ba, 1, sizeof(ba), fa);
+        const size_t nb = std::fread(bb, 1, sizeof(bb), fb);
+        same = na == nb && std::memcmp(ba, bb, na) == 0;
+        if (na == 0 || na < sizeof(ba)) break;
+    }
+    std::fclose(fa);
+    std::fclose(fb);
+    return same;
+}
+
+// The homebrew launcher swaps sdmc:/hbmenu.nro for OmniLaunch's loader and
+// keeps the player's file beside it. Removal gives it back (only over our own
+// loader: a hbmenu the player put there later is left alone).
+void restorePlayerHbmenu() {
+    using namespace switchu::self_uninstall;
+    struct stat info {};
+    if (stat(kHbmenuBackup, &info) != 0)
+        return;
+    const bool ours = stat(kHbmenu, &info) != 0 || sameFile(kHbmenu, kLoaderNro);
+    if (!ours) {
+        switchu::FileLog::log("[uninstall] hbmenu.nro is not the loader; backup left in place");
+        return;
+    }
+    // The loader is parked, not deleted, until the original is back: a failed
+    // rename leaves the loader working and the original beside it.
+    const char* parked = "sdmc:/hbmenu.nro.omnilaunch-loader";
+    std::remove(parked);
+    const bool hadLoader = stat(kHbmenu, &info) == 0;
+    if (hadLoader && std::rename(kHbmenu, parked) != 0) {
+        switchu::FileLog::log("[uninstall] hbmenu.nro restore FAIL (loader in use); backup left in place");
+        return;
+    }
+    const bool ok = std::rename(kHbmenuBackup, kHbmenu) == 0;
+    if (ok)
+        std::remove(parked);
+    else if (hadLoader)
+        std::rename(parked, kHbmenu);
+    switchu::FileLog::log("[uninstall] player's hbmenu.nro restore %s", ok ? "ok" : "FAIL (backup left in place)");
+}
+
 } // namespace
 
 StagedRequestResult applyStagedRequest() {
@@ -63,6 +111,10 @@ StagedRequestResult applyStagedRequest() {
     switchu::FileLog::log("[uninstall] applying full purge request");
 
     std::string failedPath;
+
+    // 0. Give the player's hbmenu.nro back while the loader is still there to
+    //    compare against.
+    restorePlayerHbmenu();
 
     // 1. Purge Atmosphere qlaunch override directory.
     if (!switchu::removeRecursive(kOverrideDirectory, &failedPath)) {

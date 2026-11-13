@@ -56,7 +56,9 @@ bool excludedDirectory(const std::string& relative, const char* name) {
     return relative.empty()
         && (std::strcmp(name, "update") == 0
             || std::strcmp(name, "uninstall") == 0
-            || std::strcmp(name, "control_cache") == 0);
+            || std::strcmp(name, "control_cache") == 0
+            // Scratch space of the homebrew updater (downloads in flight).
+            || std::strcmp(name, "tmp") == 0);
 }
 
 bool excludedFile(const char* name) {
@@ -64,6 +66,9 @@ bool excludedFile(const char* name) {
     // launch; copying it would cost that at almost every boot, for a picture
     // that is useless once the config it belongs to is gone.
     if (std::strcmp(name, "leave_frame.bin") == 0) return true;
+    // Discord sign-in tokens are credentials: they stay in the one file the
+    // player can delete by signing out, never in a second copy on the card.
+    if (std::strcmp(name, "discord_accounts.json") == 0) return true;
     return endsWith(name, ".log") || std::strncmp(name, "log.txt", 7) == 0
         || endsWith(name, ".tmp") || endsWith(name, ".part")
         || endsWith(name, ".switchu-part") || endsWith(name, kPartSuffix)

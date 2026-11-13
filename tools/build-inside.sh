@@ -104,23 +104,15 @@ if [ "$VARIANT" = sysmodule ]; then
     elif [ -f "build/cross/aarch64/$MODE/OmniLaunch-Loader.nro" ]; then
         cp -f "build/cross/aarch64/$MODE/OmniLaunch-Loader.nro" "$DIST/switch/OmniLaunch/bin/loader.nro"
     fi
-    # BrowseNX (ad3333m/browsenx v1.1.0) ships inside the package so the
-    # Cards Browser tile works without downloading it. The binary is supplied
-    # locally under vendor-bin/ and checked against its release hash.
-    BROWSENX_SHA256=002996aa1d64a90314a5898b54789c46d7bb54001d739b7a0572801c1dab178e
-    if [ -f vendor-bin/browsenx/BrowseNX.nro ]; then
-        echo "$BROWSENX_SHA256  vendor-bin/browsenx/BrowseNX.nro" | sha256sum -c --quiet || { echo "BrowseNX.nro hash mismatch"; exit 1; }
-        mkdir -p "$DIST/switch/OmniLaunch/apps"
-        cp -f vendor-bin/browsenx/BrowseNX.nro "$DIST/switch/OmniLaunch/apps/BrowseNX.nro"
-    else
-        echo "aviso: vendor-bin/browsenx/BrowseNX.nro ausente; pacote sem navegador"
-    fi
+    # BrowseNX is not shipped: the Cards Browser tile downloads it from the
+    # author's release on first use. Never leave a stale copy in the package.
+    rm -rf "$DIST/switch/OmniLaunch/apps"
     mkdir -p artifacts
-    ZIP="$PWD/artifacts/OmniLaunch-1.2.2.zip"
+    ZIP="$PWD/artifacts/OmniLaunch-1.3.0.zip"
     rm -f "$ZIP" "$PWD/artifacts/OmniLaunch-sysmodule-$MODE.zip"
     ( cd "$DIST" && zip -qr "$ZIP" atmosphere switch ) || exit $?
     cp -f "$ZIP" "$PWD/artifacts/OmniLaunch-sysmodule-$MODE.zip"
-    echo "pronto: artifacts/OmniLaunch-1.2.2.zip ($(du -h "$ZIP" | cut -f1))"
+    echo "pronto: artifacts/OmniLaunch-1.3.0.zip ($(du -h "$ZIP" | cut -f1))"
     echo "copie atmosphere/ e switch/ do zip para a raiz do cartao SD"
 else
     echo "pronto: build/cross/aarch64/$MODE/SwitchU.nro"

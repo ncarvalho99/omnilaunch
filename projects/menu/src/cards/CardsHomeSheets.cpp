@@ -76,6 +76,7 @@ bool CardsHomeActivity::overlayActive() const {
     return (m_userSelect && m_userSelect->isActive()) || (m_text && m_text->isActive()) ||
            (m_profiles && m_profiles->isActive()) ||
            (m_quick && m_quick->isActive()) || (m_deleteProgress && m_deleteProgress->isActive()) ||
+           (m_selfUpdateProgress && m_selfUpdateProgress->isActive()) ||
            (m_picker && m_picker->isActive()) || (m_discordPanel && m_discordPanel->isActive());
 }
 
@@ -656,23 +657,110 @@ void CardsHomeActivity::openSystemTile(std::uint64_t id) {
 #endif
 }
 
-// The Browser tile opens BrowseNX (ad3333m) as a homebrew. CardsNX downloads
-// it from GitHub on first use; OmniLaunch ships it in its package, so it is
-// there from the first boot and needs no network.
+// BrowseNX arrived (or did not): say so and, as CardsNX, open it straight away
+// when nothing else has taken the screen meanwhile.
+void CardsHomeActivity::stopBrowserDownload() {
+    m_browserDownloadStop->store(true);
+    if (m_browserDownloadFuture.valid()) {
+        m_browserDownloadFuture.wait();
+        try { m_browserDownloadFuture.get(); } catch (...) {}
+    }
+}
+
+void CardsHomeActivity::pollBrowserDownload() {
+    if (m_browserDownloadFuture.valid() &&
+        m_browserDownloadFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        try { m_browserDownloadFuture.get(); } catch (...) {}
+    }
+    const int state = m_browserDownloadState->load();
+    if (state < 2)
+        return;
+    m_browserDownloadState->store(0);
+    auto& i18n = nxui::I18n::instance();
+    if (state != 2) {
+        showToast(i18n.tr("cards.browser_failed", "BrowseNX didn't download. Check the internet connection."));
+        return;
+    }
+    const bool busy = overlayActive() || m_sheet.isOpen() || m_musicSheet.isOpen() || m_newsSheet.isOpen() ||
+                      m_dotsOpen || m_powerOpen || m_cardOptOpen || m_moving || m_launching || m_leaving ||
+                      m_lock.isLocked() || m_page != AppConfig::CardsPrefs::kNintendo;
+    if (busy) {
+        showToast(i18n.tr("cards.download_done", "Download complete!"));
+        return;
+    }
+    openBrowser();
+}
+
+// The Browser tile opens BrowseNX (ad3333m) as a homebrew. As in CardsNX it is
+// not shipped in the package: the first use downloads it from the author's
+// GitHub release into sdmc:/switch/BrowseNX/ and opens it when it arrives.
+// A copy left by an older package in the OmniLaunch folder is still used.
 void CardsHomeActivity::openBrowser() {
 #ifdef SWITCHU_MENU
+    auto& i18n = nxui::I18n::instance();
     std::error_code ec;
     std::string path;
-    for (const char* candidate : {pages::kBundledBrowserNro, pages::kUserBrowserNro})
-        if (std::filesystem::is_regular_file(candidate, ec)) {
+    for (const char* candidate : {pages::kUserBrowserNro, pages::kBundledBrowserNro})
+        if (std::filesystem::is_regular_file(candidate, ec) && std::filesystem::file_size(candidate, ec) > 0) {
             path = candidate;
             break;
         }
     if (path.empty()) {
         m_audio.playSfx(Sfx::ModalShow);
-        showToast(nxui::I18n::instance().tr("cards.browser_missing",
-                                            "Browser missing: reinstall OmniLaunch to restore it."));
-        DebugLog::log("[cards] browser nro missing at %s", pages::kBundledBrowserNro);
+        if (m_browserDownloadState->load() == 1) {
+            showToast(i18n.tr("cards.browser_downloading", "Still downloading BrowseNX..."));
+            return;
+        }
+        if (!m_core.net().online()) {
+            showToast(i18n.tr("cards.browser_offline", "Connect to the internet to get BrowseNX."));
+            return;
+        }
+        if (!m_core.threadPool().acceptingTasks())
+            return;
+        showToast(i18n.tr("cards.browser_getting", "Getting BrowseNX from GitHub..."));
+        std::filesystem::create_directories(std::filesystem::path(pages::kUserBrowserNro).parent_path(), ec);
+        auto state = m_browserDownloadState;
+        auto stop = m_browserDownloadStop;
+        stop->store(false);
+        state->store(1);
+        net::NetService* net = &m_core.net();
+        try {
+            m_browserDownloadFuture = m_core.threadPool().submit([state, stop, net]() {
+                const std::string fresh = std::string(pages::kUserBrowserNro) + ".part";
+                net::Download dl;
+                dl.url = pages::kBrowserDownloadUrl;
+                dl.path = fresh;
+                dl.timeoutMs = 180000;
+                dl.cancel = stop.get();
+                const auto res = net->download(dl);
+                bool ok = res.ok();
+                // Only a real .nro replaces nothing and becomes the browser.
+                if (ok) {
+                    char magic[4] = {};
+                    if (std::FILE* f = std::fopen(fresh.c_str(), "rb")) {
+                        ok = std::fseek(f, 0x10, SEEK_SET) == 0 && std::fread(magic, 1, 4, f) == 4 &&
+                             std::memcmp(magic, "NRO0", 4) == 0;
+                        std::fclose(f);
+                    } else {
+                        ok = false;
+                    }
+                }
+                if (ok && stop->load())
+                    ok = false; // power action or frontend leaving: write nothing more
+                if (ok) {
+                    std::remove(pages::kUserBrowserNro);
+                    ok = std::rename(fresh.c_str(), pages::kUserBrowserNro) == 0;
+                }
+                if (!ok)
+                    std::remove(fresh.c_str());
+                switchu::commitSdCard("browser download");
+                DebugLog::log("[cards] browser download status=%ld ok=%d %s", res.status, ok ? 1 : 0,
+                              res.error.c_str());
+                state->store(ok ? 2 : 3);
+            });
+        } catch (...) {
+            state->store(0);
+        }
         return;
     }
     if (isRunningCard(pages::systemId(pages::SystemTile::Browser))) {
@@ -2581,11 +2669,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
     }
     {
         CardsSheet::Section s{i18n.tr("cards.set_updates", "Updates"), {}, "arrows", nxui::Color(0.98f, 0.45f, 0.09f)};
-        Row version;
-        version.label = "OmniLaunch";
-        version.value = []() { return std::string(SWITCHU_VERSION); };
-        version.enabled = false;
-        s.rows.push_back(std::move(version));
+        s.rows.push_back(selfUpdateRow());
         Row hb;
         hb.label = i18n.tr("cards.hb_title", "Homebrew updates");
         hb.value = [this]() {

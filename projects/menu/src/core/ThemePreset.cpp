@@ -639,7 +639,7 @@ ThemePreset makeLegacyBuiltInPreset(const char* name, nxui::ThemeMode mode) {
     ThemePreset preset;
     preset.id = makeThemeId("builtin:", name);
     preset.name = name;
-    preset.author = "SwitchU";
+    preset.author = "OmniLaunch";
     preset.mode = mode;
     preset.colors = ThemePreset::extractColors(
         mode == nxui::ThemeMode::Light ? nxui::Theme::light() : nxui::Theme::dark());

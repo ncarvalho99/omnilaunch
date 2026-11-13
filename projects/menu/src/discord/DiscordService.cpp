@@ -34,40 +34,97 @@ void DiscordService::connectAccount(home::HomeCore& core, const Account& acc) {
     }
 
     m_state = State::Connecting;
-    m_error.clear();
+    {
+        std::lock_guard<std::mutex> lk(m_mu);
+        m_error.clear();
+    }
     DebugLog::log("[discord] connecting account %s...", acc.username.c_str());
 
     m_gateway.start(core.net(), acc.token);
 
-    // Initial background REST load
+    // Initial background REST load. Each result is published only while the
+    // session that asked for it is still the current one.
     if (core.threadPool().acceptingTasks()) {
-        core.threadPool().submit([this, &core, token = acc.token]() {
+        const std::uint64_t session = m_session.load();
+        core.threadPool().submit([this, &core, token = acc.token, session]() {
             User u;
             std::string err;
-            if (api::fetchMe(core.net(), token, u, err)) {
+            if (current(session) && api::fetchMe(core.net(), token, u, err)) {
                 std::lock_guard<std::mutex> lk(m_mu);
-                m_currentUser = u;
-                m_version++;
+                if (current(session)) {
+                    m_currentUser = u;
+                    bump();
+                }
             }
             std::vector<Channel> dms;
-            if (api::fetchDms(core.net(), token, dms, err)) {
+            if (current(session) && api::fetchDms(core.net(), token, dms, err)) {
+                const std::size_t n = dms.size();
                 std::lock_guard<std::mutex> lk(m_mu);
-                m_dms = std::move(dms);
-                m_version++;
-                DebugLog::log("[discord] REST fetched %zu DMs", m_dms.size());
+                if (current(session)) {
+                    m_dms = std::make_shared<const std::vector<Channel>>(std::move(dms));
+                    bump();
+                    DebugLog::log("[discord] REST fetched %zu DMs", n);
+                }
             }
             std::vector<Guild> guilds;
-            if (api::fetchGuilds(core.net(), token, guilds, err)) {
+            if (current(session) && api::fetchGuilds(core.net(), token, guilds, err)) {
+                const std::size_t n = guilds.size();
                 std::lock_guard<std::mutex> lk(m_mu);
-                m_guilds = std::move(guilds);
-                m_version++;
-                DebugLog::log("[discord] REST fetched %zu guilds", m_guilds.size());
+                if (current(session)) {
+                    m_guilds = std::make_shared<const std::vector<Guild>>(std::move(guilds));
+                    bump();
+                    DebugLog::log("[discord] REST fetched %zu guilds", n);
+                }
             }
         });
     }
 }
 
+// Ends the account session: the gateway is stopped (its queued events are
+// dropped), every job in flight is invalidated, and everything that belonged
+// to the previous account is cleared. Main thread only.
+void DiscordService::endSession() {
+    m_gateway.stop();
+    m_remoteAuth.stop();
+    ++m_session;
+    std::lock_guard<std::mutex> lk(m_mu);
+    m_pendingSignIn = PendingSignIn{};
+    m_currentUser = User{};
+    m_dms = std::make_shared<const std::vector<Channel>>();
+    m_guilds = std::make_shared<const std::vector<Guild>>();
+    m_messages.clear();
+    m_presences.clear();
+    m_hasAlert = false;
+    m_pendingAlert = Alert{};
+}
+
 void DiscordService::update(home::HomeCore& core) {
+    // 0. A token validated on a worker is adopted here, on the main thread,
+    //    and only for the session that asked for it.
+    PendingSignIn signIn;
+    {
+        std::lock_guard<std::mutex> lk(m_mu);
+        if (m_pendingSignIn.done) {
+            signIn = std::move(m_pendingSignIn);
+            m_pendingSignIn = PendingSignIn{};
+        }
+    }
+    if (signIn.done && current(signIn.session)) {
+        if (signIn.ok) {
+            m_accounts.addOrUpdate(signIn.account);
+            m_accounts.save();
+            bump();
+            connectAccount(core, signIn.account);
+        } else {
+            m_state = State::Failed;
+            {
+                std::lock_guard<std::mutex> lk(m_mu);
+                m_error = "Invalid Discord token";
+            }
+            bump();
+        }
+    }
+
     // 1. Check QR auth state if active
     if (m_state == State::QrLogin) {
         const auto snap = m_remoteAuth.snapshot();
@@ -83,7 +140,10 @@ void DiscordService::update(home::HomeCore& core) {
             m_version++;
         } else if (snap.phase == DiscordRemoteAuth::Phase::Failed) {
             DebugLog::log("[discord] QR auth failed: %s", snap.error.c_str());
-            m_error = snap.error;
+            {
+                std::lock_guard<std::mutex> lk(m_mu);
+                m_error = snap.error;
+            }
             m_remoteAuth.stop();
             m_state = State::Failed;
             m_version++;
@@ -96,7 +156,10 @@ void DiscordService::update(home::HomeCore& core) {
         m_version++;
     } else if (m_state == State::Ready && m_gateway.state() == DiscordGateway::State::Failed) {
         m_state = State::Failed;
-        m_error = m_gateway.lastError();
+        {
+            std::lock_guard<std::mutex> lk(m_mu);
+            m_error = m_gateway.lastError();
+        }
         m_version++;
     }
 
@@ -124,10 +187,14 @@ void DiscordService::processEvent(const DiscordGateway::Event& ev) {
                 api::parseUserJson(d["user"].dump(), m_currentUser);
             }
             if (d.contains("private_channels") && d["private_channels"].is_array()) {
-                api::parseChannelsJson(d["private_channels"].dump(), m_dms);
+                std::vector<Channel> dms;
+                if (api::parseChannelsJson(d["private_channels"].dump(), dms))
+                    m_dms = std::make_shared<const std::vector<Channel>>(std::move(dms));
             }
             if (d.contains("guilds") && d["guilds"].is_array()) {
-                api::parseGuildsJson(d["guilds"].dump(), m_guilds);
+                std::vector<Guild> guilds;
+                if (api::parseGuildsJson(d["guilds"].dump(), guilds))
+                    m_guilds = std::make_shared<const std::vector<Guild>>(std::move(guilds));
             }
             if (d.contains("presences") && d["presences"].is_array()) {
                 for (const auto& p : d["presences"]) {
@@ -155,7 +222,7 @@ void DiscordService::processEvent(const DiscordGateway::Event& ev) {
             }
             m_version++;
             DebugLog::log("[discord] Gateway READY: user=%s dms=%zu guilds=%zu presences=%zu",
-                          m_currentUser.username.c_str(), m_dms.size(), m_guilds.size(), m_presences.size());
+                          m_currentUser.username.c_str(), m_dms->size(), m_guilds->size(), m_presences.size());
         }
     } else if (ev.name == "PRESENCE_UPDATE") {
         const auto j = nlohmann::json::parse(ev.rawJson, nullptr, false);
@@ -184,15 +251,17 @@ void DiscordService::processEvent(const DiscordGateway::Event& ev) {
             if (!parsed.empty()) {
                 Guild g = std::move(parsed.front());
                 std::lock_guard<std::mutex> lk(m_mu);
+                auto next = std::make_shared<std::vector<Guild>>(*m_guilds);
                 bool found = false;
-                for (auto& existing : m_guilds) {
+                for (auto& existing : *next) {
                     if (existing.id == g.id) {
                         existing = std::move(g);
                         found = true;
                         break;
                     }
                 }
-                if (!found) m_guilds.push_back(std::move(g));
+                if (!found) next->push_back(std::move(g));
+                m_guilds = std::move(next);
                 m_version++;
             }
         }
@@ -204,10 +273,9 @@ void DiscordService::processEvent(const DiscordGateway::Event& ev) {
             if (api::parseMessagesJson(wrapped, tmp) && !tmp.empty()) {
                 Message m = std::move(tmp.front());
                 const Snowflake chanId = m.channelId;
-                const bool fromOther = (m.author.id != 0 && m.author.id != m_currentUser.id);
-
                 {
                     std::lock_guard<std::mutex> lk(m_mu);
+                    const bool fromOther = (m.author.id != 0 && m.author.id != m_currentUser.id);
                     m_messages[chanId].push_back(m);
                     if (m_messages[chanId].size() > 50) {
                         m_messages[chanId].erase(m_messages[chanId].begin());
@@ -219,13 +287,15 @@ void DiscordService::processEvent(const DiscordGateway::Event& ev) {
                         m_pendingAlert.text = m.content;
                         m_pendingAlert.avatarUrl = m.author.avatarUrl(64);
                         m_hasAlert = true;
-                        for (auto& dm : m_dms) {
+                        auto next = std::make_shared<std::vector<Channel>>(*m_dms);
+                        for (auto& dm : *next) {
                             if (dm.id == chanId) {
                                 dm.unreadCount++;
                                 dm.mentions++;
                                 break;
                             }
                         }
+                        m_dms = std::move(next);
                     }
                     m_version++;
                 }
@@ -242,46 +312,60 @@ std::string DiscordService::presenceStatus(Snowflake userId) const {
 
 void DiscordService::startQrLogin(home::HomeCore& core) {
     m_state = State::QrLogin;
-    m_error.clear();
+    {
+        std::lock_guard<std::mutex> lk(m_mu);
+        m_error.clear();
+    }
     m_remoteAuth.start(core.net());
 }
 
 void DiscordService::cancelQrLogin() {
     m_remoteAuth.stop();
     m_state = m_accounts.hasAccount() ? State::Ready : State::SignedOut;
+    m_version++;
 }
 
 void DiscordService::signInWithToken(home::HomeCore& core, const std::string& token) {
+    // A sign-in starts a new session: whatever the previous one still had in
+    // flight is ignored from here on.
+    endSession();
     m_state = State::Connecting;
-    m_error.clear();
+    m_version++;
+    {
+        std::lock_guard<std::mutex> lk(m_mu);
+        m_error.clear();
+    }
 
     if (!core.threadPool().acceptingTasks()) {
         m_state = State::Failed;
+        std::lock_guard<std::mutex> lk(m_mu);
         m_error = "Background tasks unavailable";
         return;
     }
 
-    core.threadPool().submit([this, &core, token]() {
+    const std::uint64_t session = m_session.load();
+    // The worker only validates; update() saves and connects on the main
+    // thread, and only if the player did not sign out or switch meanwhile.
+    core.threadPool().submit([this, &core, token, session]() {
         User u;
         std::string err;
-        if (api::fetchMe(core.net(), token, u, err)) {
+        const bool ok = api::fetchMe(core.net(), token, u, err);
+        if (!ok)
+            DebugLog::log("[discord] token validation failed: %s", err.c_str());
+        std::lock_guard<std::mutex> lk(m_mu);
+        if (!current(session))
+            return;
+        m_pendingSignIn.session = session;
+        m_pendingSignIn.done = true;
+        m_pendingSignIn.ok = ok;
+        if (ok) {
             Account acc;
             acc.id = snowflakeToString(u.id);
             acc.username = u.username;
             acc.globalName = u.globalName;
             acc.avatar = u.avatar;
             acc.token = token;
-
-            m_accounts.addOrUpdate(acc);
-            m_accounts.save();
-            m_version++;
-
-            connectAccount(core, acc);
-        } else {
-            DebugLog::log("[discord] token validation failed: %s", err.c_str());
-            m_state = State::Failed;
-            m_error = "Invalid Discord token";
-            m_version++;
+            m_pendingSignIn.account = std::move(acc);
         }
     });
 }
@@ -289,26 +373,21 @@ void DiscordService::signInWithToken(home::HomeCore& core, const std::string& to
 void DiscordService::switchAccount(home::HomeCore& core, const std::string& id) {
     m_accounts.setCurrentId(id);
     m_accounts.save();
-    shutdown();
+    endSession();
     m_version++;
     connectAccount(core, m_accounts.current());
 }
 
 void DiscordService::signOut() {
+    endSession();
     const std::string cur = m_accounts.currentId();
     if (!cur.empty()) {
         m_accounts.remove(cur);
         m_accounts.save();
     }
-    shutdown();
     m_state = State::SignedOut;
-    m_currentUser = User{};
-    m_dms.clear();
-    m_guilds.clear();
-    m_messages.clear();
     m_version++;
 }
-
 std::vector<Message> DiscordService::messages(Snowflake channelId) const {
     std::lock_guard<std::mutex> lk(m_mu);
     auto it = m_messages.find(channelId);
@@ -321,11 +400,13 @@ void DiscordService::sendMessage(home::HomeCore& core, Snowflake channelId, cons
 
     if (!core.threadPool().acceptingTasks()) return;
 
-    core.threadPool().submit([this, &core, token, channelId, text]() {
+    const std::uint64_t session = m_session.load();
+    core.threadPool().submit([this, &core, token, channelId, text, session]() {
         Message outMsg;
         std::string err;
         if (api::sendMessage(core.net(), token, channelId, text, outMsg, err)) {
             std::lock_guard<std::mutex> lk(m_mu);
+            if (!current(session)) return;
             m_messages[channelId].push_back(outMsg);
             m_version++;
         } else {
@@ -339,20 +420,25 @@ void DiscordService::fetchGuildChannelsAsync(home::HomeCore& core, Snowflake gui
     if (token.empty() || guildId == 0) return;
     if (!core.threadPool().acceptingTasks()) return;
 
-    core.threadPool().submit([this, &core, token, guildId]() {
+    const std::uint64_t session = m_session.load();
+    core.threadPool().submit([this, &core, token, guildId, session]() {
         std::vector<Channel> channels;
         std::string err;
         if (api::fetchGuildChannels(core.net(), token, guildId, channels, err)) {
+            const std::size_t n = channels.size();
             std::lock_guard<std::mutex> lk(m_mu);
-            for (auto& g : m_guilds) {
+            if (!current(session)) return;
+            auto next = std::make_shared<std::vector<Guild>>(*m_guilds);
+            for (auto& g : *next) {
                 if (g.id == guildId) {
                     g.channels = std::move(channels);
                     break;
                 }
             }
+            m_guilds = std::move(next);
             m_version++;
             DebugLog::log("[discord] fetched %zu channels for guild %llu",
-                          channels.size(), (unsigned long long)guildId);
+                          n, (unsigned long long)guildId);
         } else {
             DebugLog::log("[discord] fetchGuildChannels error: %s", err.c_str());
         }
@@ -364,15 +450,18 @@ void DiscordService::fetchMessagesAsync(home::HomeCore& core, Snowflake channelI
     if (token.empty() || channelId == 0) return;
     if (!core.threadPool().acceptingTasks()) return;
 
-    core.threadPool().submit([this, &core, token, channelId]() {
+    const std::uint64_t session = m_session.load();
+    core.threadPool().submit([this, &core, token, channelId, session]() {
         std::vector<Message> msgs;
         std::string err;
         if (api::fetchMessages(core.net(), token, channelId, msgs)) {
+            const std::size_t n = msgs.size();
             std::lock_guard<std::mutex> lk(m_mu);
+            if (!current(session)) return;
             m_messages[channelId] = std::move(msgs);
             m_version++;
             DebugLog::log("[discord] fetched %zu messages for channel %llu",
-                          msgs.size(), (unsigned long long)channelId);
+                          n, (unsigned long long)channelId);
         } else {
             DebugLog::log("[discord] fetchMessages error for channel %llu: %s",
                           (unsigned long long)channelId, err.c_str());

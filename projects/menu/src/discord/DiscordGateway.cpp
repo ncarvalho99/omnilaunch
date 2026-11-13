@@ -30,6 +30,14 @@ DiscordGateway::~DiscordGateway() {
 
 void DiscordGateway::start(net::NetService& net, const std::string& token) {
     stop();
+    // Resume is only for the same account: another token Identifies afresh.
+    if (token != m_token) {
+        std::lock_guard<std::mutex> lk(m_mu);
+        m_sessionId.clear();
+        m_resumeGatewayUrl.clear();
+        m_lastSeq = -1;
+        m_lastError.clear();
+    }
     m_token = token;
     m_stop.store(false);
     m_state.store(State::Connecting);
@@ -45,6 +53,9 @@ void DiscordGateway::stop() {
         m_thread.join();
     }
     m_state.store(State::Disconnected);
+    // Events of a stopped connection belong to the session that ended.
+    std::lock_guard<std::mutex> lk(m_mu);
+    m_inEvents.clear();
 }
 
 DiscordGateway::State DiscordGateway::state() const {

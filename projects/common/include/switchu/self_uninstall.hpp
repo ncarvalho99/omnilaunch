@@ -31,5 +31,9 @@ inline constexpr const char* kBackupDirectory =
     "sdmc:/backup/OmniLaunch";
 inline constexpr const char* kLegacyBackupDirectory =
     "sdmc:/backup/SwitchU";
+// hbmenu.nro swap done by the homebrew launcher (restored, not removed).
+inline constexpr const char* kHbmenu = "sdmc:/hbmenu.nro";
+inline constexpr const char* kHbmenuBackup = "sdmc:/hbmenu.nro.omnilaunch-original";
+inline constexpr const char* kLoaderNro = "sdmc:/switch/OmniLaunch/bin/loader.nro";
 
 } // namespace switchu::self_uninstall

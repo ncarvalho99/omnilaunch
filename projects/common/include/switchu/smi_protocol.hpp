@@ -159,12 +159,13 @@ static_assert(sizeof(ResumeAppArgs) == 56);
 struct UserArgs {
     uint8_t user_uid[16];
 };
+static_assert(sizeof(UserArgs) == 16);
 
 struct LaunchHomebrewArgs {
     AccountUid uid;
     uint64_t   host_title_id;
 };
-static_assert(sizeof(UserArgs) == 16);
+static_assert(sizeof(LaunchHomebrewArgs) == 24);
 
 struct ManualDateTimeArgs {
     uint32_t year;

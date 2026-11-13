@@ -7,13 +7,7 @@
 
 #include "WiiUMenuApp.hpp"
 
-#include "themeshop/ThemeHttp.hpp"
-#include "themeshop/ZipReader.hpp"
-#include <switchu/sd_commit.hpp>
-#include <switchu/install_txn.hpp>
-#ifdef __SWITCH__
-#include <switch.h>
-#endif
+#include "update/UpdateStager.hpp"
 #include "core/DebugLog.hpp"
 
 #include <nxui/core/I18n.hpp>
@@ -32,70 +26,9 @@
 
 namespace {
 
-// SHA-256 of a file, read in chunks. Empty when the file cannot be read (and on
-// hosts without libnx, where updates are not applied anyway).
-std::string fileSha256Hex(const char* path) {
-#ifdef __SWITCH__
-    std::FILE* f = std::fopen(path, "rb");
-    if (!f)
-        return {};
-    Sha256Context ctx;
-    sha256ContextCreate(&ctx);
-    static unsigned char buf[64 * 1024];
-    std::size_t n;
-    while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0)
-        sha256ContextUpdate(&ctx, buf, n);
-    const bool readOk = std::ferror(f) == 0;
-    std::fclose(f);
-    if (!readOk)
-        return {};
-    std::uint8_t digest[SHA256_HASH_SIZE];
-    sha256ContextGetHash(&ctx, digest);
-    static const char hex[] = "0123456789abcdef";
-    std::string out;
-    for (std::uint8_t b : digest) {
-        out.push_back(hex[b >> 4]);
-        out.push_back(hex[b & 0x0f]);
-    }
-    return out;
-#else
-    (void)path;
-    return {};
-#endif
-}
-
-constexpr const char* kUpdateDir = "sdmc:/config/OmniLaunch/update";
-constexpr const char* kUpdateArchive = "sdmc:/config/OmniLaunch/update/update.zip";
-constexpr const char* kReadyMarker = "sdmc:/config/OmniLaunch/update/ready";
-// Written once the daemon inside the archive is already on the card, which is
-// what lets the boot that applies the rest skip its own restart.
-constexpr const char* kDaemonMarker = "sdmc:/config/OmniLaunch/update/daemon";
-// The archive lays out atmosphere/ and switch/ exactly as they sit on the card,
-// so the card root is the extraction target.
-constexpr const char* kCardRoot = "sdmc:/";
-
-// The staging directory does not exist on a fresh card, and curl will not
-// create it. Only this one level is needed: its parent is the config directory
-// the menu already owns.
-bool ensureUpdateDirectory() {
-    struct stat info {};
-    if (stat(kUpdateDir, &info) == 0)
-        return true;
-    return mkdir(kUpdateDir, 0777) == 0;
-}
-
-// The marker the daemon looks for at boot. While it is there the update is
-// downloaded, verified and staged, and the only step left is the restart that
-// applies it. The daemon removes it once the files are in place, so its absence
-// after a reboot is what says the update went through.
-//
-// Checked from the card rather than remembered in memory on purpose: the menu
-// restarts every time a game closes, and a flag that did not survive that was
-// how the same update kept being offered over and over.
-bool updateRestartPending() {
-    struct stat info {};
-    return stat(kReadyMarker, &info) == 0;
-}
+// Download, verification and staging live in update/UpdateStager.cpp, shared
+// with the Cards frontend.
+bool updateRestartPending() { return update::restartPending(); }
 
 int todayNumber() {
     const auto now = std::chrono::system_clock::now().time_since_epoch();
@@ -331,143 +264,25 @@ void WiiUMenuApp::startUpdateDownload(const update::UpdateClient::Release& relea
 
     m_updateDownloadFuture = m_threadPool.submit([shared]() {
         try {
-            if (!ensureUpdateDirectory())
-                throw std::runtime_error("could not create the update folder");
-            std::remove(kUpdateArchive);
-            const std::uint64_t written = themeshop::http::getToFile(
-                shared->release.downloadUrl, kUpdateArchive,
+            update::stageRelease(
+                shared->release,
                 [shared](std::uint64_t received, std::uint64_t total) {
                     std::lock_guard<std::mutex> lock(shared->mutex);
                     shared->received = received;
                     if (total) shared->total = total;
+                },
+                [shared]() {
+                    std::lock_guard<std::mutex> lock(shared->mutex);
+                    shared->extracting = true;
                 });
-
-            // Only now, with the whole archive on the card and its length
-            // agreeing with what the release published, is anything replaced.
-            if (shared->release.sizeBytes && written != shared->release.sizeBytes)
-                throw std::runtime_error("download size did not match the release");
-
-            // Verify the whole archive before creating the ready marker or
-            // replacing the daemon. Missing or malformed release digests are
-            // refused when the release is parsed. A digest from the same HTTPS
-            // API response protects against a corrupt/swapped download, not a
-            // compromised publisher or release metadata.
-            if (shared->release.sha256.empty())
-                throw std::runtime_error("release has no published SHA-256 checksum");
-            const std::string actual = fileSha256Hex(kUpdateArchive);
-            if (actual != shared->release.sha256) {
-                DebugLog::log("[update] SHA-256 mismatch");
-                throw std::runtime_error("download did not match the published checksum");
-            }
-            DebugLog::log("[update] SHA-256 verified");
-
-            {
-                std::lock_guard<std::mutex> lock(shared->mutex);
-                shared->extracting = true;
-            }
-            // Not unpacked here. SDL_ttf holds the font open for as long as
-            // this menu runs, and the first version of this code destroyed that
-            // font trying to replace it. The daemon applies the update at the
-            // next boot, before the menu exists and before anything is open.
-            //
-            // The archive is still checked now, while there is a screen to
-            // report on: a payload that reaches outside what SwitchU installs
-            // is refused before it is ever staged, not at boot with nobody
-            // watching.
-            themeshop::ZipExtractPolicy policy;
-            policy.allowExecutablePayload = true;
-            policy.requiredRoots = {"atmosphere/", "switch/"};
-            const auto inspection = themeshop::inspectZipFile(kUpdateArchive, policy);
-            if (!inspection.success)
-                throw std::runtime_error(inspection.error.empty()
-                                             ? "the update package is not valid"
-                                             : inspection.error);
-
-            {
-                std::lock_guard<std::mutex> lock(shared->mutex);
-                shared->extracting = true;
-            }
-            // Written once the archive is whole and inspected: the daemon
-            // treats this marker as the only sign that an update is ready.
-            std::remove(kDaemonMarker);
-            if (std::FILE* marker = std::fopen(kReadyMarker, "wb")) {
-                std::fputs("ready", marker);
-                std::fclose(marker);
-            } else {
-                throw std::runtime_error("could not mark the update as ready");
-            }
-
-            // And now the one file in the payload that can be replaced from
-            // here: the daemon. Nothing holds it open -- Atmosphère read it at
-            // boot and closed it -- and the extractor swaps every file in by
-            // renaming a .part over it, so an interrupted write leaves the
-            // running daemon untouched.
-            //
-            // This is what makes one restart enough. The daemon is what applies
-            // an update, and it is inside the update: whichever copy of it the
-            // console loaded at boot is the copy that unpacks its replacement,
-            // so it can never be the new one. Putting it in place before the
-            // restart turns that around -- the console comes up on the new
-            // daemon, which then unpacks the menu half and goes straight into
-            // it. If any of this fails the marker is simply not written, and
-            // the daemon falls back to applying everything and restarting once
-            // more by itself.
-            switchu::install_txn::Txn daemonTxn(switchu::install_txn::kUpdateBackupRoot, kCardRoot);
-            themeshop::ZipExtractPolicy daemonOnly = policy;
-            daemonOnly.onlyRoots = {"atmosphere/"};
-            themeshop::ZipExtractResult daemonApply;
-            // An earlier pass or rollback that was cut short is the daemon's to
-            // resolve at boot; this thread never undoes or builds on it. A held
-            // backup of a finished update is simply extended by a new pass.
-            const bool blocked =
-                switchu::install_txn::interrupted(switchu::install_txn::kUpdateBackupRoot);
-            const bool journalOk = !blocked && daemonTxn.begin();
-            if (!journalOk) {
-                // No journal means no way to undo: replace nothing from here. The boot
-                // that applies the rest does it, under its own journal.
-                daemonApply.success = false;
-                daemonApply.error = blocked ? "an earlier update pass is waiting for recovery"
-                                            : "could not open the rollback journal";
-            } else {
-                daemonOnly.txn = &daemonTxn;
-                daemonApply = themeshop::extractZipFile(kUpdateArchive, kCardRoot, {}, daemonOnly);
-                if (daemonApply.success && !daemonTxn.completePass())
-                    daemonApply.success = false;
-            }
-            if (journalOk && !daemonApply.success) {
-                std::string failed;
-                const bool restored = switchu::install_txn::rollback(
-                    switchu::install_txn::kUpdateBackupRoot, kCardRoot, &failed);
-                DebugLog::log("[update] daemon half failed (%s); rolled back (%s)",
-                              daemonApply.error.c_str(), restored ? "ok" : failed.c_str());
-            }
-            if (daemonApply.success) {
-                switchu::commitSdCard("update daemon in place");
-                if (std::FILE* marker = std::fopen(kDaemonMarker, "wb")) {
-                    std::fputs(shared->release.version.c_str(), marker);
-                    std::fclose(marker);
-                    switchu::commitSdCard("update daemon marked");
-                }
-            } else {
-                DebugLog::log("[update] daemon half not applied (%s); the boot that "
-                              "applies the rest will restart once more",
-                              daemonApply.error.c_str());
-            }
-
             std::lock_guard<std::mutex> lock(shared->mutex);
             shared->ok = true;
             shared->done = true;
         } catch (const std::exception& error) {
-            std::remove(kUpdateArchive);
-            std::remove(kReadyMarker);
-            std::remove(kDaemonMarker);
             std::lock_guard<std::mutex> lock(shared->mutex);
             shared->error = error.what();
             shared->done = true;
         } catch (...) {
-            std::remove(kUpdateArchive);
-            std::remove(kReadyMarker);
-            std::remove(kDaemonMarker);
             std::lock_guard<std::mutex> lock(shared->mutex);
             shared->error = "unknown update failure";
             shared->done = true;

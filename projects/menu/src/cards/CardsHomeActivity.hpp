@@ -25,6 +25,7 @@
 #include "widgets/QuickSettingsOverlay.hpp"
 #include "settings/SteamGridDbPickerScreen.hpp"
 #include "settings/TextEntryScreen.hpp"
+#include "update/UpdateClient.hpp"
 #include <nxui/Activity.hpp>
 #include <nxui/Theme.hpp>
 #include <nxui/core/Font.hpp>
@@ -260,6 +261,12 @@ private:
     // Media app download (TikTok): 0 idle, 1 running, 2 done, 3 failed. Shared
     // with the worker so a late finish after destroy touches no dead state.
     std::shared_ptr<std::atomic<int>> m_appDownloadState = std::make_shared<std::atomic<int>>(0);
+    // BrowseNX download on first use (as CardsNX): same 0..3 states.
+    std::shared_ptr<std::atomic<int>> m_browserDownloadState = std::make_shared<std::atomic<int>>(0);
+    std::shared_ptr<std::atomic<bool>> m_browserDownloadStop = std::make_shared<std::atomic<bool>>(false);
+    std::future<void> m_browserDownloadFuture;
+    void pollBrowserDownload();
+    void stopBrowserDownload(); ///< cancel and wait (onDestroy, quiesce)
     bool m_dotsOpen = false;
     float m_dotsIn = 0.f;
     int m_dotsRow = 1;
@@ -374,6 +381,26 @@ private:
     void pollHomebrewUpdates();
     void stopHomebrewUpdates(); ///< cancel and wait (onDestroy, quiesce)
     int homebrewUpdateCount() const;
+
+    // OmniLaunch self-update (same feed, checks and staging as Classic; see
+    // update/UpdateStager.hpp). Checked once a day on a cold start.
+    struct SelfUpdateJob;
+    update::UpdateClient m_selfUpdate;
+    std::uint64_t m_selfUpdateSeen = 0;
+    bool m_selfUpdateChecked = false;   ///< automatic check done this activation
+    bool m_selfUpdateForced = false;    ///< the player asked: always answer
+    bool m_selfUpdateOffered = false;   ///< automatic offer shown this activation
+    update::UpdateClient::Release m_selfUpdateAvailable;
+    std::string m_selfUpdateStatus;
+    std::shared_ptr<SelfUpdateJob> m_selfUpdateJob;
+    std::future<void> m_selfUpdateFuture;
+    std::shared_ptr<ProgressDialog> m_selfUpdateProgress;
+    void checkSelfUpdate(bool forced);
+    void pollSelfUpdate();
+    void offerSelfUpdate(const update::UpdateClient::Release& release);
+    void startSelfUpdateDownload(const update::UpdateClient::Release& release);
+    void waitSelfUpdate(); ///< onDestroy, quiesce
+    CardsSheet::Row selfUpdateRow();
     bool homebrewHasUpdate(const std::string& path, const std::string& version) const;
 
     // G2: Art sources (GameTDB, nlib, SteamGridDB picker and Save All).

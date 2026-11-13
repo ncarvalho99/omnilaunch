@@ -1,3 +1,42 @@
+# OmniLaunch 1.3.0
+
+Feature release for OmniLaunch: a second HOME style, **Cards** (switch between Classic and Cards from the Settings), with pages, sheets, music, news, Discord, a homebrew updater and the OmniLaunch updater, plus network, stability and smoothness work across the whole menu. Classic stays the default.
+
+If you encounter any bugs, please report them directly to the developer on Telegram at https://t.me/ncarvalho99 with your console logs (`/config/OmniLaunch/menu.log`).
+
+## English
+
+### Cards HOME style
+- **New frontend**: card row with Games, Homebrew, Nintendo and Media pages, page dots, Move mode, sort, card options per software type, achievements, art sources (GameTDB covers, SteamGridDB pickers, batch save) and a welcome tour.
+- **Sheets**: music player, News, notifications, users, quick settings, power menu (including restart to Hekate) and a Settings sheet with MTP, language, sounds and lock screen rows.
+- **Homebrew from HOME**: .nro apps open in full application mode through the OmniLaunch Loader. Your own `hbmenu.nro` is kept aside while a homebrew runs and put back afterwards (and on uninstall).
+- **Browser tile**: opens BrowseNX; the first use downloads it from its author's GitHub release.
+- **Updates**: the Cards Settings now checks for, downloads and stages OmniLaunch updates just like Classic, and lists homebrew updates from the Homebrew App Store and GitHub releases.
+
+### Social and network
+- **Discord**: sign in with QR code or token, servers, channels, direct messages and notifications. Sign-in tokens are no longer copied into the configuration backup.
+- **Network layer**: HTTPS with bundled root certificates as a fallback, WebSocket support, connection test and Nextendo integration.
+
+### Classic and system
+- Notification bell, users picker, Social screen, sidebar order options in ThemeShop > OmniLaunch, SteamGridDB switches per view.
+- Smoother text and overlays, deferred texture release, a watchdog that gives the screen back to a suspended game when the menu fails to start, and translations for every supported language.
+
+## Português
+
+### Estilo de HOME Cards
+- **Novo frontend**: fileira de cartões com as páginas Jogos, Homebrew, Nintendo e Mídia, pontos de página, modo Mover, ordenação, opções por tipo de software, conquistas, fontes de arte (capas GameTDB, seletores SteamGridDB, salvar em lote) e tour de boas-vindas.
+- **Painéis**: player de música, Notícias, notificações, usuários, ajustes rápidos, menu de energia (inclusive reiniciar no Hekate) e Configurações com MTP, idioma, sons e tela de bloqueio.
+- **Homebrew pela HOME**: apps .nro abrem em modo de aplicativo completo pelo OmniLaunch Loader. O seu `hbmenu.nro` fica guardado enquanto o homebrew roda e volta ao lugar depois (e também ao desinstalar).
+- **Bloco Navegador**: abre o BrowseNX; no primeiro uso ele é baixado do release do autor no GitHub.
+- **Atualizações**: as Configurações do Cards agora verificam, baixam e preparam atualizações do OmniLaunch igual ao Classic, e listam atualizações de homebrew da Homebrew App Store e de releases do GitHub.
+
+### Social e rede
+- **Discord**: login por QR code ou token, servidores, canais, mensagens diretas e notificações. Os tokens de login não são mais copiados para o backup da configuração.
+- **Camada de rede**: HTTPS com certificados raiz incluídos como reserva, suporte a WebSocket, teste de conexão e integração com o Nextendo.
+
+### Classic e sistema
+- Sino de notificações, seletor de usuários, tela Social, ordem da barra lateral em ThemeShop > OmniLaunch, chaves do SteamGridDB por visualização.
+- Texto e sobreposições mais suaves, liberação adiada de texturas, watchdog que devolve a tela ao jogo suspenso quando o menu não inicia e traduções para todos os idiomas suportados.
 # OmniLaunch 1.2.2
 
 Hotfix release for OmniLaunch: unified manual and SteamGridDB game backdrop rendering, instant backdrop loading via pre-decoded raw cache, neighbor title prefetching for manual backgrounds, and identical opacity scaling (fixes #3).

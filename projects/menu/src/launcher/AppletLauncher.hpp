@@ -54,6 +54,8 @@ public:
                    bool applicationOnly = false);
     static bool prepareHbl();
     static bool installLoader();
+    /// Puts the player's sdmc:/hbmenu.nro back (and recovers a cut-short swap).
+    static void restoreUserHbmenu();
 #ifdef SWITCHU_PREFLIGHT_EDGE_TEST
     void launchApplicationFailureDiagnostic(
         uint64_t titleId, AccountUid uid,
