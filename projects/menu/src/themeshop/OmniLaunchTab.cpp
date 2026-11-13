@@ -92,6 +92,29 @@ ThemeShopScreen::Tab OmniLaunchTab::build(ThemeShopScreen& screen) {
         t.items.push_back(std::move(it));
     }
 
+    {
+        // Classic side buttons (the two columns beside the grid): 80..130 %.
+        SettingItem it;
+        it.label = i18n.tr("settings.omnilaunch.sidebar_size", "Side button size");
+        it.description = i18n.tr("settings.omnilaunch.sidebar_size_desc",
+            "Size of the buttons in the Classic side columns.");
+        it.type = ItemType::Slider;
+        it.sliderSteps = 10;
+        const int pct = std::clamp(screen.m_sidebarScalePercent, 80, 130);
+        it.floatVal = static_cast<float>(pct - 80) / 50.f;
+        it.anim01 = it.floatVal;
+        it.infoText = std::to_string(pct) + "%";
+        it.onChange = [&screen](SettingItem& self) {
+            const int pct = std::clamp(80 + static_cast<int>(std::round(std::clamp(self.floatVal, 0.f, 1.f) * 10.f)) * 5,
+                                       80, 130);
+            self.floatVal = static_cast<float>(pct - 80) / 50.f;
+            self.anim01 = self.floatVal;
+            self.infoText = std::to_string(pct) + "%";
+            screen.m_sidebarScalePercent = pct;
+            if (screen.m_sidebarScaleCb) screen.m_sidebarScaleCb(pct);
+        };
+        t.items.push_back(std::move(it));
+    }
 #ifdef SWITCHU_MENU
     {
         SettingItem it;

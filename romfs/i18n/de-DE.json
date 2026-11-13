@@ -235,7 +235,9 @@
       "lock": "Sperrbildschirm",
       "lock_desc": "Uhrzeit und Datum beim Starten oder Aufwecken der Konsole. A öffnet HOME.",
       "icon_size": "Symbolgröße",
-      "icon_size_desc": "Größe der HOME-Symbole in den Classic-Ansichten (Raster, Zeile und Flow)."
+      "icon_size_desc": "Größe der HOME-Symbole in den Classic-Ansichten (Raster, Zeile und Flow).",
+      "sidebar_size": "Größe der Seitentasten",
+      "sidebar_size_desc": "Größe der Tasten in den seitlichen Spalten von Classic."
     },
     "layout": {
       "grid": "Raster",

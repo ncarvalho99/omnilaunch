@@ -236,7 +236,9 @@
       "lock": "Pantalla de bloqueo",
       "lock_desc": "La hora y la fecha al encender o reanudar la consola. A abre el HOME.",
       "icon_size": "Tamaño de los iconos",
-      "icon_size_desc": "Tamaño de los iconos del HOME en las vistas de Classic (cuadrícula, línea y Flow)."
+      "icon_size_desc": "Tamaño de los iconos del HOME en las vistas de Classic (cuadrícula, línea y Flow).",
+      "sidebar_size": "Tamaño de los botones laterales",
+      "sidebar_size_desc": "Tamaño de los botones de las columnas laterales de Classic."
     },
     "layout": {
       "grid": "Cuadrícula",

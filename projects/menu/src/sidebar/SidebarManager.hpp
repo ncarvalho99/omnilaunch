@@ -41,6 +41,9 @@ public:
     // The dynamic-line HOME layout turns the two side columns into one
     // horizontal control strip between the profile bar and the applications.
     void setDynamicLineLayout(bool enabled);
+    // Player size of the side columns (0.8..1.3), used by the next
+    // setDynamicLineLayout(false). The one-row strip sizes itself to fit.
+    void setColumnScale(float scale) { m_columnScale = scale < 0.8f ? 0.8f : (scale > 1.3f ? 1.3f : scale); }
     // Where the left group of that strip ends and the right one begins: the
     // span the top HUD has for the profiles and whatever sits beside them.
     static float dynamicLineGapLeft();
@@ -99,4 +102,5 @@ private:
     bool m_hasDiscord = false;
     float m_placedLeftEnd = 0.f;
     float m_placedRightStart = 1280.f;
+    float m_columnScale = 1.f;
 };

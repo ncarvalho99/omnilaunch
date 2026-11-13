@@ -235,7 +235,9 @@
       "lock": "Schermata di blocco",
       "lock_desc": "Ora e data all'avvio o al risveglio della console. A apre il HOME.",
       "icon_size": "Dimensione icone",
-      "icon_size_desc": "Dimensione delle icone HOME nelle viste Classic (griglia, riga e Flow)."
+      "icon_size_desc": "Dimensione delle icone HOME nelle viste Classic (griglia, riga e Flow).",
+      "sidebar_size": "Dimensione pulsanti laterali",
+      "sidebar_size_desc": "Dimensione dei pulsanti nelle colonne laterali di Classic."
     },
     "layout": {
       "grid": "Griglia",

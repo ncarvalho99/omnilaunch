@@ -235,7 +235,9 @@
       "lock": "Tela de bloqueio",
       "lock_desc": "Mostra data e hora ao ligar ou acordar o console. Pressione A para entrar no menu.",
       "icon_size": "Tamanho dos ícones",
-      "icon_size_desc": "Tamanho dos ícones do HOME nas visualizações do Classic (grade, linha e Flow)."
+      "icon_size_desc": "Tamanho dos ícones do HOME nas visualizações do Classic (grade, linha e Flow).",
+      "sidebar_size": "Tamanho dos botões laterais",
+      "sidebar_size_desc": "Tamanho dos botões das colunas laterais do Classic."
     },
     "layout": {
       "grid": "Grade",

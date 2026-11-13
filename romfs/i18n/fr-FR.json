@@ -235,7 +235,9 @@
       "lock": "Écran de verrouillage",
       "lock_desc": "L'heure et la date au démarrage ou au réveil de la console. A ouvre le HOME.",
       "icon_size": "Taille des icônes",
-      "icon_size_desc": "Taille des icônes du HOME dans les vues Classic (grille, ligne et Flow)."
+      "icon_size_desc": "Taille des icônes du HOME dans les vues Classic (grille, ligne et Flow).",
+      "sidebar_size": "Taille des boutons latéraux",
+      "sidebar_size_desc": "Taille des boutons des colonnes latérales de Classic."
     },
     "layout": {
       "grid": "Grille",

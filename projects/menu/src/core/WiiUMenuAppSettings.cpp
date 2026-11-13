@@ -1438,6 +1438,7 @@ void WiiUMenuApp::createThemeShop() {
     m_themeShop->setMusicState(m_audio.isPlaying(), m_audio.volume(), m_audio.sfxVolume(), m_config.themeMusicEnabled);
     m_themeShop->setGridLayoutState(m_config.gridColumns, m_config.gridRows);
     m_themeShop->setIconScaleState(m_config.iconScalePercent);
+    m_themeShop->setSidebarScaleState(m_config.sidebarScalePercent);
     m_themeShop->setDynamicPagesState(m_config.dynamicPages);
     m_themeShop->setViewSwitchButtonState(m_config.viewSwitchButton);
     m_themeShop->setAppearanceState(m_config.glassSharpness,
@@ -1545,6 +1546,16 @@ void WiiUMenuApp::createThemeShop() {
         if (m_grid)
             m_grid->setItemScale(static_cast<float>(percent) / 100.f);
         reflowHomeGrid();
+    });
+    m_themeShop->onSidebarScaleChange([this](int percent) {
+        percent = std::clamp(percent, 80, 130);
+        if (m_config.sidebarScalePercent == percent)
+            return;
+        m_config.sidebarScalePercent = percent;
+        m_sidebar.setColumnScale(static_cast<float>(percent) / 100.f);
+        // Re-places the columns (or the one-row strip) and the grid's side
+        // navigation targets, which pick the nearest button by position.
+        configureDynamicLineNavigation();
     });
     m_themeShop->onGridRowsChange([this](int rows) {
         rows = std::clamp(rows, 2, 5);

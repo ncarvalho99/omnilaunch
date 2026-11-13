@@ -68,6 +68,7 @@ bool AppConfig::load() {
     readJsonOpt(j, "gridColumns", gridColumns);
     readJsonOpt(j, "gridRows", gridRows);
     readJsonOpt(j, "iconScalePercent", iconScalePercent);
+    readJsonOpt(j, "sidebarScalePercent", sidebarScalePercent);
     readJsonOpt(j, "dynamicPages", dynamicPages);
     {
         std::string mode;
@@ -307,6 +308,7 @@ bool AppConfig::load() {
     gridColumns = std::clamp(gridColumns, 3, 8);
     gridRows = std::clamp(gridRows, 2, 5);
     iconScalePercent = std::clamp(iconScalePercent, 80, 130);
+    sidebarScalePercent = std::clamp(sidebarScalePercent, 80, 130);
     if (sortMode < 0 || sortMode >= kSortModeCount) sortMode = 0;
     if (cardsSort < 0 || cardsSort >= kCardsSortCount) cardsSort = 0;
     if (cardsLaunchStyle < 0 || cardsLaunchStyle >= kCardsLaunchStyleCount) cardsLaunchStyle = 0;
@@ -365,6 +367,7 @@ bool AppConfig::save() const {
     j["gridColumns"] = std::clamp(gridColumns, 3, 8);
     j["gridRows"] = std::clamp(gridRows, 2, 5);
     j["iconScalePercent"] = std::clamp(iconScalePercent, 80, 130);
+    j["sidebarScalePercent"] = std::clamp(sidebarScalePercent, 80, 130);
     j["dynamicPages"] = dynamicPages;
     // Stable strings, never enum ordinals: an installation written by a build
     // that knows Flow/Shelf/Deck must still read correctly on one that does not.

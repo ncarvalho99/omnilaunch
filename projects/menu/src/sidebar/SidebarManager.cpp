@@ -38,9 +38,9 @@ void SidebarManager::build(nxui::GpuDevice& gpu, nxui::Renderer& ren,
                            const std::string& assetsBase,
                            const Actions& actions,
                            const std::vector<int>& order) {
-    constexpr float btnSize = 70.f;
-    constexpr float gap     = 16.f;
-    constexpr float marginX = 14.f;
+    const float btnSize = kSidebarButtonSize * m_columnScale;
+    constexpr float gap     = kSidebarColumnGap;
+    constexpr float marginX = kSidebarMarginX;
 
     float leftX  = marginX;
     float rightX = 1280.f - marginX - btnSize;
@@ -164,20 +164,19 @@ void SidebarManager::setDynamicLineLayout(bool enabled) {
     }
 
     const float count = static_cast<float>(std::max(m_leftButtons.size(), m_rightButtons.size()));
-    const float totalH = count * kSidebarButtonSize + std::max(0.f, count - 1.f) * kSidebarColumnGap;
+    const float size = kSidebarButtonSize * m_columnScale;
+    const float totalH = count * size + std::max(0.f, count - 1.f) * kSidebarColumnGap;
     const float startY = 360.f - totalH * 0.5f;
-    const float rightX = 1280.f - kSidebarMarginX - kSidebarButtonSize;
+    const float rightX = 1280.f - kSidebarMarginX - size;
     for (std::size_t i = 0; i < m_leftButtons.size(); ++i) {
         m_leftButtons[i]->setRect({kSidebarMarginX,
-                                   startY + static_cast<float>(i) *
-                                       (kSidebarButtonSize + kSidebarColumnGap),
-                                   kSidebarButtonSize, kSidebarButtonSize});
+                                   startY + static_cast<float>(i) * (size + kSidebarColumnGap),
+                                   size, size});
     }
     for (std::size_t i = 0; i < m_rightButtons.size(); ++i) {
         m_rightButtons[i]->setRect({rightX,
-                                    startY + static_cast<float>(i) *
-                                        (kSidebarButtonSize + kSidebarColumnGap),
-                                    kSidebarButtonSize, kSidebarButtonSize});
+                                    startY + static_cast<float>(i) * (size + kSidebarColumnGap),
+                                    size, size});
     }
     for (std::size_t i = 0; i < m_leftButtons.size(); ++i) {
         auto* btn = m_leftButtons[i].get();

@@ -235,7 +235,9 @@
       "lock": "Vergrendelscherm",
       "lock_desc": "De tijd en datum bij het opstarten of wekken van de console. A opent HOME.",
       "icon_size": "Pictogramgrootte",
-      "icon_size_desc": "Grootte van de HOME-pictogrammen in de Classic-weergaven (raster, rij en Flow)."
+      "icon_size_desc": "Grootte van de HOME-pictogrammen in de Classic-weergaven (raster, rij en Flow).",
+      "sidebar_size": "Grootte zijknoppen",
+      "sidebar_size_desc": "Grootte van de knoppen in de zijkolommen van Classic."
     },
     "layout": {
       "grid": "Raster",

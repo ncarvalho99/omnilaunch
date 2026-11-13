@@ -25,6 +25,8 @@ struct AppConfig {
     int   gridRows     = 3;
     // Classic icon size, percent of the layout's own size (grid, line, flow).
     int   iconScalePercent = 100;
+    // Classic side button columns (left/right of the grid), percent of 70 px.
+    int   sidebarScalePercent = 100;
     bool  dynamicPages = true;
     AppLayoutMode appLayoutMode = AppLayoutMode::Grid;
     std::string viewSwitchButton = "R";

@@ -6586,6 +6586,7 @@ void WiiUMenuApp::buildGrid() {
     };
 
     m_sidebarActions = sidebarActions;
+    m_sidebar.setColumnScale(static_cast<float>(std::clamp(m_config.sidebarScalePercent, 80, 130)) / 100.f);
     m_sidebar.build(app().gpu(), app().renderer(), SD_ASSETS, m_sidebarActions, m_config.sidebarOrder);
     if (!returningFromSuspendedApp) {
         m_sidebar.reloadAssets(app().gpu(), app().renderer(), SD_ASSETS,
@@ -7009,6 +7010,7 @@ void WiiUMenuApp::rebuildSidebar() {
     app().gpu().waitIdle();
     m_leftSidebar->clearChildren();
     m_rightSidebar->clearChildren();
+    m_sidebar.setColumnScale(static_cast<float>(std::clamp(m_config.sidebarScalePercent, 80, 130)) / 100.f);
     m_sidebar.build(app().gpu(), app().renderer(), SD_ASSETS, m_sidebarActions, m_config.sidebarOrder);
     const bool dynamicLine = isCarouselLayout();
     m_sidebar.setDynamicLineLayout(dynamicLine);
