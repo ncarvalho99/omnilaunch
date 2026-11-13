@@ -10,7 +10,8 @@
 // and lifecycle authority, is untouched. Its memory comes from its own heap and
 // is returned when it exits.
 //
-// What it does, every kPollSeconds:
+// What it does, every 2 to 4 minutes (a random wait each round, so the
+// requests do not come at a fixed beat):
 //   GET /users/@me/channels           (DMs and their last_message_id)
 //   GET /channels/{id}/messages?after (only for DMs that moved, max 3)
 // and writes one Ultrahand toast per new message from someone else:
@@ -68,8 +69,9 @@ void __appExit(void) {
 
 namespace {
 
-constexpr int kPollSeconds = 120;          // owner choice 2026-11-13: >= 2 min
-constexpr int kFirstPollSeconds = 20;      // let the game finish starting first
+constexpr int kPollMinSeconds = 120;       // owner choice 2026-11-13: >= 2 min,
+constexpr int kPollMaxSeconds = 240;       // varied (owner choice 2026-11-13)
+constexpr int kFirstPollSeconds = 20;      // let the game finish starting first (+0..40 s)
 constexpr int kMaxToastsPerRound = 3;
 constexpr int kMaxChannelsPerRound = 3;
 constexpr size_t kMaxBody = 256 * 1024;
@@ -85,6 +87,12 @@ constexpr const char* kRoots[] = {"gts-root-r4.pem", "gts-root-r1.pem", "isrg-ro
 // The daemon ends this process with pm (a hard stop); nothing sets this today.
 // It is kept so a cooperative stop can be added without touching the loops.
 std::atomic<bool> g_stop{false};
+
+// Next wait in seconds, uniform in [kPollMinSeconds, kPollMaxSeconds].
+int nextPollSeconds() {
+    const u64 span = static_cast<u64>(kPollMaxSeconds - kPollMinSeconds + 1);
+    return kPollMinSeconds + static_cast<int>(randomGet64() % span);
+}
 
 // Short log; never the token or any message text.
 void logLine(const char* fmt, ...) {
@@ -327,10 +335,10 @@ int pollOnce(CURL* c, State& s, const std::string& token, const std::string& myI
         logLine("token refused (%ld): stopping until the next game", st);
         return -1;
     }
-    if (st == 429) return std::max<long>(retry, kPollSeconds);
-    if (st != 200) return kPollSeconds;
+    if (st == 429) return std::max<long>(retry, nextPollSeconds());
+    if (st != 200) return nextPollSeconds();
     const auto list = nlohmann::json::parse(body, nullptr, false);
-    if (!list.is_array()) return kPollSeconds;
+    if (!list.is_array()) return nextPollSeconds();
 
     // DMs that moved since we last looked, newest first.
     std::vector<std::pair<std::uint64_t, std::uint64_t>> moved; // channel, last message
@@ -365,7 +373,7 @@ int pollOnce(CURL* c, State& s, const std::string& token, const std::string& myI
         std::string url = "https://discord.com/api/v10/channels/" + std::to_string(chId) + "/messages?limit=5";
         if (s.seen[chId] != 0) url += "&after=" + std::to_string(s.seen[chId]);
         const long ms = httpGet(c, url, token, body, retry);
-        if (ms == 429) return std::max<long>(retry, kPollSeconds);
+        if (ms == 429) return std::max<long>(retry, nextPollSeconds());
         if (ms != 200) continue;
         const auto msgs = nlohmann::json::parse(body, nullptr, false);
         if (!msgs.is_array()) continue;
@@ -387,7 +395,7 @@ int pollOnce(CURL* c, State& s, const std::string& token, const std::string& myI
         s.seen[chId] = std::max(s.seen[chId], last);
     }
     if (toasts > 0) logLine("round: %d toast(s)", toasts);
-    return kPollSeconds;
+    return nextPollSeconds();
 }
 
 // ---- Waiting -----------------------------------------------------------------
@@ -418,7 +426,7 @@ int main(int, char**) {
         logLine("no Discord account: exit");
         return 0;
     }
-    waitSeconds(kFirstPollSeconds);
+    waitSeconds(kFirstPollSeconds + static_cast<int>(randomGet64() % 41));
 
     State state = loadState();
     if (state.userId != myId) state = State{}; // another account: start fresh
@@ -449,7 +457,7 @@ int main(int, char**) {
         NifmInternetConnectionStatus status{};
         u32 strength = 0;
         NifmInternetConnectionType type{};
-        int wait = kPollSeconds;
+        int wait = nextPollSeconds();
         if (R_SUCCEEDED(nifmGetInternetConnectionStatus(&type, &strength, &status)) &&
             status == NifmInternetConnectionStatus_Connected) {
             wait = pollOnce(curl, state, token, myId, first);

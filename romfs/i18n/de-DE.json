@@ -241,8 +241,8 @@
       "sidebar_size_desc": "Größe der Tasten in den seitlichen Spalten von Classic.",
       "docked_1080p": "1080p am Fernseher",
       "docked_1080p_desc": "Im Dock wird HOME in 1920x1080 gezeichnet. Schärfer, braucht mehr Speicher. Gilt ab dem nächsten Start von HOME.",
-      "ingame_discord": "Discord-Nachrichten während Spielen",
-      "ingame_discord_desc": "Neue Direktnachrichten erscheinen als Ultrahand-Benachrichtigungen, alle 2 Minuten geprüft.",
+      "ingame_discord": "Discord-Nachrichten während Spielen (experimentell)",
+      "ingame_discord_desc": "Neue Direktnachrichten erscheinen als Ultrahand-Benachrichtigungen, alle 2 bis 4 Minuten geprüft. Nutzt dein Konto-Token; Discord kann automatisierte Nutzung markieren.",
       "ingame_discord_needs": "Benötigt Ultrahand mit eingeschalteten Benachrichtigungen."
     },
     "layout": {

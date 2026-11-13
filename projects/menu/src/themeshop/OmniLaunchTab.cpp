@@ -156,10 +156,10 @@ ThemeShopScreen::Tab OmniLaunchTab::build(ThemeShopScreen& screen) {
     }
     {
         SettingItem it;
-        it.label = i18n.tr("settings.omnilaunch.ingame_discord", "Discord messages during games");
+        it.label = i18n.tr("settings.omnilaunch.ingame_discord", "Discord messages during games (experimental)");
         it.description = settings::system_prefs::ultrahandNotificationsPresent()
             ? i18n.tr("settings.omnilaunch.ingame_discord_desc",
-                      "New direct messages appear as Ultrahand notifications, checked every 2 minutes.")
+                      "New direct messages appear as Ultrahand notifications, checked every 2 to 4 minutes. Uses your account token; Discord may flag automated use.")
             : i18n.tr("settings.omnilaunch.ingame_discord_needs",
                       "Needs Ultrahand with notifications turned on.");
         it.type = ItemType::Toggle;
