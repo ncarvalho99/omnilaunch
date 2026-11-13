@@ -1,31 +1,69 @@
 
-Cards HOME style
-- New frontend: card row with Games, Homebrew, Nintendo and Media pages, page dots, Move mode, sort, card options per software type, achievements, art sources (GameTDB covers, SteamGridDB pickers, batch save) and a welcome tour.
-- Sheets: music player, News, notifications, users, quick settings, power menu (including restart to Hekate) and a Settings sheet with MTP, language, sounds and lock screen rows.
-- Homebrew from HOME: .nro apps open in full application mode through the OmniLaunch Loader. Your own hbmenu.nro is kept aside while a homebrew runs and put back afterwards (and on uninstall).
-- Browser tile: opens BrowseNX; the first use downloads it from its author's GitHub release.
-- Updates: the Cards Settings now checks for, downloads and stages OmniLaunch updates just like Classic, and lists homebrew updates from the Homebrew App Store and GitHub releases.
+Two HOME styles
+- Cards: card row with Games, Homebrew, Nintendo and Media pages (ZL/ZR), page dots, Move mode, sorting, per-page order and visibility, card options per software type, achievements and a welcome tour.
+- Live switch: hold Minus for about half a second to go from Classic to Cards and back, without restarting. A short press keeps its old meaning (sort, or the layout cycle).
+- Shared HOME: music, settings, users and the suspended game are the same in both styles. Both play the theme's own songs, keep the playing song across a switch and share one shuffle setting.
+
+Cards sheets and look
+- Music player (vinyl, playlist, seek bar, 16-band spectrum), News, notifications, users, quick settings with a mini player, Bluetooth and Hekate, a four-tile power menu with restart to Hekate, and a ten-section Settings sheet (MTP, language, sounds, lock screen, updates and more).
+- Glass styles, accent colours, haze and background motion; lock screen with an optional password.
+- Art sources: GameTDB box art, SteamGridDB pickers for cover, hero and logo, and batch download.
+
+Homebrew, browser and updates
+- .nro apps open in full application mode through the OmniLaunch Loader, from Cards and from Classic. Your own hbmenu.nro is kept aside while a homebrew runs and is put back afterwards (and on uninstall).
+- Homebrew updater for the Homebrew App Store and GitHub releases.
+- BrowseNX: a Browser button beside the music button in Classic and a Media card in Cards. The first press downloads it with a progress dialog (MB, %, Cancel); later presses open it, or resume it when it is suspended.
+- The OmniLaunch updater works from both styles.
 
 Social and network
-- Discord: sign in with QR code or token, servers, channels, direct messages and notifications. Sign-in tokens are no longer copied into the configuration backup.
-- Network layer: HTTPS with bundled root certificates as a fallback, WebSocket support, connection test and Nextendo integration.
+- Discord: sign in with a QR code or token, servers, channels, direct messages, attachments and notifications, from the Classic sidebar and the Cards top bar. Sign-in tokens are not copied into the configuration backup.
+- News from the console's news service, with read tracking.
+- Network layer: HTTPS with bundled root certificates as a fallback, WebSocket, connection and speed test, Nextendo player counts.
 
-Classic and system
-- Notification bell, users picker, Social screen, sidebar order options in ThemeShop > OmniLaunch, SteamGridDB switches per view.
-- Smoother text and overlays, deferred texture release, a watchdog that gives the screen back to a suspended game when the menu fails to start, and translations for every supported language.
+Classic
+- Notification bell, users picker and Social screen; sidebar order, icon size (80-130 %, grid, line and Flow) and side button size (80-130 %) in ThemeShop > OmniLaunch; SteamGridDB switches per view.
+- One-row views fit the whole top bar (both sidebar groups, profiles, bell and buttons) between the clock and the battery.
+- Legends show "- (hold) Cards" with the button glyph; Cards hints use the same glyph capsules.
+- Fixed: line/3D views showed some covers squeezed (wide banner art is now cropped to the case shape); returning from a homebrew right after a switch could briefly show the other style.
+
+System and stability
+- Smoother text and overlays, deferred texture release, a text cache that evicts old strings instead of refusing new ones, and a watchdog that gives the screen back to a suspended game when the menu fails to start.
+- Translations for every supported language.
+
+Credits
+- Cards is based on HomeNX / CardsNX by ad3333m, who also wrote BrowseNX. Credits are in Settings > About and in the README.
 --pt-BR--
 
-Estilo de HOME Cards
-- Novo frontend: fileira de cartões com as páginas Jogos, Homebrew, Nintendo e Mídia, pontos de página, modo Mover, ordenação, opções por tipo de software, conquistas, fontes de arte (capas GameTDB, seletores SteamGridDB, salvar em lote) e tour de boas-vindas.
-- Painéis: player de música, Notícias, notificações, usuários, ajustes rápidos, menu de energia (inclusive reiniciar no Hekate) e Configurações com MTP, idioma, sons e tela de bloqueio.
-- Homebrew pela HOME: apps .nro abrem em modo de aplicativo completo pelo OmniLaunch Loader. O seu hbmenu.nro fica guardado enquanto o homebrew roda e volta ao lugar depois (e também ao desinstalar).
-- Bloco Navegador: abre o BrowseNX; no primeiro uso ele é baixado do release do autor no GitHub.
-- Atualizações: as Configurações do Cards agora verificam, baixam e preparam atualizações do OmniLaunch igual ao Classic, e listam atualizações de homebrew da Homebrew App Store e de releases do GitHub.
+Dois estilos de HOME
+- Cards: fileira de cartões com as páginas Jogos, Homebrew, Nintendo e Mídia (ZL/ZR), pontos de página, modo Mover, ordenação, ordem e visibilidade por página, opções por tipo de software, conquistas e tour de boas-vindas.
+- Troca ao vivo: segure Menos por cerca de meio segundo para ir do Classic ao Cards e voltar, sem reiniciar. Um toque curto mantém a função antiga (ordenar ou trocar a visualização).
+- HOME compartilhada: música, configurações, usuários e o jogo suspenso são os mesmos nos dois estilos. Os dois tocam as músicas do tema, mantêm a música atual na troca e usam a mesma opção de ordem aleatória.
+
+Painéis e visual do Cards
+- Player de música (vinil, playlist, barra de progresso, espectro de 16 faixas), Notícias, notificações, usuários, ajustes rápidos com mini player, Bluetooth e Hekate, menu de energia com 4 blocos (inclusive reiniciar no Hekate) e Configurações com dez seções (MTP, idioma, sons, tela de bloqueio, atualizações e mais).
+- Estilos de vidro, cores de destaque, névoa e movimento do fundo; tela de bloqueio com senha opcional.
+- Fontes de arte: capas da GameTDB, seletores do SteamGridDB para capa, fundo e logo, e download em lote.
+
+Homebrew, navegador e atualizações
+- Apps .nro abrem em modo de aplicativo completo pelo OmniLaunch Loader, no Cards e no Classic. O seu hbmenu.nro fica guardado enquanto o homebrew roda e volta ao lugar depois (e também ao desinstalar).
+- Atualizador de homebrew pela Homebrew App Store e releases do GitHub.
+- BrowseNX: botão Navegador ao lado do botão de música no Classic e cartão na página Mídia do Cards. O primeiro toque baixa o app com uma janela de progresso (MB, %, Cancelar); depois abre o app ou retoma quando ele está suspenso.
+- O atualizador do OmniLaunch funciona nos dois estilos.
 
 Social e rede
-- Discord: login por QR code ou token, servidores, canais, mensagens diretas e notificações. Os tokens de login não são mais copiados para o backup da configuração.
-- Camada de rede: HTTPS com certificados raiz incluídos como reserva, suporte a WebSocket, teste de conexão e integração com o Nextendo.
+- Discord: login por QR code ou token, servidores, canais, mensagens diretas, anexos e notificações, pela barra lateral do Classic e pela barra superior do Cards. Os tokens de login não são copiados para o backup da configuração.
+- Notícias do serviço de notícias do console, com marcação de lidas.
+- Camada de rede: HTTPS com certificados raiz incluídos como reserva, WebSocket, teste de conexão e de velocidade, contagem de jogadores do Nextendo.
 
-Classic e sistema
-- Sino de notificações, seletor de usuários, tela Social, ordem da barra lateral em ThemeShop > OmniLaunch, chaves do SteamGridDB por visualização.
-- Texto e sobreposições mais suaves, liberação adiada de texturas, watchdog que devolve a tela ao jogo suspenso quando o menu não inicia e traduções para todos os idiomas suportados.
+Classic
+- Sino de notificações, seletor de usuários e tela Social; ordem da barra lateral, tamanho dos ícones (80-130 %, grade, linha e Flow) e tamanho dos botões laterais (80-130 %) em ThemeShop > OmniLaunch; chaves do SteamGridDB por visualização.
+- As visualizações de uma linha encaixam toda a barra do topo (os dois grupos laterais, perfis, sino e botões) entre o relógio e a bateria.
+- As legendas mostram "- (segure) Cards" com o símbolo do botão; as dicas do Cards usam as mesmas cápsulas.
+- Corrigido: nas visualizações de linha/3D algumas capas apareciam espremidas (artes largas agora são recortadas no formato da caixa); voltar de um homebrew logo depois de uma troca podia mostrar o outro estilo por um instante.
+
+Sistema e estabilidade
+- Texto e sobreposições mais suaves, liberação adiada de texturas, cache de texto que descarta textos antigos em vez de recusar novos e watchdog que devolve a tela ao jogo suspenso quando o menu não inicia.
+- Traduções para todos os idiomas suportados.
+
+Créditos
+- O Cards é baseado no HomeNX / CardsNX de ad3333m, que também criou o BrowseNX. Os créditos estão em Configurações > Sobre e no README.

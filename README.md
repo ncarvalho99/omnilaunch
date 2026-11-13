@@ -1,7 +1,7 @@
 <div align="center">
     <img src="./omnilaunch.png" alt="OmniLaunch" width="380" />
     <p>The definitive multi-layout, highly customizable custom HOME menu replacement for Nintendo Switch.</p>
-    <p><i>Unifying the runtime architecture and rich services of SwitchU with the signature 3D carousel and presentation engines of sLaunch.</i></p>
+    <p><i>Unifying the runtime architecture and rich services of SwitchU, the signature 3D carousel and presentation engines of sLaunch, and the CardsNX HOME style of HomeNX.</i></p>
 </div>
 
 <p align="center">
@@ -22,6 +22,10 @@
 
 - [Overview](#overview)
 - [Key Features](#key-features)
+  - [Two HOME Styles: Classic and Cards](#two-home-styles-classic-and-cards)
+  - [Cards HOME Style](#cards-home-style)
+  - [Homebrew from HOME](#homebrew-from-home)
+  - [Discord, News & Network](#discord-news--network)
   - [8 Selectable Launcher View Modes](#8-selectable-launcher-view-modes)
   - [Hardware NVDEC Video Wallpapers](#hardware-nvdec-video-wallpapers)
   - [Integrated USB MTP File Transfer](#integrated-usb-mtp-file-transfer)
@@ -44,7 +48,7 @@
 
 ## Overview
 
-**OmniLaunch** is a complete, feature-rich replacement for the stock Nintendo Switch `qlaunch` HOME Menu. It merges the rock-solid daemon lifecycle, application handoff authority, folder hierarchy, widgets, and offline/online services of the **SwitchU** ecosystem with the presentation prowess, hardware-accelerated 3D carousel views, and aesthetic minimalism of **sLaunch**.
+**OmniLaunch** is a complete, feature-rich replacement for the stock Nintendo Switch `qlaunch` HOME Menu. It merges the rock-solid daemon lifecycle, application handoff authority, folder hierarchy, widgets, and offline/online services of the **SwitchU** ecosystem with the presentation prowess, hardware-accelerated 3D carousel views, and aesthetic minimalism of **sLaunch**, and adds a second HOME style, **Cards**, based on the CardsNX view of **HomeNX**.
 
 Games and applets launch through a persistent, low-overhead daemon (`0100000000001000`), meaning HOME returns to it seamlessly, suspended titles can be resumed instantly, and sleep, shutdown, and reboot are natively managed.
 
@@ -52,8 +56,29 @@ Games and applets launch through a persistent, low-overhead daemon (`01000000000
 
 ## Key Features
 
+### Two HOME Styles: Classic and Cards
+- **Classic** is the Wii U-style HOME with the view modes below; **Cards** is a card row inspired by CardsNX. Classic stays the default.
+- Hold **Minus (−)** for about half a second to switch between them live, in either direction, without restarting. Music, settings, users and the suspended game are shared, so nothing restarts on the switch.
+
+### Cards HOME Style
+- Card row with **Games**, **Homebrew**, **Nintendo** and **Media** pages (ZL/ZR), page dots, Move mode, sorting, per-page order and visibility.
+- Card options per software type (rename, move page, delete with confirmation, art choices), achievements, and a welcome tour.
+- Art sources: GameTDB box art, SteamGridDB pickers for cover, hero and logo, and batch download.
+- Sheets for the music player (vinyl, playlist, 16-band spectrum), News, notifications, users, quick settings, a four-tile power menu with restart to Hekate, and a ten-section Settings sheet.
+- Glass styles, accent colours, haze and background motion, lock screen with optional password.
+
+### Homebrew from HOME
+- `.nro` apps open in full application mode through the OmniLaunch Loader, from both Cards and Classic. Your own `hbmenu.nro` is kept aside while a homebrew runs and is put back afterwards (and on uninstall).
+- Homebrew updater: lists updates from the Homebrew App Store and GitHub releases and installs them with validation and recovery.
+- **BrowseNX** web browser: a Browser button beside the music button in Classic and a Media card in Cards download it on first use (with progress and Cancel) and then open or resume it.
+
+### Discord, News & Network
+- **Discord** client: sign in with a QR code or token, servers, channels, direct messages, attachments and notifications; available from the Classic sidebar and the Cards top bar.
+- **News** from the console's own news service, with read tracking.
+- Network layer with HTTPS (bundled root certificates as a fallback), WebSocket, a connection and speed test, and **Nextendo** player counts.
+
 ### 8 Selectable Launcher View Modes
-Cycle between 8 distinct layout modes dynamically on **Minus (−)** or via the Settings / Theme Shop menu:
+Cycle between the Classic layout modes with a short press of the view button (R or Minus) or via the Settings / Theme Shop menu. **ThemeShop → OmniLaunch** sets the icon size (80–130 %) for grid, line and Flow, the size of the side buttons, and the sidebar order:
 1. **Grid Mode:** Traditional Wii U-style layout with configurable columns (3–8) and rows (2–5), page transitions, drag-and-drop reordering, and expandable tiles.
 2. **Dynamic Line:** Fast horizontal carousel with a single focused hero tile and proximity-scaled neighbors.
 3. **Flow (3D Coverflow):** Authentic 3D coverflow carousel with watertight case geometry, dynamic perspective tilt, real-time ground reflection, proximity lighting, and 2:3 vertical cover art.
@@ -131,6 +156,11 @@ ffmpeg -i input.mkv -an -c:v libx264 -preset slow -crf 22 -pix_fmt yuv420p -vf "
 - The in-menu updater checks the published ZIP's size and SHA-256 digest before staging it; an update without a published digest is refused. The daemon applies staged files at boot using an append-only transaction journal and backup tree (`switchu::install_txn`), rolling back automatically if an extraction fails or is interrupted by power loss. If a newly installed version crash-loops at boot, the start-up crash guard automatically restores the previous working installation and restarts.
 - **Clean Self-Uninstall:** Permanently purges OmniLaunch and SwitchU files from `atmosphere/contents/`, `switch/`, and `config/`, rebooting cleanly into the original stock Nintendo HOME Menu.
 
+### Classic Additions
+- Notification bell, users picker and Social screen in the top bar; sidebar order options; SteamGridDB switches per view.
+- One-row views fit the whole top bar between the clock and the battery, whatever the number of profiles.
+- Classic and Cards play the same theme music and keep the playing song when switching.
+
 ### Accessibility & Multi-Language Support
 - Full text-to-speech voice guidance via eSpeak NG with adjustable speed.
 - Native localization in 8 languages: English, Portuguese (Brasil), Spanish, French, German, Italian, Dutch, and Russian.
@@ -157,6 +187,7 @@ ffmpeg -i input.mkv -an -c:v libx264 -preset slow -crf 22 -pix_fmt yuv420p -vf "
 </div>
 <div align="center">
   <img src="./screenshots/2026100222123900-DB1426D1DFD034027CECDE9C2DD914B8.jpg" width="48%" />
+  <img src="./screenshots/2026111312114700-DB1426D1DFD034027CECDE9C2DD914B8.jpg" width="48%" />
 </div>
 
 <details>
@@ -327,6 +358,7 @@ If you encounter any issues:
 
 - **[PoloNX](https://github.com/PoloNX):** Creator of [SwitchU](https://github.com/PoloNX/SwitchU).
 - **[etonedemid](https://github.com/etonedemid):** Creator of [sLaunch](https://github.com/etonedemid/slaunch).
+- **[ad3333m](https://github.com/ad3333m):** Creator of [HomeNX / CardsNX](https://github.com/ad3333m/homenx), the base of the Cards HOME style, and of [BrowseNX](https://github.com/ad3333m/browsenx).
 - **[Xortroll](https://github.com/Xortroll):** Creator of [uLaunch](https://github.com/Xortroll/uLaunch).
 - **[ncarvalho99](https://github.com/ncarvalho99):** Architecture, integration engineering, optimization, and maintenance of OmniLaunch.
 

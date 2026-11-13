@@ -144,6 +144,29 @@ float flowMidZ(const nxui::Vec3 q[4]) {
     return 0.25f * (q[0].z + q[1].z + q[2].z + q[3].z);
 }
 
+// Texture coordinates that fill a 2:3 case face with a cover of any shape,
+// cropping the centre. The covers folder is shared with Cards, whose art
+// download falls back to a 640x360 nlib banner when no box art is found; drawn
+// with full-texture UVs that banner was squeezed into the portrait case while
+// the 600x900 covers beside it looked right.
+struct CoverUv { float v[4]; };
+CoverUv coverCropUv(const nxui::Texture* tex, float faceAspect = 2.f / 3.f) {
+    CoverUv uv{{0.f, 0.f, 1.f, 1.f}};
+    if (!tex || tex->width() <= 0 || tex->height() <= 0)
+        return uv;
+    const float texAspect = static_cast<float>(tex->width()) / static_cast<float>(tex->height());
+    if (texAspect > faceAspect * 1.01f) {
+        const float keep = faceAspect / texAspect;
+        uv.v[0] = 0.5f - keep * 0.5f;
+        uv.v[2] = 0.5f + keep * 0.5f;
+    } else if (texAspect < faceAspect * 0.99f) {
+        const float keep = texAspect / faceAspect;
+        uv.v[1] = 0.5f - keep * 0.5f;
+        uv.v[3] = 0.5f + keep * 0.5f;
+    }
+    return uv;
+}
+
 } // namespace
 
 // Point on a flow face: u runs TL->TR, v runs top->bottom, both 0..1. Used to
@@ -2252,7 +2275,7 @@ void IconGrid::renderFlow(nxui::Renderer& ren) {
                     ren.drawQuad3D(nullptr, front, blankCol, 1.f, 1.f, false, kFlowStripsSide);
                     if (showingFront) {
                         if (coverTex) {
-                            ren.drawQuad3D(coverTex, front, artTint, 1.f, 1.f, false, kFlowStripsFront);
+                            ren.drawQuad3D(coverTex, front, artTint, 1.f, 1.f, false, kFlowStripsFront, coverCropUv(coverTex).v);
                         } else if (isFolder) {
                             drawFolderQuad3D(ren, front, icon->folderPreview(), icon->folderPreviewCount(),
                                              icon->folderColorIndex(), artTint, 1.f, 1.f, false, kFlowStripsFront);
@@ -2265,7 +2288,7 @@ void IconGrid::renderFlow(nxui::Renderer& ren) {
                     ren.drawQuad3D(nullptr, back, backCol, 1.f, 1.f, false, kFlowStripsSide);
                     if (showingBack) {
                         if (coverTex) {
-                            ren.drawQuad3D(coverTex, back, artTint, 1.f, 1.f, false, kFlowStripsFront);
+                            ren.drawQuad3D(coverTex, back, artTint, 1.f, 1.f, false, kFlowStripsFront, coverCropUv(coverTex).v);
                         } else if (isFolder) {
                             drawFolderQuad3D(ren, back, icon->folderPreview(), icon->folderPreviewCount(),
                                              icon->folderColorIndex(), artTint, 1.f, 1.f, false, kFlowStripsFront);
@@ -2325,7 +2348,7 @@ void IconGrid::renderFlow(nxui::Renderer& ren) {
 
             if (f.which == 0 && showingFront) {
                 if (coverTex) {
-                    ren.drawQuad3D(coverTex, m, artTint, reflTop, 0.f, true, kFlowStripsRefl);
+                    ren.drawQuad3D(coverTex, m, artTint, reflTop, 0.f, true, kFlowStripsRefl, coverCropUv(coverTex).v);
                 } else if (isFolder) {
                     drawFolderQuad3D(ren, m, icon->folderPreview(), icon->folderPreviewCount(),
                                      icon->folderColorIndex(), artTint, reflTop, 0.f, true, kFlowStripsRefl);
@@ -2334,7 +2357,7 @@ void IconGrid::renderFlow(nxui::Renderer& ren) {
                 }
             } else if (f.which == 1 && showingBack) {
                 if (coverTex) {
-                    ren.drawQuad3D(coverTex, m, artTint, reflTop, 0.f, true, kFlowStripsRefl);
+                    ren.drawQuad3D(coverTex, m, artTint, reflTop, 0.f, true, kFlowStripsRefl, coverCropUv(coverTex).v);
                 } else if (isFolder) {
                     drawFolderQuad3D(ren, m, icon->folderPreview(), icon->folderPreviewCount(),
                                      icon->folderColorIndex(), artTint, reflTop, 0.f, true, kFlowStripsRefl);
@@ -2556,7 +2579,7 @@ void IconGrid::renderShelf(nxui::Renderer& ren) {
         const float reflTop = 0.32f * alpha;
         ren.drawQuad3D(nullptr, refl, blankCol, reflTop, 0.f, true, 8);
         if (coverTex) {
-            ren.drawQuad3D(coverTex, refl, artTint, reflTop, 0.f, true, 8);
+            ren.drawQuad3D(coverTex, refl, artTint, reflTop, 0.f, true, 8, coverCropUv(coverTex).v);
         } else if (isFolder) {
             drawFolderQuad3D(ren, iconRefl, icon->folderPreview(), icon->folderPreviewCount(),
                              icon->folderColorIndex(), artTint, reflTop, 0.f, true, 8);
@@ -2567,7 +2590,7 @@ void IconGrid::renderShelf(nxui::Renderer& ren) {
         // 2. Draw card face
         ren.drawQuad3D(nullptr, quad, blankCol, 1.f, 1.f, false, 8);
         if (coverTex) {
-            ren.drawQuad3D(coverTex, quad, artTint, 1.f, 1.f, false, 8);
+            ren.drawQuad3D(coverTex, quad, artTint, 1.f, 1.f, false, 8, coverCropUv(coverTex).v);
         } else if (isFolder) {
             drawFolderQuad3D(ren, iconQuad, icon->folderPreview(), icon->folderPreviewCount(),
                              icon->folderColorIndex(), artTint, 1.f, 1.f, false, 8);
@@ -2795,7 +2818,7 @@ void IconGrid::renderDeck(nxui::Renderer& ren) {
 
         if (hasCover && coverTex) {
             // Full 2:3 vertical cover art
-            ren.drawQuad3D(coverTex, quad, artTint);
+            ren.drawQuad3D(coverTex, quad, artTint, 1.f, 1.f, false, 1, coverCropUv(coverTex).v);
         } else if (isFolder) {
             drawFolderQuad3D(ren, quad, icon->folderPreview(), icon->folderPreviewCount(),
                              icon->folderColorIndex(), artTint, 1.f, 1.f, false, 8);
@@ -3018,7 +3041,7 @@ void IconGrid::renderCover(nxui::Renderer& ren) {
         reflQuad[3] = { x - halfW, floorY - reflH, z };
 
         if (hasCover && coverTex) {
-            ren.drawQuad3D(coverTex, reflQuad, artTint, 0.35f * alpha, 0.0f, true);
+            ren.drawQuad3D(coverTex, reflQuad, artTint, 0.35f * alpha, 0.0f, true, 1, coverCropUv(coverTex).v);
         } else if (isFolder) {
             drawFolderQuad3D(ren, reflQuad, icon->folderPreview(), icon->folderPreviewCount(),
                              icon->folderColorIndex(), artTint, 0.35f * alpha, 0.0f, true);
@@ -3048,7 +3071,7 @@ void IconGrid::renderCover(nxui::Renderer& ren) {
 
         // Artwork
         if (hasCover && coverTex) {
-            ren.drawQuad3D(coverTex, quad, artTint);
+            ren.drawQuad3D(coverTex, quad, artTint, 1.f, 1.f, false, 1, coverCropUv(coverTex).v);
         } else if (isFolder) {
             drawFolderQuad3D(ren, quad, icon->folderPreview(), icon->folderPreviewCount(),
                              icon->folderColorIndex(), artTint, 1.f, 1.f, false);
