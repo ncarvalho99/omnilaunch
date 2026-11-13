@@ -43,6 +43,11 @@ bool internetTimeSync();
 /// scaling a 1280x720 frame. Read when HOME starts, so a change applies at the
 /// next start. Off by default.
 bool dockedNativeRender();
+// In-game Discord toasts (J1): flag read by the daemon, which starts the
+// notifier module while a game runs. Needs Ultrahand's notifications folder.
+bool inGameDiscord();
+bool setInGameDiscord(bool enabled);
+bool ultrahandNotificationsPresent();
 bool setDockedNativeRender(bool enabled);
 
 } // namespace settings::system_prefs

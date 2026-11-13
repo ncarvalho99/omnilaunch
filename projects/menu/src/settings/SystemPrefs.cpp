@@ -114,4 +114,28 @@ bool setDockedNativeRender(bool enabled) {
     return dockedNativeRender();
 }
 
+namespace {
+constexpr const char* kInGameDiscordFlag = "sdmc:/config/OmniLaunch/ingame_discord";
+constexpr const char* kUltrahandNotifications = "sdmc:/config/ultrahand/notifications";
+}
+
+bool inGameDiscord() {
+    std::error_code ec;
+    return std::filesystem::exists(kInGameDiscordFlag, ec);
+}
+
+bool setInGameDiscord(bool enabled) {
+    std::error_code ec;
+    if (!enabled)
+        return std::filesystem::remove(kInGameDiscordFlag, ec) || !std::filesystem::exists(kInGameDiscordFlag, ec);
+    std::filesystem::create_directories("sdmc:/config/OmniLaunch", ec);
+    std::ofstream(kInGameDiscordFlag) << "1";
+    return inGameDiscord();
+}
+
+bool ultrahandNotificationsPresent() {
+    std::error_code ec;
+    return std::filesystem::is_directory(kUltrahandNotifications, ec);
+}
+
 } // namespace settings::system_prefs

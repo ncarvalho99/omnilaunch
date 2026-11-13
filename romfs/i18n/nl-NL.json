@@ -240,7 +240,10 @@
       "sidebar_size": "Grootte zijknoppen",
       "sidebar_size_desc": "Grootte van de knoppen in de zijkolommen van Classic.",
       "docked_1080p": "1080p op de tv",
-      "docked_1080p_desc": "In het dock wordt HOME op 1920x1080 getekend. Scherper, gebruikt meer geheugen. Geldt vanaf de volgende start van HOME."
+      "docked_1080p_desc": "In het dock wordt HOME op 1920x1080 getekend. Scherper, gebruikt meer geheugen. Geldt vanaf de volgende start van HOME.",
+      "ingame_discord": "Discord-berichten tijdens games",
+      "ingame_discord_desc": "Nieuwe privéberichten verschijnen als Ultrahand-meldingen, elke 2 minuten gecontroleerd.",
+      "ingame_discord_needs": "Vereist Ultrahand met meldingen ingeschakeld."
     },
     "layout": {
       "grid": "Raster",

@@ -240,7 +240,10 @@
       "sidebar_size": "Side button size",
       "sidebar_size_desc": "Size of the buttons in the Classic side columns.",
       "docked_1080p": "1080p on the TV",
-      "docked_1080p_desc": "Docked, HOME is drawn at 1920x1080. Sharper, uses more memory. Applies the next time HOME starts."
+      "docked_1080p_desc": "Docked, HOME is drawn at 1920x1080. Sharper, uses more memory. Applies the next time HOME starts.",
+      "ingame_discord": "Discord messages during games",
+      "ingame_discord_desc": "New direct messages appear as Ultrahand notifications, checked every 2 minutes.",
+      "ingame_discord_needs": "Needs Ultrahand with notifications turned on."
     },
     "layout": {
       "grid": "Grid",

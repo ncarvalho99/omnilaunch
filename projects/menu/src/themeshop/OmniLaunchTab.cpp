@@ -155,6 +155,22 @@ ThemeShopScreen::Tab OmniLaunchTab::build(ThemeShopScreen& screen) {
         t.items.push_back(std::move(it));
     }
     {
+        SettingItem it;
+        it.label = i18n.tr("settings.omnilaunch.ingame_discord", "Discord messages during games");
+        it.description = settings::system_prefs::ultrahandNotificationsPresent()
+            ? i18n.tr("settings.omnilaunch.ingame_discord_desc",
+                      "New direct messages appear as Ultrahand notifications, checked every 2 minutes.")
+            : i18n.tr("settings.omnilaunch.ingame_discord_needs",
+                      "Needs Ultrahand with notifications turned on.");
+        it.type = ItemType::Toggle;
+        it.boolVal = settings::system_prefs::inGameDiscord();
+        it.onChange = [](SettingItem& self) {
+            if (settings::system_prefs::setInGameDiscord(self.boolVal) != self.boolVal)
+                self.boolVal = !self.boolVal;
+        };
+        t.items.push_back(std::move(it));
+    }
+    {
         static constexpr const char* kAskFlag = "sdmc:/config/OmniLaunch/ask_user";
         std::error_code ec;
         SettingItem it;

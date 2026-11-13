@@ -241,7 +241,10 @@
       "sidebar_size": "Tamaño de los botones laterales",
       "sidebar_size_desc": "Tamaño de los botones de las columnas laterales de Classic.",
       "docked_1080p": "1080p en la TV",
-      "docked_1080p_desc": "En la base, HOME se dibuja a 1920x1080. Más nítido, usa más memoria. Se aplica la próxima vez que se inicie HOME."
+      "docked_1080p_desc": "En la base, HOME se dibuja a 1920x1080. Más nítido, usa más memoria. Se aplica la próxima vez que se inicie HOME.",
+      "ingame_discord": "Mensajes de Discord durante los juegos",
+      "ingame_discord_desc": "Los nuevos mensajes directos aparecen como notificaciones de Ultrahand, comprobados cada 2 minutos.",
+      "ingame_discord_needs": "Requiere Ultrahand con las notificaciones activadas."
     },
     "layout": {
       "grid": "Cuadrícula",

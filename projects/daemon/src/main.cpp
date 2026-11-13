@@ -19,6 +19,7 @@
 #include "mem_probe.hpp"
 #include "library_applet_runner.hpp"
 #include "system_action_queue.hpp"
+#include "notifier_control.hpp"
 #include <ctime>
 #include <cstdio>
 #include <cstring>
@@ -1127,6 +1128,8 @@ static void startSleepSequence(const char* source) {
         daemon::menu_la::isActive() ? 1 : 0);
     if (daemon::menu_la::isActive())
         pushNotification(smi::MenuMessage::SleepSequence);
+    // The in-game notifier holds sockets and may be writing a toast.
+    daemon::notifier::stop("sleep");
     // Time asleep is not time the menu failed to start.
     g_menuReadyWatchTick = 0;
     g_menuReadyWatchSerial = 0;
@@ -1167,6 +1170,7 @@ static void startPowerSequence(const char* source, smi::SystemMessage action) {
     // writer before it sends the request.
     //
     stopControlCacheWorker();
+    daemon::notifier::stop("power");
 
     // And then commit, which this deliberately did not do before.
     //
@@ -2432,6 +2436,7 @@ static void waitForMainWork() {
 
 static void routeFinishedApplication(const char* source) {
     switchu::FileLog::log("[main] app exited source=%s", source);
+    daemon::notifier::stop("app exit");
     releaseHomebrewHost();
     restoreNormalPerformance("app-exit");
     if (daemon::menu_la::isActive()) {
@@ -2744,6 +2749,12 @@ static void mainLoop() {
 
     if (g_menuRelaunchCooldown > 0)
         --g_menuRelaunchCooldown;
+
+    // In-game notifier: only while a game is in front (not on HOME, an applet,
+    // or during a power sequence).
+    daemon::notifier::reconcile(!g_powerSequenceStarted.load() && daemon::app::isRunning() &&
+                                daemon::app::hasForeground() && !daemon::menu_la::isActive() &&
+                                !g_foregroundAppletActive);
 
     guardPoll();
     guardTestTick();

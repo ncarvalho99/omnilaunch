@@ -472,6 +472,34 @@ target("OmniLaunch-Loader")
     set_values("switch.format",  "nro")
 target_end()
 
+-- In-game Discord toasts (homenx_todo J1). A separate system module the daemon
+-- starts only while a game runs and the option is on; network code never goes
+-- into the daemon itself.
+target("omnilaunch-notifier")
+    set_kind("binary")
+    add_defines(version_define)
+    if not is_plat("cross") then return end
+    set_default(not has_config("homebrew"))
+
+    set_toolchains("devkita64")
+    set_languages("c++20")
+    add_rules("switch")
+    add_files("projects/notifier/src/*.cpp")
+    add_packages("nlohmann_json", "libcurl")
+    add_syslinks("curl", "z", "nx")
+    add_cxxflags("-fno-rtti", {force = true})
+    if is_mode("release") then
+        add_cxflags("-Os", {force = true})
+    end
+
+    set_values("switch.name",    "omnilaunch-notifier")
+    set_values("switch.author",  "ncarvalho99")
+    set_values("switch.version", version)
+    set_values("switch.tid",     "0100000000001E00")
+    set_values("switch.json",    "projects/notifier/notifier.json")
+    set_values("switch.format",  "nsp")
+target_end()
+
 target("switchu-daemon")
     set_kind("binary")
     add_defines(version_define)

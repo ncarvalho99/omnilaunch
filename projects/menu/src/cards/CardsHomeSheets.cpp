@@ -2266,6 +2266,18 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
             settings::system_prefs::setDockedNativeRender(!settings::system_prefs::dockedNativeRender());
         };
         s.rows.push_back(std::move(native));
+        Row ingame;
+        ingame.label = i18n.tr("settings.omnilaunch.ingame_discord", "Discord messages during games");
+        ingame.detail = settings::system_prefs::ultrahandNotificationsPresent()
+            ? i18n.tr("settings.omnilaunch.ingame_discord_desc",
+                      "New direct messages appear as Ultrahand notifications, checked every 2 minutes.")
+            : i18n.tr("settings.omnilaunch.ingame_discord_needs",
+                      "Needs Ultrahand with notifications turned on.");
+        ingame.toggle = []() { return settings::system_prefs::inGameDiscord(); };
+        ingame.onChange = [](int) {
+            settings::system_prefs::setInGameDiscord(!settings::system_prefs::inGameDiscord());
+        };
+        s.rows.push_back(std::move(ingame));
 #endif
         Row tut;
         tut.label = i18n.tr("cards.set_tutorial", "Show the welcome tour again");
