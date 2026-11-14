@@ -66,6 +66,7 @@ Games and applets launch through a persistent, low-overhead daemon (`01000000000
 - Art sources: GameTDB box art, SteamGridDB pickers for cover, hero and logo, and batch download.
 - Sheets for the music player (vinyl, playlist, 16-band spectrum), News, notifications, users, quick settings, a four-tile power menu with restart to Hekate, and a ten-section Settings sheet.
 - Glass styles, accent colours, haze and background motion, lock screen with optional password.
+- Settings also cover background picture and shuffle, TV resolution, vibration, input test, date and time zone, and Bluetooth audio devices; the panel button cycles None, News or a pinned app.
 
 ### Homebrew from HOME
 - `.nro` apps open in full application mode through the OmniLaunch Loader, from both Cards and Classic. Your own `hbmenu.nro` is kept aside while a homebrew runs and is put back afterwards (and on uninstall).
@@ -73,7 +74,8 @@ Games and applets launch through a persistent, low-overhead daemon (`01000000000
 - **BrowseNX** web browser: a Browser button beside the music button in Classic and a Media card in Cards download it on first use (with progress and Cancel) and then open or resume it.
 
 ### Discord, News & Network
-- **Discord** client: sign in with a QR code or token, servers, channels, direct messages, attachments and notifications; available from the Classic sidebar and the Cards top bar.
+- **Discord** client: sign in with a QR code or token, servers, channels, direct messages, calls, link previews, attachments and notifications; available from the Classic sidebar and the Cards top bar.
+- **In-game Discord messages (experimental, off by default)**: while a game runs, a small system module shows new direct messages as Ultrahand notifications, checked every 2 to 4 minutes. Requires Ultrahand with notifications on; uses your account token.
 - **News** from the console's own news service, with read tracking.
 - Network layer with HTTPS (bundled root certificates as a fallback), WebSocket, a connection and speed test, and **Nextendo** player counts.
 
@@ -157,7 +159,10 @@ ffmpeg -i input.mkv -an -c:v libx264 -preset slow -crf 22 -pix_fmt yuv420p -vf "
 - **Clean Self-Uninstall:** Permanently purges OmniLaunch and SwitchU files from `atmosphere/contents/`, `switch/`, and `config/`, rebooting cleanly into the original stock Nintendo HOME Menu.
 
 ### Classic Additions
-- Notification bell, users picker and Social screen in the top bar; sidebar order options; SteamGridDB switches per view.
+- Notification bell, users picker and Social screen in the top bar; SteamGridDB switches per view.
+- New **minimal neutral** 3D icon pack, including a battery with live charge level and charging bolt and a new notification bell.
+- **ThemeShop → OmniLaunch** also holds the settings shared with Cards: Ask who's playing, repeat song, USB file transfer, lock screen (always on with a password), music on the lock screen, lock now, lock password, **1080p on the TV** (docked, optional) and in-game Discord messages. The sidebar order list can be shown or hidden.
+- **Homebrew** and **System** widgets: list, open, update and delete .nro apps, and open console applets.
 - One-row views fit the whole top bar between the clock and the battery, whatever the number of profiles.
 - Classic and Cards play the same theme music and keep the playing song when switching.
 
