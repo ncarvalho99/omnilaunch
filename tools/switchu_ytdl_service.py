@@ -52,23 +52,64 @@ TRANSCODE_TIMEOUT_SECONDS = 180
 # Client authentication key (can be set via SWITCHU_CLIENT_KEY env var)
 AUTH_CLIENT_KEY = os.environ.get("SWITCHU_CLIENT_KEY", "").strip()
 
-# Optional egress for YouTube requests. Datacenter addresses are routinely
-# answered with "Sign in to confirm you're not a bot"; YTDL_PROXY (for example
-# socks5://127.0.0.1:18090) routes extraction and media through another network.
-# YTDL_COOKIES optionally points at a Netscape cookies.txt readable by the service.
-YTDL_PROXY = os.environ.get("YTDL_PROXY", "").strip()
+# Egress routes for YouTube requests. Datacenter addresses are routinely answered
+# with "Sign in to confirm you're not a bot", so the service tries each route in
+# order until one yields audio.
+#
+# YTDL_ROUTES: ';'-separated routes, each "<proxy>|<po-token-provider-url>".
+#   <proxy> is a yt-dlp proxy URL or "direct"; the provider URL may be empty.
+#   Example: "socks5h://127.0.0.1:18090|http://127.0.0.1:4417;direct|http://127.0.0.1:4416"
+# YTDL_PROXY / YTDL_POT_URL: single-route shorthand used when YTDL_ROUTES is unset.
+# YTDL_COOKIES: Netscape cookies.txt applied to every route (ignored when empty).
+# YTDL_JS_RUNTIME: "<runtime>:<path>" passed to --js-runtimes (e.g. node:/opt/node22/bin/node).
 YTDL_COOKIES = os.environ.get("YTDL_COOKIES", "").strip()
-if YTDL_COOKIES and not os.path.isfile(YTDL_COOKIES):
-    YTDL_COOKIES = ""
+YTDL_JS_RUNTIME = os.environ.get("YTDL_JS_RUNTIME", "").strip()
 
 
-def ytdl_cli_base():
-    """Base yt-dlp command line using the installed module and egress options."""
+def _parse_routes():
+    raw = os.environ.get("YTDL_ROUTES", "").strip()
+    if not raw:
+        raw = (os.environ.get("YTDL_PROXY", "").strip() or "direct") + "|" + \
+              os.environ.get("YTDL_POT_URL", "").strip()
+    routes = []
+    for part in raw.split(";"):
+        part = part.strip()
+        if not part:
+            continue
+        proxy, _, pot = part.partition("|")
+        proxy = proxy.strip()
+        routes.append({
+            "proxy": "" if proxy.lower() in ("", "direct", "none") else proxy,
+            "pot": pot.strip(),
+        })
+    return routes or [{"proxy": "", "pot": ""}]
+
+
+YTDL_ROUTES = _parse_routes()
+
+
+def route_label(route):
+    return ("proxy" if route["proxy"] else "direct") + ("+pot" if route["pot"] else "")
+
+
+def cookies_usable():
+    try:
+        return bool(YTDL_COOKIES) and os.path.getsize(YTDL_COOKIES) > 0
+    except OSError:
+        return False
+
+
+def ytdl_cli_base(route):
+    """yt-dlp command line for one egress route (module of this interpreter)."""
     cmd = [sys.executable, "-m", "yt_dlp", "--no-warnings", "--quiet", "--no-playlist",
            "--ignore-config", "--no-cache-dir"]
-    if YTDL_PROXY:
-        cmd += ["--proxy", YTDL_PROXY]
-    if YTDL_COOKIES:
+    if YTDL_JS_RUNTIME:
+        cmd += ["--js-runtimes", YTDL_JS_RUNTIME]
+    if route["proxy"]:
+        cmd += ["--proxy", route["proxy"]]
+    if route["pot"]:
+        cmd += ["--extractor-args", "youtubepot-bgutilhttp:base_url=" + route["pot"]]
+    if cookies_usable():
         cmd += ["--cookies", YTDL_COOKIES]
     return cmd
 
@@ -218,71 +259,29 @@ def resolve_stream_info(video_id):
     url = f"https://www.youtube.com/watch?v={video_id}"
     logger.info("Resolving stream info for %s...", video_id)
 
-    # 1. Try python module if available
+    # Metadata only: googlevideo URLs are bound to the address that resolved
+    # them, so clients must download through /api/download instead.
     if ytdl_lib:
-        ydl_opts = {
-            "format": "bestaudio/best",
-            "quiet": True,
-            "no_warnings": True,
-            "skip_download": True,
-            "noplaylist": True,
-        }
-        if YTDL_PROXY:
-            ydl_opts["proxy"] = YTDL_PROXY
-        if YTDL_COOKIES:
-            ydl_opts["cookiefile"] = YTDL_COOKIES
-        try:
-            with ytdl_lib.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-                if info:
-                    stream_url = info.get("url")
-                    if is_safe_stream_url(stream_url):
-                        title = info.get("title", "track")
-                        ext = info.get("ext", "mp3")
-                        filesize = info.get("filesize") or info.get("filesize_approx") or 0
-                        return {
-                            "status": "ok",
-                            "id": video_id,
-                            "title": clean_title(title),
-                            "stream_url": stream_url,
-                            "ext": ext,
-                            "filesize": filesize
-                        }
-                    else:
-                        logger.warning("Unsafe stream URL rejected for %s", video_id)
-        except Exception as e:
-            logger.warning("Python ytdl extract failed for %s: %s", video_id, e)
-
-    # 2. Try the yt-dlp command line (same module, separate process)
-    for cmd in ([ytdl_cli_base() + ["-g", "-f", "bestaudio/best", "--get-title", url]] if ytdl_lib else []):
-        try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-            if proc.returncode == 0:
-                lines = proc.stdout.strip().split("\n")
-                if len(lines) >= 2:
-                    title = lines[0].strip()
-                    stream_url = lines[1].strip()
-                    if is_safe_stream_url(stream_url):
-                        return {
-                            "status": "ok",
-                            "id": video_id,
-                            "title": clean_title(title),
-                            "stream_url": stream_url,
-                            "ext": "mp3",
-                            "filesize": 0
-                        }
-                elif len(lines) == 1 and is_safe_stream_url(lines[0].strip()):
-                    return {
-                        "status": "ok",
-                        "id": video_id,
-                        "title": "track_" + video_id,
-                        "stream_url": lines[0].strip(),
-                        "ext": "mp3",
-                        "filesize": 0
-                    }
-        except Exception as e:
-            logger.debug("CLI yt-dlp failed: %s", e)
-
+        for route in YTDL_ROUTES:
+            cmd = ytdl_cli_base(route) + ["-g", "-f", "bestaudio/best", "--get-title", url]
+            try:
+                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60, cwd="/tmp")
+            except Exception as e:
+                logger.warning("Route %s failed for %s: %s", route_label(route), video_id, e)
+                continue
+            lines = [l.strip() for l in proc.stdout.strip().split("\n") if l.strip()]
+            if proc.returncode == 0 and len(lines) >= 2 and is_safe_stream_url(lines[1]):
+                return {
+                    "status": "ok",
+                    "id": video_id,
+                    "title": clean_title(lines[0]),
+                    "stream_url": lines[1],
+                    "route": route_label(route),
+                    "ext": "mp3",
+                    "filesize": 0
+                }
+            err_line = next((l for l in proc.stderr.splitlines() if "ERROR" in l), "")
+            logger.warning("Route %s failed for %s: %s", route_label(route), video_id, err_line[:300])
     return {"status": "error", "error": f"Failed to extract stream for {video_id}"}
 
 
@@ -344,7 +343,8 @@ class YtdlRequestHandler(BaseHTTPRequestHandler):
                 "version": "1.1.0",
                 "auth_enforced": bool(AUTH_CLIENT_KEY),
                 "ytdl_backend": YTDL_MODULE or "cli/innertube",
-                "egress_proxy": bool(YTDL_PROXY)
+                "routes": [route_label(r) for r in YTDL_ROUTES],
+                "cookies": cookies_usable()
             })
             return
 
@@ -405,40 +405,31 @@ class YtdlRequestHandler(BaseHTTPRequestHandler):
             proc = None
             fetch = None
             try:
-                # yt-dlp fetches the audio itself (through YTDL_PROXY when set) and
-                # pipes it into ffmpeg. Googlevideo URLs are bound to the address
-                # that resolved them, so ffmpeg must not fetch them on its own.
+                # yt-dlp fetches the audio itself and pipes it into ffmpeg.
+                # Googlevideo URLs are bound to the address that resolved them, so
+                # ffmpeg never fetches them on its own. Routes are tried in order
+                # until one produces encoded audio; only then is 200 committed.
                 url = f"https://www.youtube.com/watch?v={vid}"
-                fetch_cmd = ytdl_cli_base() + ["-f", "bestaudio/best", "-o", "-", url]
-                fetch = subprocess.Popen(
-                    fetch_cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    cwd="/tmp"
-                )
-                cmd = [
-                    "ffmpeg",
-                    "-nostdin",
-                    "-loglevel", "error",
-                    "-i", "pipe:0",
-                    "-vn",
-                    "-acodec", "libmp3lame",
-                    "-b:a", "192k",
-                    "-f", "mp3",
-                    "pipe:1"
-                ]
-                proc = subprocess.Popen(
-                    cmd,
-                    stdin=fetch.stdout,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.DEVNULL
-                )
-                fetch.stdout.close()  # ffmpeg owns the read end now
-
-                # Wait for the first encoded bytes before committing to 200 so a
-                # failed extraction becomes a JSON error instead of an empty MP3.
-                first = proc.stdout.read(65536)
-                if not first:
+                first = b""
+                for route in YTDL_ROUTES:
+                    fetch = subprocess.Popen(
+                        ytdl_cli_base(route) + ["-f", "bestaudio/best", "-o", "-", url],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        cwd="/tmp"
+                    )
+                    proc = subprocess.Popen(
+                        ["ffmpeg", "-nostdin", "-loglevel", "error", "-i", "pipe:0",
+                         "-vn", "-acodec", "libmp3lame", "-b:a", "192k", "-f", "mp3", "pipe:1"],
+                        stdin=fetch.stdout,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.DEVNULL
+                    )
+                    fetch.stdout.close()  # ffmpeg owns the read end now
+                    first = proc.stdout.read(65536)
+                    if first:
+                        logger.info("Download of %s via route %s", vid, route_label(route))
+                        break
                     err_text = ""
                     try:
                         fetch.wait(timeout=5)
@@ -446,10 +437,24 @@ class YtdlRequestHandler(BaseHTTPRequestHandler):
                     except Exception:
                         pass
                     err_line = next((l for l in err_text.splitlines() if "ERROR" in l), "")
-                    logger.warning("Download pipeline produced no audio for %s: %s", vid, err_line[:300])
+                    logger.warning("Route %s produced no audio for %s: %s", route_label(route), vid, err_line[:300])
+                    for p in (proc, fetch):
+                        try:
+                            if p.stdout:
+                                p.stdout.close()
+                            if p.stderr:
+                                p.stderr.close()
+                            if p.poll() is None:
+                                p.kill()
+                            p.wait(timeout=3)
+                        except Exception:
+                            pass
+                    proc = None
+                    fetch = None
+
+                if not first:
                     self._send_json(502, {"error": "Could not fetch audio for this video"})
                     return
-
                 self.send_response(200)
                 self.send_header("Content-Type", "audio/mpeg")
                 self.send_header("Content-Disposition", f'attachment; filename="{vid}.mp3"')
