@@ -86,8 +86,12 @@ bool CardsHomeActivity::overlayActive(bool ignoreFetch) const {
 void CardsHomeActivity::saveConfig(const char* why) {
     auto& config = m_core.config();
     config.cards.normalize();
+    // Success is logged too: without it a settings test on hardware cannot
+    // tell which rows actually wrote the configuration.
     if (!config.save())
         DebugLog::log("[cards] config save failed (%s)", why);
+    else
+        DebugLog::log("[cards] config saved (%s)", why);
 #ifdef SWITCHU_MENU
     switchu::commitSdCard(why);
 #endif
@@ -2804,17 +2808,26 @@ void CardsHomeActivity::drawTutorial(nxui::Renderer& ren) {
     ren.drawRoundedRectOutline(p, {1.f, 1.f, 1.f, 0.16f * a}, 30.f, 1.5f);
     m_chrome.textMid(ren, m_chrome.titleFont(), i18n.tr(c.tk, c.tf), p.x + 40.f, p.y + 60.f,
                      CardsChrome::kWhite.withAlpha(a));
-    m_chrome.textMid(ren, m_chrome.labelFont(),
-                     m_chrome.fit(m_chrome.labelFont(), i18n.tr(c.bk, c.bf), p.width - 80.f), p.x + 40.f,
-                     p.y + 140.f, {0.85f, 0.87f, 0.93f, a});
+    // The body wraps (it was cut to one line with "..."); four lines fit
+    // between the title and the page dots.
+    const auto body = m_chrome.wrap(m_chrome.labelFont(), i18n.tr(c.bk, c.bf), p.width - 80.f, 4);
+    for (std::size_t l = 0; l < body.size(); ++l)
+        m_chrome.textMid(ren, m_chrome.labelFont(), body[l], p.x + 40.f,
+                         p.y + 120.f + 32.f * static_cast<float>(l), {0.85f, 0.87f, 0.93f, a});
     for (int i = 1; i <= 4; ++i)
         ren.drawCircle({p.x + p.width * 0.5f - 30.f + 20.f * static_cast<float>(i - 1), p.bottom() - 70.f},
                        i == m_tutorialCard ? 5.f : 4.f, {1.f, 1.f, 1.f, (i == m_tutorialCard ? 0.95f : 0.35f) * a},
                        12);
-    const std::string hint = i18n.tr("cards.tut_hint", "A  Next     B  Skip");
-    m_chrome.textMid(ren, m_chrome.smallFont(), hint,
-                     p.x + (p.width - m_chrome.smallFont().measure(hint).x) * 0.5f, p.bottom() - 34.f,
-                     {0.78f, 0.80f, 0.88f, a});
+    // Button glyph capsules, like every other OmniLaunch hint bar.
+    const std::vector<ui::glyph::ActionHint> hints{
+        {ui::glyph::button(nxui::Button::A), i18n.tr("cards.tut_next", "Next")},
+        {ui::glyph::button(nxui::Button::B), i18n.tr("cards.tut_skip", "Skip")},
+    };
+    float hintsW = 0.f;
+    for (const auto& h : hints)
+        hintsW += ui::glyph::capsuleWidth(m_chrome.iconFont(), m_chrome.smallFont(), h.icon, h.label) + 10.f;
+    ui::glyph::drawHintBar(ren, m_chrome.iconFont(), m_chrome.smallFont(), hints,
+                           p.x + (p.width + hintsW - 10.f) * 0.5f, p.bottom() - 22.f, a);
 }
 
 

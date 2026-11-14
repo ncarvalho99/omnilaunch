@@ -122,6 +122,10 @@ StagedRequestResult applyStagedRequest() {
         return StagedRequestResult::Pending;
     }
 
+    // 1b. The in-game Discord notifier module and its Ultrahand package.
+    (void)switchu::removeRecursive(kNotifierDirectory);
+    (void)switchu::removeRecursive(kUltrahandPackageDirectory);
+
     // 2. Purge SwitchU menu directory and any standalone NRO.
     (void)switchu::removeRecursive(kMenuDirectory);
     (void)switchu::removeRecursive(kMenuNro);

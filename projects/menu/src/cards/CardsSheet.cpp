@@ -23,13 +23,43 @@ constexpr int kVisibleRows = 7;
 // The Settings content card is 506 px tall: nine rows fit, and the rows past
 // them were only reachable by walking down blind (no sign they existed).
 constexpr int kVisibleRowsTwoCols = 9;
+// A detail longer than its row wraps instead of ending in "...": each extra
+// line makes that row this much taller, up to kMaxDetailLines lines.
+constexpr float kDetailLineH = 20.f;
+constexpr int kMaxDetailLines = 3;
 constexpr float kRepeatDelay = 0.35f;
 constexpr float kRepeatRate = 0.075f;
 } // namespace
 
+bool CardsSheet::twoColumns() const {
+    return m_sections.size() > 1 && !m_sections.front().icon.empty();
+}
+
 int CardsSheet::visibleRows() const {
-    const bool twoCols = m_sections.size() > 1 && !m_sections.front().icon.empty();
-    return twoCols ? kVisibleRowsTwoCols : kVisibleRows;
+    return twoColumns() ? kVisibleRowsTwoCols : kVisibleRows;
+}
+
+float CardsSheet::rowHeight(int i) const {
+    const int lines = i >= 0 && i < static_cast<int>(m_detailLines.size())
+        ? std::clamp(m_detailLines[static_cast<std::size_t>(i)], 1, kMaxDetailLines) : 1;
+    return kRowH + kDetailLineH * static_cast<float>(lines - 1);
+}
+
+float CardsSheet::rowsAreaHeight() const {
+    return kRowH * static_cast<float>(visibleRows());
+}
+
+int CardsSheet::lastVisibleFrom(int first) const {
+    const int n = static_cast<int>(m_sections[static_cast<std::size_t>(m_section)].rows.size());
+    const float area = rowsAreaHeight() + 0.5f;
+    float used = 0.f;
+    int i = std::max(0, first);
+    for (; i < n; ++i) {
+        used += rowHeight(i);
+        if (used > area && i > first)
+            break;
+    }
+    return std::min(i, n);
 }
 
 void CardsSheet::open(std::string title, std::vector<Section> sections, int section, int row) {
@@ -41,6 +71,8 @@ void CardsSheet::open(std::string title, std::vector<Section> sections, int sect
     m_section = section;
     m_row = row;
     m_scroll = 0;
+    if (!refreshing)
+        m_detailLines.clear(); // a refresh keeps the measured heights (no jump)
     m_reorderSection = {};
     if (!refreshing) {
         m_focusInContent = m_sections.size() == 1 || m_sections.front().icon.empty();
@@ -61,12 +93,11 @@ void CardsSheet::clampFocus() {
     m_section = std::clamp(m_section, 0, static_cast<int>(m_sections.size()) - 1);
     const int n = static_cast<int>(m_sections[static_cast<std::size_t>(m_section)].rows.size());
     m_row = n > 0 ? std::clamp(m_row, 0, n - 1) : 0;
-    const int visible = visibleRows();
     if (m_row < m_scroll)
         m_scroll = m_row;
-    if (m_row >= m_scroll + visible)
-        m_scroll = m_row - visible + 1;
     m_scroll = std::max(0, m_scroll);
+    while (m_scroll < m_row && m_row >= lastVisibleFrom(m_scroll))
+        ++m_scroll;
 }
 
 void CardsSheet::moveRow(int dir) {
@@ -97,6 +128,7 @@ bool CardsSheet::handleInput(nxui::Input& in, float dt) {
             m_section = (m_section + n - 1) % n;
             m_row = 0;
             m_scroll = 0;
+            m_detailLines.clear();
             clampFocus();
             if (m_nav) m_nav();
             return true;
@@ -105,6 +137,7 @@ bool CardsSheet::handleInput(nxui::Input& in, float dt) {
             m_section = (m_section + 1) % n;
             m_row = 0;
             m_scroll = 0;
+            m_detailLines.clear();
             clampFocus();
             if (m_nav) m_nav();
             return true;
@@ -126,6 +159,7 @@ bool CardsSheet::handleInput(nxui::Input& in, float dt) {
                     --m_section;
                     m_row = 0;
                     m_scroll = 0;
+                    m_detailLines.clear();
                     clampFocus();
                     if (m_nav) m_nav();
                 }
@@ -136,6 +170,7 @@ bool CardsSheet::handleInput(nxui::Input& in, float dt) {
                     ++m_section;
                     m_row = 0;
                     m_scroll = 0;
+                    m_detailLines.clear();
                     clampFocus();
                     if (m_nav) m_nav();
                 }
@@ -177,6 +212,7 @@ bool CardsSheet::handleInput(nxui::Input& in, float dt) {
                 m_focusInContent = false;
                 m_row = 0;
                 m_scroll = 0;
+                m_detailLines.clear();
                 clampFocus();
                 if (m_nav) m_nav();
                 return true;
@@ -186,10 +222,15 @@ bool CardsSheet::handleInput(nxui::Input& in, float dt) {
         const float top = py + 78.f + (twoCols ? 0.f : (m_sections.size() > 1 ? 52.f : 0.f));
         const float rowLeft = twoCols ? (kX + 268.f + 14.f) : (kX + 24.f);
         const float rowRight = twoCols ? (kX + kW - 20.f) : (kX + kW - 24.f);
-        if (x >= rowLeft && x <= rowRight && y >= top && y < top + visibleRows() * kRowH) {
-            const int i = m_scroll + static_cast<int>((y - top) / kRowH);
+        if (x >= rowLeft && x <= rowRight && y >= top && y < top + rowsAreaHeight()) {
+            const int last = lastVisibleFrom(m_scroll);
+            int i = m_scroll;
+            for (float rowBottom = top; i < last; ++i) {
+                rowBottom += rowHeight(i);
+                if (y < rowBottom) break;
+            }
             const auto& list = m_sections[static_cast<std::size_t>(m_section)].rows;
-            if (i < static_cast<int>(list.size())) {
+            if (i < last && i < static_cast<int>(list.size())) {
                 const bool activate = i == m_row;
                 m_focusInContent = true;
                 m_row = i;
@@ -252,8 +293,12 @@ bool CardsSheet::handleInput(nxui::Input& in, float dt) {
 }
 
 void CardsSheet::update(float dt) {
-    if (m_open)
-        m_in = std::min(1.f, m_in + dt / 0.18f);
+    if (!m_open)
+        return;
+    m_in = std::min(1.f, m_in + dt / 0.18f);
+    // Row heights are measured while drawing; keep the focused row on screen
+    // once a wrapped detail has made the rows above it taller.
+    clampFocus();
 }
 
 namespace {
@@ -345,11 +390,20 @@ void CardsSheet::render(nxui::Renderer& ren, CardsChrome& chrome) const {
 
         const auto& rows = m_sections[static_cast<std::size_t>(m_section)].rows;
         if (!rows.empty()) {
-            const int last = std::min(static_cast<int>(rows.size()), m_scroll + kVisibleRowsTwoCols);
+            m_detailLines.resize(rows.size(), 1);
+            const int last = lastVisibleFrom(m_scroll);
             float ry = contentR.y + 10.f;
             for (int i = m_scroll; i < last; ++i) {
                 const auto& row = rows[static_cast<std::size_t>(i)];
-                const nxui::Rect r{contentR.x + 14.f, ry, contentR.width - 28.f, kRowH - 4.f};
+                std::string value = (row.value && !row.toggle) ? row.value() : std::string();
+                if (row.onChange && !value.empty())
+                    value = "\u2039  " + value + "  \u203A";
+                const float vw = row.toggle ? 60.f : (value.empty() ? 0.f : sf.measure(value).x);
+                const float textW = contentR.width - 28.f - vw - 36.f;
+                const std::vector<std::string> detail = row.progress || row.detail.empty()
+                    ? std::vector<std::string>{} : chrome.wrap(sf, row.detail, textW, kMaxDetailLines);
+                m_detailLines[static_cast<std::size_t>(i)] = std::max(1, static_cast<int>(detail.size()));
+                const nxui::Rect r{contentR.x + 14.f, ry, contentR.width - 28.f, rowHeight(i) - 4.f};
                 const bool focus = (m_focusInContent && i == m_row);
                 if (focus) {
                     ren.drawRoundedRect(r, {1.f, 1.f, 1.f, 0.14f * a}, 14.f);
@@ -358,12 +412,8 @@ void CardsSheet::render(nxui::Renderer& ren, CardsChrome& chrome) const {
                 const nxui::Color ink = row.enabled ? white : dim.withAlpha(0.5f * a);
                 const bool twoLines = !row.detail.empty() || static_cast<bool>(row.progress);
                 const float labelY = twoLines ? r.y + 15.f : r.y + r.height * 0.5f;
-                std::string value = (row.value && !row.toggle) ? row.value() : std::string();
-                if (row.onChange && !value.empty())
-                    value = "\u2039  " + value + "  \u203A";
-                const float vw = row.toggle ? 60.f : (value.empty() ? 0.f : sf.measure(value).x);
                 if (row.toggle) drawToggle(ren, r.right() - 70.f, r.y + r.height * 0.5f, row.toggle(), a);
-                chrome.textMid(ren, lf, chrome.fit(lf, row.label, r.width - vw - 36.f), r.x + 14.f, labelY, ink);
+                chrome.textMid(ren, lf, chrome.fit(lf, row.label, textW), r.x + 14.f, labelY, ink);
                 if (!value.empty())
                     chrome.textMid(ren, sf, value, r.right() - 14.f - vw, r.y + r.height * 0.5f, ink);
                 if (row.progress) {
@@ -373,14 +423,16 @@ void CardsSheet::render(nxui::Renderer& ren, CardsChrome& chrome) const {
                     if (f > 0.f)
                         ren.drawRoundedRect({bar.x, bar.y, bar.width * f, bar.height},
                                             (f >= 1.f ? CardsChrome::kGreen : CardsChrome::accent(1.f)).withAlpha(a), 3.f);
-                } else if (!row.detail.empty()) {
-                    chrome.textMid(ren, sf, chrome.fit(sf, row.detail, r.width - vw - 36.f), r.x + 14.f, r.y + 35.f, dim);
+                } else {
+                    for (std::size_t l = 0; l < detail.size(); ++l)
+                        chrome.textMid(ren, sf, detail[l], r.x + 14.f,
+                                       r.y + 35.f + kDetailLineH * static_cast<float>(l), dim);
                 }
-                ry += kRowH;
+                ry += rowHeight(i);
             }
             // More rows above / below: arrows and a thin scroll bar.
             const int total = static_cast<int>(rows.size());
-            if (total > kVisibleRowsTwoCols) {
+            if (m_scroll > 0 || last < total) {
                 const nxui::Color arrow = dim.withAlpha(0.9f * a);
                 const float cx = contentR.x + contentR.width * 0.5f;
                 if (m_scroll > 0)
@@ -390,8 +442,10 @@ void CardsSheet::render(nxui::Renderer& ren, CardsChrome& chrome) const {
                     ren.drawTriangle({cx - 8.f, contentR.bottom() - 8.f}, {cx + 8.f, contentR.bottom() - 8.f},
                                      {cx, contentR.bottom() - 1.f}, arrow);
                 const float trackH = contentR.height - 24.f;
-                const float thumbH = std::max(30.f, trackH * kVisibleRowsTwoCols / static_cast<float>(total));
-                const float t = static_cast<float>(m_scroll) / static_cast<float>(total - kVisibleRowsTwoCols);
+                const int shown = std::max(1, last - m_scroll);
+                const float thumbH = std::max(30.f, trackH * static_cast<float>(shown) / static_cast<float>(total));
+                const float t = std::clamp(static_cast<float>(m_scroll) /
+                                           static_cast<float>(std::max(1, total - shown)), 0.f, 1.f);
                 ren.drawRoundedRect({contentR.right() - 7.f, contentR.y + 12.f + (trackH - thumbH) * t, 4.f, thumbH},
                                     {1.f, 1.f, 1.f, 0.35f * a}, 2.f);
             }
@@ -402,7 +456,9 @@ void CardsSheet::render(nxui::Renderer& ren, CardsChrome& chrome) const {
         std::vector<ui::glyph::ActionHint> hints;
         hints.push_back({ui::glyph::button(nxui::Button::A), i18n.tr("hint.select", "Select")});
         if (m_focusInContent) {
-            hints.push_back({"\xE2\x80\xB9 \xE2\x80\xBA", i18n.tr("hint.change", "Change")});
+            // The hint font is the Switch button font: it has no "‹ ›" (they
+            // drew as two empty boxes). Its D-pad glyph is the direction pad.
+            hints.push_back({ui::glyph::dpad(), i18n.tr("hint.change", "Change")});
         }
         hints.push_back({ui::glyph::button(nxui::Button::L) + " " + ui::glyph::button(nxui::Button::R),
                          i18n.tr("hint.section", "Section")});
@@ -416,11 +472,20 @@ void CardsSheet::render(nxui::Renderer& ren, CardsChrome& chrome) const {
         float y = p.y + 78.f;
         const auto& rows = m_sections[static_cast<std::size_t>(m_section)].rows;
         if (!rows.empty()) {
-            const int last = std::min(static_cast<int>(rows.size()), m_scroll + kVisibleRows);
+            m_detailLines.resize(rows.size(), 1);
+            const int last = lastVisibleFrom(m_scroll);
             const float rowsTop = y;
             for (int i = m_scroll; i < last; ++i) {
                 const auto& row = rows[static_cast<std::size_t>(i)];
-                const nxui::Rect r{p.x + 24.f, y, kW - 48.f, kRowH - 6.f};
+                std::string value = (row.value && !row.toggle) ? row.value() : std::string();
+                if (row.onChange && !value.empty())
+                    value = "\u2039  " + value + "  \u203A";
+                const float vw = row.toggle ? 60.f : (value.empty() ? 0.f : sf.measure(value).x);
+                const float textW = kW - 48.f - vw - 48.f;
+                const std::vector<std::string> detail = row.progress || row.detail.empty()
+                    ? std::vector<std::string>{} : chrome.wrap(sf, row.detail, textW, kMaxDetailLines);
+                m_detailLines[static_cast<std::size_t>(i)] = std::max(1, static_cast<int>(detail.size()));
+                const nxui::Rect r{p.x + 24.f, y, kW - 48.f, rowHeight(i) - 6.f};
                 const bool focus = i == m_row;
                 if (focus) {
                     ren.drawRoundedRect(r, {1.f, 1.f, 1.f, 0.14f * a}, 16.f);
@@ -429,12 +494,8 @@ void CardsSheet::render(nxui::Renderer& ren, CardsChrome& chrome) const {
                 const nxui::Color ink = row.enabled ? white : dim.withAlpha(0.5f * a);
                 const bool twoLines = !row.detail.empty() || static_cast<bool>(row.progress);
                 const float labelY = twoLines ? r.y + 15.f : r.y + r.height * 0.5f;
-                std::string value = (row.value && !row.toggle) ? row.value() : std::string();
-                if (row.onChange && !value.empty())
-                    value = "\u2039  " + value + "  \u203A";
-                const float vw = row.toggle ? 60.f : (value.empty() ? 0.f : sf.measure(value).x);
                 if (row.toggle) drawToggle(ren, r.right() - 70.f, r.y + r.height * 0.5f, row.toggle(), a);
-                chrome.textMid(ren, lf, chrome.fit(lf, row.label, r.width - vw - 48.f), r.x + 16.f, labelY, ink);
+                chrome.textMid(ren, lf, chrome.fit(lf, row.label, textW), r.x + 16.f, labelY, ink);
                 if (!value.empty())
                     chrome.textMid(ren, sf, value, r.right() - 16.f - vw, r.y + r.height * 0.5f, ink);
                 if (row.progress) {
@@ -444,10 +505,12 @@ void CardsSheet::render(nxui::Renderer& ren, CardsChrome& chrome) const {
                     if (f > 0.f)
                         ren.drawRoundedRect({bar.x, bar.y, bar.width * f, bar.height},
                                             (f >= 1.f ? CardsChrome::kGreen : CardsChrome::accent(1.f)).withAlpha(a), 3.f);
-                } else if (!row.detail.empty()) {
-                    chrome.textMid(ren, sf, chrome.fit(sf, row.detail, r.width - vw - 48.f), r.x + 16.f, r.y + 35.f, dim);
+                } else {
+                    for (std::size_t l = 0; l < detail.size(); ++l)
+                        chrome.textMid(ren, sf, detail[l], r.x + 16.f,
+                                       r.y + 35.f + kDetailLineH * static_cast<float>(l), dim);
                 }
-                y += kRowH;
+                y += rowHeight(i);
             }
 
             if (m_scroll > 0)

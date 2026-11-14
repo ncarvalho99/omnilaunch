@@ -124,6 +124,42 @@ std::string CardsChrome::fit(nxui::Font& f, const std::string& s, float maxWidth
     return out + "...";
 }
 
+std::vector<std::string> CardsChrome::wrap(nxui::Font& f, const std::string& s, float maxWidth, int maxLines) {
+    std::vector<std::string> lines;
+    if (s.empty() || maxLines <= 0)
+        return lines;
+    std::vector<std::string> words;
+    std::size_t at = 0;
+    while (at < s.size()) {
+        while (at < s.size() && s[at] == ' ') ++at;
+        const std::size_t end = s.find(' ', at);
+        if (at < s.size())
+            words.push_back(s.substr(at, end == std::string::npos ? std::string::npos : end - at));
+        at = end == std::string::npos ? s.size() : end;
+    }
+    std::string current;
+    std::size_t w = 0;
+    for (; w < words.size(); ++w) {
+        const std::string candidate = current.empty() ? words[w] : current + " " + words[w];
+        if (current.empty() || f.measure(candidate).x <= maxWidth) {
+            current = candidate;
+            continue;
+        }
+        if (static_cast<int>(lines.size()) + 1 == maxLines)
+            break;
+        lines.push_back(current);
+        current = words[w];
+    }
+    if (w < words.size()) {
+        // Out of lines with words left: mark the cut on the last line.
+        for (std::size_t r = w; r < words.size(); ++r) current += " " + words[r];
+        lines.push_back(fit(f, current, maxWidth));
+    } else if (!current.empty()) {
+        lines.push_back(f.measure(current).x <= maxWidth ? current : fit(f, current, maxWidth));
+    }
+    return lines;
+}
+
 void CardsChrome::glassCircle(nxui::Renderer& r, float cx, float cy, float d, bool focused, const char* name,
                               float iconSize, float time) {
     const nxui::Rect box{cx - d * 0.5f, cy - d * 0.5f, d, d};

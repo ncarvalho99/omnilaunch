@@ -1593,6 +1593,8 @@
     "tut4_title": "Configurações rápidas",
     "tut4_body": "Clique o analógico esquerdo para as configurações rápidas. R ou Menos troca para o Classic.",
     "tut_hint": "A  Próximo     B  Pular",
+    "tut_next": "Próximo",
+    "tut_skip": "Pular",
     "panel_pin": "Colocar no botão do painel",
     "panel_missing": "Software indisponível",
     "art_choices": "Imagens",

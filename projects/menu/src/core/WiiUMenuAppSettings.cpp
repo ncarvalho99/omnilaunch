@@ -945,6 +945,7 @@ void WiiUMenuApp::openActivityLog(std::uint64_t initialTitleId) {
 
     m_activityLogReturnFocus = focusManager().current();
 
+    m_activityPrefetchPending = false; // opened before the deferred prefetch ran
     if (m_activityLogManager.allTimeRankings().empty()) {
         // Fallback: populate if prefetch hasn't finished yet
         std::vector<std::pair<std::uint64_t, std::string>> installed;

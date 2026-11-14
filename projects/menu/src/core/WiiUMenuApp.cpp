@@ -2637,6 +2637,26 @@ WiiUMenuApp::StreamPump WiiUMenuApp::gridStreamPump() const {
     return pump;
 }
 
+void WiiUMenuApp::startActivityPrefetch() {
+    m_activityPrefetchPending = false;
+    std::vector<std::pair<std::uint64_t, std::string>> installed;
+    if (!m_allApps.empty()) {
+        for (const auto& app : m_allApps) {
+            if (app.titleId != 0 && (app.isApplication() || m_config.isGamePort(app.titleId)))
+                installed.emplace_back(app.titleId, app.title);
+        }
+    } else {
+        for (int i = 0; i < m_model.count(); ++i) {
+            const auto& entry = m_model.at(i);
+            if (entry.titleId != 0 && (entry.isApplication() || m_config.isGamePort(entry.titleId)))
+                installed.emplace_back(entry.titleId, entry.title);
+        }
+    }
+    m_threadPool.submit([this, installed = std::move(installed)]() {
+        m_activityLogManager.refresh(installed);
+    });
+}
+
 void WiiUMenuApp::pumpIconStreamer() {
     if (!m_grid)
         return;
@@ -6626,25 +6646,12 @@ void WiiUMenuApp::buildGrid() {
 
     // Prefetch activity log data in background so opening it is instantaneous.
     // On fast return, defer further so pdm queries do not contend with daemon catalog sync.
+    // It starts from onUpdate once the visible icons are loaded (or after a
+    // few seconds): its pdm queries share the two pool workers with the icon
+    // decodes, and running first they held the grid on loading spinners.
     if (!m_fastReturnRequested) {
-        m_threadPool.submit([this]() {
-            std::vector<std::pair<std::uint64_t, std::string>> installed;
-            if (!m_allApps.empty()) {
-                for (const auto& app : m_allApps) {
-                    if (app.titleId != 0 && (app.isApplication() || m_config.isGamePort(app.titleId))) {
-                        installed.emplace_back(app.titleId, app.title);
-                    }
-                }
-            } else {
-                for (int i = 0; i < m_model.count(); ++i) {
-                    const auto& entry = m_model.at(i);
-                    if (entry.titleId != 0 && (entry.isApplication() || m_config.isGamePort(entry.titleId))) {
-                        installed.emplace_back(entry.titleId, entry.title);
-                    }
-                }
-            }
-            m_activityLogManager.refresh(installed);
-        });
+        m_activityPrefetchPending = true;
+        m_activityPrefetchWait = 0.f;
     }
 
     wireGlobalActions();
@@ -7847,8 +7854,14 @@ void WiiUMenuApp::onUpdate(float dt) {
         // return from a launched title, so it has to ask for the same window
         // the current view actually shows.
         const StreamPump pump = gridStreamPump();
-        if (m_iconStreamer.needsVisibleLoads(pump.page, pump.perPage))
+        const bool iconsPending = m_iconStreamer.needsVisibleLoads(pump.page, pump.perPage);
+        if (iconsPending)
             pumpIconStreamer();
+        if (m_activityPrefetchPending) {
+            m_activityPrefetchWait += dt;
+            if (!iconsPending || m_activityPrefetchWait > 6.f)
+                startActivityPrefetch();
+        }
     }
 
     // updateCursor() returns early whenever the route is not Home, and returns

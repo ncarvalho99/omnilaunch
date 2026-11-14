@@ -4,8 +4,107 @@
 #include <nxui/third_party/stb/stb_image.h>
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <system_error>
 #include <unordered_map>
+
+namespace {
+
+// Decoded-icon cache. SteamGridDB icons are 1024x1024 PNGs: decoding one and
+// scaling it to 256x256 takes a few hundred milliseconds on the console, on a
+// two-worker pool shared with everything else, so a page of them showed the
+// loading spinner for seconds after every HOME return or Cards -> Classic
+// switch (the menu process is new each time, nothing survives in memory).
+// The scaled RGBA is kept next to the title cache, keyed by the compressed
+// bytes it came from, so the next start reads 256 KiB instead of decoding.
+// control_cache/ is excluded from the configuration backup.
+constexpr const char* kDecodedDir = "sdmc:/config/OmniLaunch/control_cache/decoded";
+constexpr std::uint32_t kDecodedMagic = 0x49445553; // "SUDI"
+constexpr std::uint32_t kDecodedVersion = 1;
+// Small sources (the 256x256 JPEGs from the title cache) decode quickly; only
+// cache what is worth the card space.
+constexpr std::size_t kCacheSourcesFrom = 96 * 1024;
+
+struct DecodedHeader {
+    std::uint32_t magic = kDecodedMagic;
+    std::uint32_t version = kDecodedVersion;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::uint64_t sourceSize = 0;
+    std::uint64_t sourceHash = 0;
+};
+static_assert(sizeof(DecodedHeader) == 32);
+
+std::uint64_t fnv1a(const std::vector<uint8_t>& data) {
+    std::uint64_t h = 1469598103934665603ULL;
+    for (uint8_t b : data) {
+        h ^= b;
+        h *= 1099511628211ULL;
+    }
+    return h;
+}
+
+std::string decodedPath(uint64_t titleId, bool artwork) {
+    char name[64];
+    std::snprintf(name, sizeof(name), "/%016llX.%s.rgba", static_cast<unsigned long long>(titleId),
+                  artwork ? "art" : "icon");
+    return std::string(kDecodedDir) + name;
+}
+
+bool loadDecoded(const std::string& path, const std::vector<uint8_t>& source, std::uint64_t hash,
+                 IconStreamer::DecodedIcon& out) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in)
+        return false;
+    DecodedHeader h{};
+    in.read(reinterpret_cast<char*>(&h), sizeof(h));
+    if (!in || h.magic != kDecodedMagic || h.version != kDecodedVersion || h.width == 0 || h.height == 0
+        || h.width > 1024 || h.height > 1024 || h.sourceSize != source.size() || h.sourceHash != hash)
+        return false;
+    out.rgba.resize(static_cast<std::size_t>(h.width) * h.height * 4);
+    in.read(reinterpret_cast<char*>(out.rgba.data()), static_cast<std::streamsize>(out.rgba.size()));
+    if (!in) {
+        out.rgba.clear();
+        return false;
+    }
+    out.w = static_cast<int>(h.width);
+    out.h = static_cast<int>(h.height);
+    return true;
+}
+
+void saveDecoded(const std::string& path, const std::vector<uint8_t>& source, std::uint64_t hash,
+                 const IconStreamer::DecodedIcon& icon) {
+    std::error_code ec;
+    std::filesystem::create_directories(kDecodedDir, ec);
+    DecodedHeader h{};
+    h.width = static_cast<std::uint32_t>(icon.w);
+    h.height = static_cast<std::uint32_t>(icon.h);
+    h.sourceSize = source.size();
+    h.sourceHash = hash;
+    const std::string tmp = path + ".tmp";
+    {
+        std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+        if (!out)
+            return;
+        out.write(reinterpret_cast<const char*>(&h), sizeof(h));
+        out.write(reinterpret_cast<const char*>(icon.rgba.data()), static_cast<std::streamsize>(icon.rgba.size()));
+        if (!out) {
+            out.close();
+            std::filesystem::remove(tmp, ec);
+            return;
+        }
+    }
+    std::filesystem::remove(path, ec);
+    ec.clear();
+    std::filesystem::rename(tmp, path, ec);
+    if (ec)
+        std::filesystem::remove(tmp, ec);
+}
+
+} // namespace
 
 
 void IconStreamer::init(int appCount) {
@@ -564,6 +663,19 @@ void IconStreamer::onPageChanged(int currentPage, int iconsPerPage,
                 return;
             if (compressed.empty()) {
                 state->failed = true;
+                return;
+            }
+            if (compressed.size() >= kCacheSourcesFrom) {
+                const std::uint64_t hash = fnv1a(compressed);
+                const std::string cachePath = decodedPath(titleId, state->customArtwork);
+                if (loadDecoded(cachePath, compressed, hash, state->decoded))
+                    return;
+                if (state->cancelled.load())
+                    return;
+                state->decoded = IconStreamer::decodeIconData(compressed);
+                state->failed = state->decoded.rgba.empty();
+                if (!state->failed)
+                    saveDecoded(cachePath, compressed, hash, state->decoded);
                 return;
             }
             state->decoded = IconStreamer::decodeIconData(compressed);

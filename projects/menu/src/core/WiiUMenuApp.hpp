@@ -1013,6 +1013,11 @@ private:
     bool m_switchWaitRelease          = false;
     float m_switchFadeIn              = 0.f;
     int  m_deferredBluetoothInitFrames = 0;
+    // Activity-log prefetch waits until the visible icons are on screen: it
+    // runs many pdm queries on the two-worker pool the icon decodes need.
+    bool m_activityPrefetchPending = false;
+    float m_activityPrefetchWait = 0.f;
+    void startActivityPrefetch();
     int  m_deferredInitialAssetFrames = 0;
     std::string m_deferredVideoWallpaperPath;
     int  m_deferredVideoWallpaperFrames = 0;

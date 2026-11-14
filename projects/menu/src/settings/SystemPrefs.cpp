@@ -1,5 +1,7 @@
 #include "settings/SystemPrefs.hpp"
 #include "smi_commands.hpp"
+#include "core/DebugLog.hpp"
+#include <switchu/sd_commit.hpp>
 #include <algorithm>
 #include <cstdio>
 #include <filesystem>
@@ -98,6 +100,23 @@ bool internetTimeSync() {
 
 namespace {
 constexpr const char* kDockedNativeFlag = "sdmc:/config/OmniLaunch/docked_1080p";
+
+// On/off flag files. Committed like the configuration (an uncommitted FAT
+// write can be lost by a power-off) and logged so a settings test on
+// hardware shows the change.
+bool writeFlag(const char* path, bool enabled) {
+    std::error_code ec;
+    if (enabled) {
+        std::filesystem::create_directories("sdmc:/config/OmniLaunch", ec);
+        std::ofstream(path) << "1";
+    } else {
+        std::filesystem::remove(path, ec);
+    }
+    switchu::commitSdCard(path);
+    const bool now = std::filesystem::exists(path, ec);
+    DebugLog::log("[settings] %s -> %d (requested %d)", path, now ? 1 : 0, enabled ? 1 : 0);
+    return now == enabled;
+}
 }
 
 bool dockedNativeRender() {
@@ -106,12 +125,7 @@ bool dockedNativeRender() {
 }
 
 bool setDockedNativeRender(bool enabled) {
-    std::error_code ec;
-    if (!enabled)
-        return std::filesystem::remove(kDockedNativeFlag, ec) || !std::filesystem::exists(kDockedNativeFlag, ec);
-    std::filesystem::create_directories("sdmc:/config/OmniLaunch", ec);
-    std::ofstream(kDockedNativeFlag) << "1";
-    return dockedNativeRender();
+    return writeFlag(kDockedNativeFlag, enabled);
 }
 
 namespace {
@@ -125,12 +139,7 @@ bool inGameDiscord() {
 }
 
 bool setInGameDiscord(bool enabled) {
-    std::error_code ec;
-    if (!enabled)
-        return std::filesystem::remove(kInGameDiscordFlag, ec) || !std::filesystem::exists(kInGameDiscordFlag, ec);
-    std::filesystem::create_directories("sdmc:/config/OmniLaunch", ec);
-    std::ofstream(kInGameDiscordFlag) << "1";
-    return inGameDiscord();
+    return writeFlag(kInGameDiscordFlag, enabled);
 }
 
 bool ultrahandNotificationsPresent() {

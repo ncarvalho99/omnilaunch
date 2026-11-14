@@ -1748,6 +1748,8 @@
     "back": "Atrás",
     "tut4_body": "Click the left stick for quick settings. R or Minus switches to Classic.",
     "tut_hint": "A  Siguiente     B  Omitir",
+    "tut_next": "Siguiente",
+    "tut_skip": "Omitir",
     "panel_pin": "Asignar al botón del panel",
     "panel_missing": "Programa no disponible",
     "art_choices": "Imágenes",

@@ -1746,6 +1746,8 @@
     "back": "Terug",
     "tut4_body": "Click the left stick for quick settings. R or Minus switches to Classic.",
     "tut_hint": "A  Volgende     B  Overslaan",
+    "tut_next": "Volgende",
+    "tut_skip": "Overslaan",
     "panel_pin": "Op paneelknop zetten",
     "panel_missing": "Software niet beschikbaar",
     "art_choices": "Afbeeldingen",

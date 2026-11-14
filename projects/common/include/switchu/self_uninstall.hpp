@@ -12,6 +12,10 @@ inline constexpr char kRequestContents[] = "OmniLaunch self-uninstall request v1
 // SD card paths completely removed when self-uninstall is applied.
 inline constexpr const char* kOverrideDirectory =
     "sdmc:/atmosphere/contents/0100000000001000";
+inline constexpr const char* kNotifierDirectory =
+    "sdmc:/atmosphere/contents/0100000000001E00";
+inline constexpr const char* kUltrahandPackageDirectory =
+    "sdmc:/switch/.packages/OmniLaunch";
 inline constexpr const char* kMenuDirectory =
     "sdmc:/switch/OmniLaunch";
 inline constexpr const char* kLegacyMenuDirectory = "sdmc:/switch/SwitchU";

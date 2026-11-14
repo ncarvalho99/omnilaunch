@@ -1746,6 +1746,8 @@
     "back": "Zurück",
     "tut4_body": "Click the left stick for quick settings. R or Minus switches to Classic.",
     "tut_hint": "A  Weiter     B  Überspringen",
+    "tut_next": "Weiter",
+    "tut_skip": "Überspringen",
     "panel_pin": "Auf Panel-Taste legen",
     "panel_missing": "Software nicht verfügbar",
     "art_choices": "Bilder",

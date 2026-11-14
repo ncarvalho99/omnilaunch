@@ -13,6 +13,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace nxui { class GpuDevice; class Renderer; }
 
@@ -54,6 +55,9 @@ public:
     void icon(nxui::Renderer& r, const char* name, float cx, float cy, float size, const nxui::Color& tint);
     void textMid(nxui::Renderer& r, nxui::Font& f, const std::string& s, float x, float cy, const nxui::Color& c);
     std::string fit(nxui::Font& f, const std::string& s, float maxWidth);
+    /// Word-wraps `s` to `maxWidth`; at most `maxLines`, the last one ending in
+    /// "..." only when text is still left over.
+    std::vector<std::string> wrap(nxui::Font& f, const std::string& s, float maxWidth, int maxLines = 4);
 
     struct AccentDef {
         const char* name;

@@ -1746,6 +1746,8 @@
     "back": "Назад",
     "tut4_body": "Click the left stick for quick settings. R or Minus switches to Classic.",
     "tut_hint": "A  Далее     B  Пропустить",
+    "tut_next": "Далее",
+    "tut_skip": "Пропустить",
     "panel_pin": "Назначить на кнопку панели",
     "panel_missing": "ПО недоступно",
     "art_choices": "Изображения",

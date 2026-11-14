@@ -57,6 +57,13 @@ public:
 
 private:
     int visibleRows() const;
+    bool twoColumns() const;
+    // Row heights: a detail that does not fit one line wraps to a second, and
+    // that row is taller. Line counts are measured while drawing (fonts live
+    // there) and cached; until then every row counts as one line.
+    float rowHeight(int i) const;
+    float rowsAreaHeight() const;
+    int lastVisibleFrom(int first) const; // one past the last row that fits
     void clampFocus();
     void moveRow(int dir);
 
@@ -69,6 +76,7 @@ private:
     bool m_focusInContent = false;
     float m_in = 0.f;          // 0 -> 1 open animation
     mutable bool m_backdropCacheValid = false; // C-PF-3 cached backdrop
+    mutable std::vector<int> m_detailLines;    // per row of the current section
     float m_repeatTimer = 0.f;
     int m_repeatDir = 0;
     std::function<void()> m_onClosed, m_nav, m_act;

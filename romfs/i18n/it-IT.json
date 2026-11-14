@@ -1746,6 +1746,8 @@
     "back": "Indietro",
     "tut4_body": "Click the left stick for quick settings. R or Minus switches to Classic.",
     "tut_hint": "A  Avanti     B  Salta",
+    "tut_next": "Avanti",
+    "tut_skip": "Salta",
     "panel_pin": "Metti sul tasto del pannello",
     "panel_missing": "Software non disponibile",
     "art_choices": "Immagini",

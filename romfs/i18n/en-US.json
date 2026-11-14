@@ -1593,6 +1593,8 @@
     "tut4_title": "Quick settings",
     "tut4_body": "Click the left stick for quick settings. R or Minus switches to Classic.",
     "tut_hint": "A  Next     B  Skip",
+    "tut_next": "Next",
+    "tut_skip": "Skip",
     "panel_pin": "Put on panel button",
     "panel_missing": "Software unavailable",
     "art_choices": "Images",
