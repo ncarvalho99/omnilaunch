@@ -362,6 +362,15 @@ void CardsHomeActivity::openMusicSheet() {
     // MTP) appear here; the playing song keeps playing.
     if (m_audioStarted)
         m_core.audioServices().reloadMusicTracks(m_core.config(), {});
+    // Shuffle and repeat flipped in the sheet only change the config in
+    // memory; write it once on close when either one changed.
+    const bool shuffleAtOpen = m_core.config().customBgmShuffle;
+    const bool repeatAtOpen = m_core.config().bgmRepeat;
+    m_musicSheet.onClosed([this, shuffleAtOpen, repeatAtOpen]() {
+        const auto& c = m_core.config();
+        if (c.customBgmShuffle != shuffleAtOpen || c.bgmRepeat != repeatAtOpen)
+            saveConfig("cards music sheet");
+    });
     m_musicSheet.open(m_audio, m_core.config());
 }
 
