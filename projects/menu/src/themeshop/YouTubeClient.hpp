@@ -64,7 +64,9 @@ public:
         m_gpu = gpu;
         m_renderer = renderer;
     }
-    void setBackendUrl(const std::string& url) { m_backendUrl = url; }
+    static constexpr const char* kDefaultBackendUrl = "https://ytdl.nclabs.dev";
+    // An empty override (the config default) keeps the project backend.
+    void setBackendUrl(const std::string& url) { m_backendUrl = url.empty() ? std::string(kDefaultBackendUrl) : url; }
     const std::string& backendUrl() const { return m_backendUrl; }
 
     bool isSearching() const { return m_isSearching.load(std::memory_order_relaxed); }
@@ -104,7 +106,7 @@ private:
     nxui::ThreadPool* m_pool = nullptr;
     nxui::GpuDevice* m_gpu = nullptr;
     nxui::Renderer* m_renderer = nullptr;
-    std::string m_backendUrl = "https://ytdl.nclabs.dev";
+    std::string m_backendUrl = kDefaultBackendUrl;
     std::string m_lastQuery;
     std::atomic<bool> m_isSearching{false};
     std::atomic<bool> m_cancelRequested{false};

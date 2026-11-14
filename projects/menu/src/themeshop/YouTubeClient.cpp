@@ -319,104 +319,24 @@ std::vector<YouTubeClient::TrackItem> YouTubeClient::searchInnerTube(const std::
 }
 
 std::string YouTubeClient::resolveStreamUrl(const std::string& videoId, const std::string& /*title*/, StatusProgressCallback onProgress) {
-    // 1. Try custom backend service first (if configured)
-    if (!m_backendUrl.empty()) {
-        if (onProgress) onProgress("Conectando ao servidor...", 0.05f);
-        try {
-            DebugLog::log("[youtube] Trying custom backend %s for %s...", m_backendUrl.c_str(), videoId.c_str());
-            std::string url = m_backendUrl + "/api/stream?id=" + videoId;
-            std::string resp = themeshop::http::getText(url);
-            if (!resp.empty()) {
-                auto root = nlohmann::json::parse(resp);
-                if (root.value("status", "") == "ok" && root.contains("stream_url")) {
-                    std::string streamUrl = root.value("stream_url", "");
-                    if (!streamUrl.empty())
-                        return streamUrl;
-                }
-            }
-        } catch (const std::exception& ex) {
-            DebugLog::log("[youtube] custom backend /api/stream failed: %s", ex.what());
-        }
-
-        // Try /api/download endpoint on custom backend
-        try {
-            std::string dlCheckUrl = m_backendUrl + "/api/download?id=" + videoId;
-            std::string checkResp = themeshop::http::getText(m_backendUrl + "/api/health");
-            if (!checkResp.empty()) {
-                return dlCheckUrl;
-            }
-        } catch (...) {}
-    }
-
-    // 2. Direct cloud MP3 converter engine (loader.to)
+    // The project backend fetches the audio and serves it already converted to
+    // MP3 from /api/download. Media URLs resolved by the backend are bound to the
+    // network that resolved them, so the console never fetches YouTube media
+    // directly. Public converters and Invidious mirrors were removed: they
+    // refuse these requests (HTTP 401/403/530).
+    const std::string backend = m_backendUrl.empty() ? std::string(kDefaultBackendUrl) : m_backendUrl;
+    if (onProgress) onProgress("Conectando ao servidor...", 0.05f);
     try {
-        if (onProgress) onProgress("Iniciando conversão MP3...", 0.10f);
-        DebugLog::log("[youtube] Trying cloud MP3 converter for %s...", videoId.c_str());
-        std::string initUrl = "https://loader.to/ajax/download.php?button=1&start=1&end=1&format=mp3&url=https://www.youtube.com/watch?v=" + videoId;
-        std::string initResp = themeshop::http::getText(initUrl);
-        if (!initResp.empty()) {
-            auto initJson = nlohmann::json::parse(initResp);
-            std::string progressUrl = initJson.value("progress_url", "");
-            if (!progressUrl.empty()) {
-                for (int attempt = 0; attempt < 15; ++attempt) {
-                    if (m_cancelRequested.load(std::memory_order_acquire))
-                        break;
-                    float convProgress = 0.10f + 0.15f * (static_cast<float>(attempt + 1) / 15.0f);
-                    std::string statusMsg = "Convertendo áudio... (" + std::to_string(attempt + 1) + "s)";
-                    if (onProgress) onProgress(statusMsg, convProgress);
-
-                    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-                    std::string progResp = themeshop::http::getText(progressUrl);
-                    if (progResp.empty())
-                        continue;
-                    auto progJson = nlohmann::json::parse(progResp);
-                    int success = progJson.value("success", 0);
-                    std::string dlUrl = progJson.value("download_url", "");
-                    if (success == 1 && !dlUrl.empty()) {
-                        DebugLog::log("[youtube] Cloud MP3 converter ready: %s", dlUrl.c_str());
-                        if (onProgress) onProgress("Download pronto! Iniciando transferência...", 0.25f);
-                        return dlUrl;
-                    }
-                }
-            }
-        }
+        const std::string health = themeshop::http::getText(backend + "/api/health");
+        if (health.empty())
+            throw std::runtime_error("empty health response");
     } catch (const std::exception& ex) {
-        DebugLog::log("[youtube] Cloud MP3 converter failed: %s", ex.what());
+        DebugLog::log("[youtube] Backend %s unavailable: %s", backend.c_str(), ex.what());
+        throw std::runtime_error("Music server unavailable");
     }
-
-    // 3. Fallback to public Invidious instances
-    static const std::vector<std::string> s_invidiousInstances = {
-        "https://invidious.f5.si",
-        "https://inv.nadeko.net",
-        "https://invidious.nerdvpn.de"
-    };
-    for (const auto& instance : s_invidiousInstances) {
-        if (m_cancelRequested.load(std::memory_order_acquire))
-            break;
-        try {
-            if (onProgress) onProgress("Buscando stream direto alternativo...", 0.20f);
-            DebugLog::log("[youtube] Trying Invidious instance %s for %s...", instance.c_str(), videoId.c_str());
-            std::string vidUrl = instance + "/api/v1/videos/" + videoId;
-            std::string vidResp = themeshop::http::getText(vidUrl);
-            if (!vidResp.empty()) {
-                auto vidJson = nlohmann::json::parse(vidResp);
-                if (vidJson.contains("adaptiveFormats") && vidJson["adaptiveFormats"].is_array()) {
-                    for (const auto& fmt : vidJson["adaptiveFormats"]) {
-                        std::string type = fmt.value("type", "");
-                        std::string u = fmt.value("url", "");
-                        if (!u.empty() && type.find("audio/") != std::string::npos) {
-                            DebugLog::log("[youtube] Found audio stream on %s: %s", instance.c_str(), u.c_str());
-                            return u;
-                        }
-                    }
-                }
-            }
-        } catch (const std::exception& ex) {
-            DebugLog::log("[youtube] Invidious %s failed: %s", instance.c_str(), ex.what());
-        }
-    }
-
-    throw std::runtime_error("Could not resolve audio stream URL for video");
+    DebugLog::log("[youtube] Using backend %s/api/download for %s", backend.c_str(), videoId.c_str());
+    if (onProgress) onProgress("Convertendo áudio no servidor...", 0.10f);
+    return backend + "/api/download?id=" + videoId;
 }
 
 void YouTubeClient::loadInstalledTracks() {

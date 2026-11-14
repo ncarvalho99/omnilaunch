@@ -52,6 +52,26 @@ TRANSCODE_TIMEOUT_SECONDS = 180
 # Client authentication key (can be set via SWITCHU_CLIENT_KEY env var)
 AUTH_CLIENT_KEY = os.environ.get("SWITCHU_CLIENT_KEY", "").strip()
 
+# Optional egress for YouTube requests. Datacenter addresses are routinely
+# answered with "Sign in to confirm you're not a bot"; YTDL_PROXY (for example
+# socks5://127.0.0.1:18090) routes extraction and media through another network.
+# YTDL_COOKIES optionally points at a Netscape cookies.txt readable by the service.
+YTDL_PROXY = os.environ.get("YTDL_PROXY", "").strip()
+YTDL_COOKIES = os.environ.get("YTDL_COOKIES", "").strip()
+if YTDL_COOKIES and not os.path.isfile(YTDL_COOKIES):
+    YTDL_COOKIES = ""
+
+
+def ytdl_cli_base():
+    """Base yt-dlp command line using the installed module and egress options."""
+    cmd = [sys.executable, "-m", "yt_dlp", "--no-warnings", "--quiet", "--no-playlist",
+           "--ignore-config", "--no-cache-dir"]
+    if YTDL_PROXY:
+        cmd += ["--proxy", YTDL_PROXY]
+    if YTDL_COOKIES:
+        cmd += ["--cookies", YTDL_COOKIES]
+    return cmd
+
 # Try to import yt_dlp or youtube_dl
 YTDL_MODULE = None
 try:
@@ -207,6 +227,10 @@ def resolve_stream_info(video_id):
             "skip_download": True,
             "noplaylist": True,
         }
+        if YTDL_PROXY:
+            ydl_opts["proxy"] = YTDL_PROXY
+        if YTDL_COOKIES:
+            ydl_opts["cookiefile"] = YTDL_COOKIES
         try:
             with ytdl_lib.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
@@ -229,11 +253,10 @@ def resolve_stream_info(video_id):
         except Exception as e:
             logger.warning("Python ytdl extract failed for %s: %s", video_id, e)
 
-    # 2. Try CLI yt-dlp or youtube-dl
-    for cli_cmd in ["yt-dlp", "youtube-dl"]:
+    # 2. Try the yt-dlp command line (same module, separate process)
+    for cmd in ([ytdl_cli_base() + ["-g", "-f", "bestaudio/best", "--get-title", url]] if ytdl_lib else []):
         try:
-            cmd = [cli_cmd, "--no-warnings", "-g", "-f", "bestaudio/best", "--get-title", url]
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
             if proc.returncode == 0:
                 lines = proc.stdout.strip().split("\n")
                 if len(lines) >= 2:
@@ -258,39 +281,7 @@ def resolve_stream_info(video_id):
                         "filesize": 0
                     }
         except Exception as e:
-            logger.debug("CLI %s failed: %s", cli_cmd, e)
-
-    # 3. Cloud MP3 conversion resolver fallback (works reliably in datacenter networks)
-    try:
-        logger.info("Attempting cloud MP3 resolution for %s...", video_id)
-        init_url = f"https://loader.to/ajax/download.php?button=1&start=1&end=1&format=mp3&url=https://www.youtube.com/watch?v={video_id}"
-        req = urllib.request.Request(init_url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode())
-            p_url = data.get("progress_url")
-            title = data.get("title", f"track_{video_id}")
-
-        if p_url:
-            import time
-            for _ in range(12):
-                time.sleep(1.0)
-                p_req = urllib.request.Request(p_url, headers={"User-Agent": "Mozilla/5.0"})
-                with urllib.request.urlopen(p_req, timeout=8) as p_resp:
-                    p_data = json.loads(p_resp.read().decode())
-                    if p_data.get("success") == 1 and p_data.get("download_url"):
-                        dl_url = p_data.get("download_url")
-                        if is_safe_stream_url(dl_url):
-                            return {
-                                "status": "ok",
-                                "id": video_id,
-                                "title": clean_title(title),
-                                "stream_url": dl_url,
-                                "is_direct_mp3": True,
-                                "ext": "mp3",
-                                "filesize": 0
-                            }
-    except Exception as e:
-        logger.warning("Cloud MP3 resolver failed for %s: %s", video_id, e)
+            logger.debug("CLI yt-dlp failed: %s", e)
 
     return {"status": "error", "error": f"Failed to extract stream for {video_id}"}
 
@@ -352,7 +343,8 @@ class YtdlRequestHandler(BaseHTTPRequestHandler):
                 "service": "switchu-ytdl",
                 "version": "1.1.0",
                 "auth_enforced": bool(AUTH_CLIENT_KEY),
-                "ytdl_backend": YTDL_MODULE or "cli/innertube"
+                "ytdl_backend": YTDL_MODULE or "cli/innertube",
+                "egress_proxy": bool(YTDL_PROXY)
             })
             return
 
@@ -411,47 +403,24 @@ class YtdlRequestHandler(BaseHTTPRequestHandler):
                 return
 
             proc = None
+            fetch = None
             try:
-                info = resolve_stream_info(vid)
-                if info.get("status") != "ok" or not info.get("stream_url"):
-                    self._send_json(500, {"error": info.get("error", "Stream resolution failed")})
-                    return
-
-                stream_url = info["stream_url"]
-                if not is_safe_stream_url(stream_url):
-                    logger.error("Attempted transcode of unsafe stream URL: %s", stream_url)
-                    self._send_json(500, {"error": "Unsafe stream target rejected"})
-                    return
-
-                if info.get("is_direct_mp3"):
-                    # Direct high-speed streaming through our backend server
-                    dl_req = urllib.request.Request(stream_url, headers={"User-Agent": "Mozilla/5.0"})
-                    with urllib.request.urlopen(dl_req, timeout=30) as dl_resp:
-                        self.send_response(200)
-                        self.send_header("Content-Type", "audio/mpeg")
-                        content_len = dl_resp.headers.get("Content-Length")
-                        if content_len:
-                            self.send_header("Content-Length", content_len)
-                        safe_filename = clean_title(info.get("title", "audio")) + ".mp3"
-                        self.send_header("Content-Disposition", f'attachment; filename="{safe_filename}"')
-                        self._apply_security_headers()
-                        self.end_headers()
-                        while True:
-                            chunk = dl_resp.read(65536)
-                            if not chunk:
-                                break
-                            self.wfile.write(chunk)
-                    return
-
-                # Stream live transcoded MP3 via ffmpeg
+                # yt-dlp fetches the audio itself (through YTDL_PROXY when set) and
+                # pipes it into ffmpeg. Googlevideo URLs are bound to the address
+                # that resolved them, so ffmpeg must not fetch them on its own.
+                url = f"https://www.youtube.com/watch?v={vid}"
+                fetch_cmd = ytdl_cli_base() + ["-f", "bestaudio/best", "-o", "-", url]
+                fetch = subprocess.Popen(
+                    fetch_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    cwd="/tmp"
+                )
                 cmd = [
                     "ffmpeg",
                     "-nostdin",
-                    "-reconnect", "1",
-                    "-reconnect_streamed", "1",
-                    "-reconnect_delay_max", "5",
-                    "-protocol_whitelist", "file,http,https,tcp,tls",
-                    "-i", stream_url,
+                    "-loglevel", "error",
+                    "-i", "pipe:0",
                     "-vn",
                     "-acodec", "libmp3lame",
                     "-b:a", "192k",
@@ -460,16 +429,33 @@ class YtdlRequestHandler(BaseHTTPRequestHandler):
                 ]
                 proc = subprocess.Popen(
                     cmd,
+                    stdin=fetch.stdout,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.DEVNULL
                 )
+                fetch.stdout.close()  # ffmpeg owns the read end now
+
+                # Wait for the first encoded bytes before committing to 200 so a
+                # failed extraction becomes a JSON error instead of an empty MP3.
+                first = proc.stdout.read(65536)
+                if not first:
+                    err_text = ""
+                    try:
+                        fetch.wait(timeout=5)
+                        err_text = fetch.stderr.read().decode("utf-8", errors="replace")
+                    except Exception:
+                        pass
+                    err_line = next((l for l in err_text.splitlines() if "ERROR" in l), "")
+                    logger.warning("Download pipeline produced no audio for %s: %s", vid, err_line[:300])
+                    self._send_json(502, {"error": "Could not fetch audio for this video"})
+                    return
 
                 self.send_response(200)
                 self.send_header("Content-Type", "audio/mpeg")
-                safe_filename = clean_title(info.get("title", "audio")) + ".mp3"
-                self.send_header("Content-Disposition", f'attachment; filename="{safe_filename}"')
+                self.send_header("Content-Disposition", f'attachment; filename="{vid}.mp3"')
                 self._apply_security_headers()
                 self.end_headers()
+                self.wfile.write(first)
 
                 while True:
                     buf = proc.stdout.read(65536)
@@ -478,6 +464,7 @@ class YtdlRequestHandler(BaseHTTPRequestHandler):
                     self.wfile.write(buf)
 
                 proc.wait(timeout=TRANSCODE_TIMEOUT_SECONDS)
+                logger.info("Download served for %s", vid)
                 return
 
             except (BrokenPipeError, ConnectionResetError):
@@ -493,16 +480,20 @@ class YtdlRequestHandler(BaseHTTPRequestHandler):
                 except Exception:
                     pass
             finally:
-                if proc:
+                for p in (proc, fetch):
+                    if not p:
+                        continue
                     try:
-                        if proc.stdout:
-                            proc.stdout.close()
-                        if proc.poll() is None:
-                            proc.terminate()
-                            proc.wait(timeout=3)
+                        if p.stdout:
+                            p.stdout.close()
+                        if p.stderr:
+                            p.stderr.close()
+                        if p.poll() is None:
+                            p.terminate()
+                            p.wait(timeout=3)
                     except Exception:
-                        if proc.poll() is None:
-                            proc.kill()
+                        if p.poll() is None:
+                            p.kill()
                 TRANSCODE_SEMAPHORE.release()
             return
 
