@@ -27,7 +27,9 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import threading
+import time
 import urllib.parse
 import urllib.request
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -99,18 +101,83 @@ def cookies_usable():
         return False
 
 
-def ytdl_cli_base(route):
+COOKIE_LOCK = threading.Lock()
+
+
+def _cookie_state_paths():
+    return os.path.join(CACHE_DIR, "cookies-state.txt"), os.path.join(CACHE_DIR, "cookies-state.src")
+
+
+def cookie_copy():
+    """Private writable copy of the session cookies for one yt-dlp run.
+
+    YouTube rotates account cookies and yt-dlp writes the rotated values back
+    when it exits. The managed file is read-only for the service, so the live
+    session is kept in a service-owned state file (seeded again whenever the
+    managed file changes) and persisted by cookie_commit() after each run.
+    Returns None when no cookies are configured.
+    """
+    if not cookies_usable():
+        return None
+    try:
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        state, marker = _cookie_state_paths()
+        with COOKIE_LOCK:
+            src_id = "%d:%d" % (os.path.getmtime(YTDL_COOKIES), os.path.getsize(YTDL_COOKIES))
+            seeded = ""
+            try:
+                with open(marker) as f:
+                    seeded = f.read().strip()
+            except OSError:
+                pass
+            if seeded != src_id or not os.path.isfile(state):
+                with open(YTDL_COOKIES, "rb") as src, open(state, "wb") as dst:
+                    dst.write(src.read())
+                with open(marker, "w") as f:
+                    f.write(src_id)
+                logger.info("Cookie session seeded from %s", YTDL_COOKIES)
+            fd, path = tempfile.mkstemp(prefix="cookies-", suffix=".txt", dir=CACHE_DIR)
+            with os.fdopen(fd, "wb") as dst, open(state, "rb") as src:
+                dst.write(src.read())
+        return path
+    except OSError as e:
+        logger.warning("Cookie copy failed: %s", e)
+        return None
+
+
+def cookie_commit(path):
+    """Persist the cookies yt-dlp saved after a run, then remove the run copy."""
+    if not path:
+        return
+    try:
+        if os.path.getsize(path) > 0:
+            state, _ = _cookie_state_paths()
+            with COOKIE_LOCK:
+                tmp = state + ".new"
+                with open(path, "rb") as src, open(tmp, "wb") as dst:
+                    dst.write(src.read())
+                os.replace(tmp, state)
+    except OSError as e:
+        logger.warning("Cookie persist failed: %s", e)
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+def ytdl_cli_base(route, cookie_file=None):
     """yt-dlp command line for one egress route (module of this interpreter)."""
     cmd = [sys.executable, "-m", "yt_dlp", "--no-warnings", "--quiet", "--no-playlist",
-           "--ignore-config", "--no-cache-dir"]
+           "--ignore-config", "--cache-dir", YTDL_STATE_DIR]
     if YTDL_JS_RUNTIME:
         cmd += ["--js-runtimes", YTDL_JS_RUNTIME]
     if route["proxy"]:
         cmd += ["--proxy", route["proxy"]]
     if route["pot"]:
         cmd += ["--extractor-args", "youtubepot-bgutilhttp:base_url=" + route["pot"]]
-    if cookies_usable():
-        cmd += ["--cookies", YTDL_COOKIES]
+    if cookie_file:
+        cmd += ["--cookies", cookie_file]
     return cmd
 
 # Try to import yt_dlp or youtube_dl
@@ -263,12 +330,15 @@ def resolve_stream_info(video_id):
     # them, so clients must download through /api/download instead.
     if ytdl_lib:
         for route in YTDL_ROUTES:
-            cmd = ytdl_cli_base(route) + ["-g", "-f", "bestaudio/best", "--get-title", url]
+            ck = cookie_copy()
+            cmd = ytdl_cli_base(route, ck) + ["-g", "-f", "bestaudio/best", "--get-title", url]
             try:
                 proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60, cwd="/tmp")
             except Exception as e:
                 logger.warning("Route %s failed for %s: %s", route_label(route), video_id, e)
                 continue
+            finally:
+                cookie_commit(ck)
             lines = [l.strip() for l in proc.stdout.strip().split("\n") if l.strip()]
             if proc.returncode == 0 and len(lines) >= 2 and is_safe_stream_url(lines[1]):
                 return {
@@ -284,6 +354,140 @@ def resolve_stream_info(video_id):
             logger.warning("Route %s failed for %s: %s", route_label(route), video_id, err_line[:300])
     return {"status": "error", "error": f"Failed to extract stream for {video_id}"}
 
+
+# ---------------------------------------------------------------------------
+# Prepared downloads
+#
+# Resolving, fetching and encoding a track takes 30-90 s. Holding the client's
+# HTTP request open for that long trips client timeouts and leaves the transfer
+# crawling at encoder speed. Instead the client calls /api/prepare, polls it until
+# the MP3 is ready in the cache, then fetches it from /api/download at full speed
+# with a known Content-Length.
+# ---------------------------------------------------------------------------
+CACHE_DIR = os.environ.get("YTDL_CACHE_DIR", "/tmp/switchu-ytdl-cache").strip()
+CACHE_TTL_SECONDS = int(os.environ.get("YTDL_CACHE_TTL", "86400"))
+CACHE_MAX_FILES = int(os.environ.get("YTDL_CACHE_MAX_FILES", "60"))
+JOB_TIMEOUT_SECONDS = 300
+JOBS = {}
+JOBS_LOCK = threading.Lock()
+YTDL_STATE_DIR = os.path.join(CACHE_DIR, ".ytdlp")
+
+
+def cache_path(video_id):
+    return os.path.join(CACHE_DIR, video_id + ".mp3")
+
+
+def prune_cache():
+    try:
+        entries = []
+        now = time.time()
+        for name in os.listdir(CACHE_DIR):
+            if not name.endswith(".mp3"):
+                continue
+            full = os.path.join(CACHE_DIR, name)
+            mtime = os.path.getmtime(full)
+            if now - mtime > CACHE_TTL_SECONDS:
+                os.remove(full)
+            else:
+                entries.append((mtime, full))
+        entries.sort(reverse=True)
+        for _, full in entries[CACHE_MAX_FILES:]:
+            os.remove(full)
+    except OSError as e:
+        logger.warning("Cache prune failed: %s", e)
+
+
+def _kill(p):
+    if not p:
+        return
+    try:
+        if p.poll() is None:
+            p.kill()
+        p.wait(timeout=5)
+    except Exception:
+        pass
+
+
+def run_prepare_job(video_id):
+    """Fetch and encode one track into the cache, trying each route in order."""
+    job = JOBS[video_id]
+    final = cache_path(video_id)
+    part = final + ".part"
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    TRANSCODE_SEMAPHORE.acquire()
+    try:
+        for route in YTDL_ROUTES:
+            job["route"] = route_label(route)
+            fetch = proc = None
+            ck = cookie_copy()
+            try:
+                fetch = subprocess.Popen(
+                    ytdl_cli_base(route, ck) + ["--extractor-args", "youtube:skip=hls",
+                                                "-f", "bestaudio/best", "-o", "-", url],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd="/tmp")
+                proc = subprocess.Popen(
+                    ["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-i", "pipe:0",
+                     "-vn", "-acodec", "libmp3lame", "-b:a", "192k",
+                     "-compression_level", "9", "-f", "mp3", part],
+                    stdin=fetch.stdout, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                fetch.stdout.close()
+                deadline = time.time() + JOB_TIMEOUT_SECONDS
+                while proc.poll() is None:
+                    if time.time() > deadline:
+                        raise subprocess.TimeoutExpired("ffmpeg", JOB_TIMEOUT_SECONDS)
+                    try:
+                        job["bytes"] = os.path.getsize(part)
+                    except OSError:
+                        pass
+                    time.sleep(0.5)
+                fetch.wait(timeout=10)
+                err_text = fetch.stderr.read().decode("utf-8", errors="replace")
+                size = os.path.getsize(part) if os.path.exists(part) else 0
+                if proc.returncode == 0 and fetch.returncode == 0 and size > 1024:
+                    os.replace(part, final)
+                    job.update(state="ready", bytes=size)
+                    logger.info("Prepared %s via route %s (%d bytes)", video_id, route_label(route), size)
+                    return
+                err_line = next((l for l in err_text.splitlines() if "ERROR" in l), "")
+                logger.warning("Route %s produced no audio for %s: %s", route_label(route), video_id, err_line[:300])
+            except Exception as e:
+                logger.warning("Route %s failed for %s: %s", route_label(route), video_id, e)
+            finally:
+                _kill(proc)
+                _kill(fetch)
+                if fetch and fetch.stderr:
+                    fetch.stderr.close()
+                cookie_commit(ck)
+                try:
+                    os.remove(part)
+                except OSError:
+                    pass
+        job.update(state="error", error="Could not fetch audio for this video")
+    finally:
+        TRANSCODE_SEMAPHORE.release()
+        job["finished"] = time.time()
+
+
+def prepare(video_id):
+    """Start (or report) the preparation of one track. Returns a status dict."""
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    final = cache_path(video_id)
+    with JOBS_LOCK:
+        if os.path.isfile(final):
+            os.utime(final)
+            return {"status": "ready", "id": video_id, "bytes": os.path.getsize(final)}
+        job = JOBS.get(video_id)
+        if job and job["state"] == "working":
+            return {"status": "working", "id": video_id, "bytes": job.get("bytes", 0),
+                    "elapsed": int(time.time() - job["started"])}
+        if job and job["state"] == "error" and time.time() - job.get("finished", 0) < 20:
+            return {"status": "error", "id": video_id, "error": job.get("error", "failed")}
+        for vid in [v for v, j in JOBS.items() if j["state"] != "working"]:
+            JOBS.pop(vid, None)
+        JOBS[video_id] = {"state": "working", "bytes": 0, "started": time.time()}
+        prune_cache()
+    threading.Thread(target=run_prepare_job, args=(video_id,), daemon=True).start()
+    return {"status": "working", "id": video_id, "bytes": 0, "elapsed": 0}
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
@@ -389,6 +593,16 @@ class YtdlRequestHandler(BaseHTTPRequestHandler):
             self._send_json(status_code, info)
             return
 
+        # Prepare endpoint: /api/prepare?id=<video_id> (poll until "ready")
+        if path in ["/api/prepare", "/v1/prepare"]:
+            vid = params.get("id", [""])[0].strip()
+            if not vid or not VIDEO_ID_REGEX.match(vid):
+                self._send_json(400, {"error": "Invalid or missing 'id' parameter (must be 11 characters alphanumeric)"})
+                return
+            info = prepare(vid)
+            self._send_json(502 if info["status"] == "error" else 200, info)
+            return
+
         # Download stream endpoint: /api/download?id=<video_id>
         if path in ["/api/download", "/v1/download"]:
             vid = params.get("id", [""])[0].strip()
@@ -396,7 +610,30 @@ class YtdlRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(400, {"error": "Invalid or missing 'id' parameter (must be 11 characters alphanumeric)"})
                 return
 
-            # Concurrency limit check
+            # Prepared track: serve the cached file at full speed.
+            cached = cache_path(vid)
+            if os.path.isfile(cached):
+                try:
+                    size = os.path.getsize(cached)
+                    with open(cached, "rb") as f:
+                        self.send_response(200)
+                        self.send_header("Content-Type", "audio/mpeg")
+                        self.send_header("Content-Length", str(size))
+                        self.send_header("Content-Disposition", f'attachment; filename="{vid}.mp3"')
+                        self._apply_security_headers()
+                        self.end_headers()
+                        if self.command != "HEAD":
+                            while True:
+                                chunk = f.read(262144)
+                                if not chunk:
+                                    break
+                                self.wfile.write(chunk)
+                    logger.info("Served cached %s (%d bytes)", vid, size)
+                except (BrokenPipeError, ConnectionResetError):
+                    logger.info("Client disconnected during cached download for %s", vid)
+                return
+
+            # Legacy clients without /api/prepare: live transcode stream.
             if not TRANSCODE_SEMAPHORE.acquire(blocking=True, timeout=2.0):
                 logger.warning("Concurrent transcode limit reached (%d), rejecting %s", MAX_CONCURRENT_TRANSCODES, vid)
                 self._send_json(503, {"error": "Server is busy with other downloads, please try again shortly"})
@@ -404,6 +641,7 @@ class YtdlRequestHandler(BaseHTTPRequestHandler):
 
             proc = None
             fetch = None
+            ck = None
             try:
                 # yt-dlp fetches the audio itself and pipes it into ffmpeg.
                 # Googlevideo URLs are bound to the address that resolved them, so
@@ -412,19 +650,15 @@ class YtdlRequestHandler(BaseHTTPRequestHandler):
                 url = f"https://www.youtube.com/watch?v={vid}"
                 first = b""
                 for route in YTDL_ROUTES:
+                    ck = cookie_copy()
                     fetch = subprocess.Popen(
-                        ytdl_cli_base(route) + ["-f", "bestaudio/best", "-o", "-", url],
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        cwd="/tmp"
-                    )
+                        ytdl_cli_base(route, ck) + ["--extractor-args", "youtube:skip=hls",
+                                                    "-f", "bestaudio/best", "-o", "-", url],
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd="/tmp")
                     proc = subprocess.Popen(
                         ["ffmpeg", "-nostdin", "-loglevel", "error", "-i", "pipe:0",
                          "-vn", "-acodec", "libmp3lame", "-b:a", "192k", "-f", "mp3", "pipe:1"],
-                        stdin=fetch.stdout,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.DEVNULL
-                    )
+                        stdin=fetch.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
                     fetch.stdout.close()  # ffmpeg owns the read end now
                     first = proc.stdout.read(65536)
                     if first:
@@ -444,13 +678,13 @@ class YtdlRequestHandler(BaseHTTPRequestHandler):
                                 p.stdout.close()
                             if p.stderr:
                                 p.stderr.close()
-                            if p.poll() is None:
-                                p.kill()
-                            p.wait(timeout=3)
                         except Exception:
                             pass
+                        _kill(p)
                     proc = None
                     fetch = None
+                    cookie_commit(ck)
+                    ck = None
 
                 if not first:
                     self._send_json(502, {"error": "Could not fetch audio for this video"})
@@ -461,13 +695,11 @@ class YtdlRequestHandler(BaseHTTPRequestHandler):
                 self._apply_security_headers()
                 self.end_headers()
                 self.wfile.write(first)
-
                 while True:
                     buf = proc.stdout.read(65536)
                     if not buf:
                         break
                     self.wfile.write(buf)
-
                 proc.wait(timeout=TRANSCODE_TIMEOUT_SECONDS)
                 logger.info("Download served for %s", vid)
                 return
@@ -476,8 +708,6 @@ class YtdlRequestHandler(BaseHTTPRequestHandler):
                 logger.info("Client disconnected during download for %s", vid)
             except subprocess.TimeoutExpired:
                 logger.warning("Transcode timed out for %s", vid)
-                if proc:
-                    proc.kill()
             except Exception as e:
                 logger.error("Download streaming error for %s: %s", vid, e)
                 try:
@@ -493,15 +723,12 @@ class YtdlRequestHandler(BaseHTTPRequestHandler):
                             p.stdout.close()
                         if p.stderr:
                             p.stderr.close()
-                        if p.poll() is None:
-                            p.terminate()
-                            p.wait(timeout=3)
                     except Exception:
-                        if p.poll() is None:
-                            p.kill()
+                        pass
+                    _kill(p)
+                cookie_commit(ck)
                 TRANSCODE_SEMAPHORE.release()
             return
-
         self._send_json(404, {"error": "Not found", "path": path})
 
 

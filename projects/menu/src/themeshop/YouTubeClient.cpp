@@ -334,9 +334,55 @@ std::string YouTubeClient::resolveStreamUrl(const std::string& videoId, const st
         DebugLog::log("[youtube] Backend %s unavailable: %s", backend.c_str(), ex.what());
         throw std::runtime_error("Music server unavailable");
     }
-    DebugLog::log("[youtube] Using backend %s/api/download for %s", backend.c_str(), videoId.c_str());
-    if (onProgress) onProgress("Convertendo áudio no servidor...", 0.10f);
-    return backend + "/api/download?id=" + videoId;
+    // Ask the backend to prepare the MP3 and poll until it is cached there. The
+    // conversion takes 30-90 s; holding one HTTP request open that long tripped
+    // the transfer timeout and crawled at encoder speed. Each poll is short.
+    DebugLog::log("[youtube] Preparing %s on backend %s", videoId.c_str(), backend.c_str());
+    const std::string prepareUrl = backend + "/api/prepare?id=" + videoId;
+    const auto started = std::chrono::steady_clock::now();
+    constexpr int kPrepareLimitSeconds = 300;
+    int failures = 0;
+    for (;;) {
+        const int elapsed = static_cast<int>(std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::steady_clock::now() - started).count());
+        if (elapsed > kPrepareLimitSeconds)
+            throw std::runtime_error("Music server took too long to convert this track");
+
+        std::string status;
+        std::uint64_t preparedBytes = 0;
+        try {
+            const auto root = nlohmann::json::parse(themeshop::http::getText(prepareUrl));
+            status = root.value("status", "");
+            preparedBytes = root.value("bytes", static_cast<std::uint64_t>(0));
+            failures = 0;
+        } catch (const std::exception& ex) {
+            // HTTP 502 = every route failed on the server; other errors are
+            // transient (network blips) and are retried a few times.
+            const std::string what = ex.what();
+            DebugLog::log("[youtube] prepare poll failed for %s: %s", videoId.c_str(), what.c_str());
+            if (what.find("HTTP error 502") != std::string::npos)
+                throw std::runtime_error("Music server could not fetch this track");
+            if (++failures >= 4)
+                throw;
+        }
+
+        if (status == "ready") {
+            DebugLog::log("[youtube] %s ready on backend after %d s (%llu bytes)", videoId.c_str(), elapsed,
+                          static_cast<unsigned long long>(preparedBytes));
+            if (onProgress) onProgress("Download pronto! Iniciando transferência...", 0.25f);
+            return backend + "/api/download?id=" + videoId;
+        }
+
+        if (onProgress) {
+            std::string msg = "Convertendo áudio no servidor... (" + std::to_string(elapsed) + "s";
+            if (preparedBytes > 0)
+                msg += ", " + formatBytes(preparedBytes);
+            msg += ")";
+            const float ratio = std::min(static_cast<float>(elapsed) / 90.0f, 1.0f);
+            onProgress(msg, 0.10f + 0.14f * ratio);
+        }
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+    }
 }
 
 void YouTubeClient::loadInstalledTracks() {
