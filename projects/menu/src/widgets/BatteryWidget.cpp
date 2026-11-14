@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <algorithm>
 #include <cmath>
+#include <string>
 
 namespace {
 
@@ -70,7 +71,23 @@ void BatteryWidget::onContentUpdate(float dt) {
 #endif
 }
 
+namespace {
+void loadBatteryIcon(nxui::Renderer& ren, nxui::Texture& tex, const char* name, int maxSide) {
+    if (!tex.loadFromFile(ren.gpu(), ren, std::string("sdmc:/switch/OmniLaunch/icons/") + name, maxSide))
+        tex.loadFromFile(ren.gpu(), ren, std::string("romfs:/icons/") + name, maxSide);
+}
+} // namespace
+
 void BatteryWidget::onContentRender(nxui::Renderer& ren) {
+    if (!m_texLoaded) {
+        m_texLoaded = true;
+        loadBatteryIcon(ren, m_shellTex, "battery.png", 128);
+        loadBatteryIcon(ren, m_boltTex, "battery_bolt.png", 64);
+    }
+    if (m_shellTex.valid()) {
+        renderIcons(ren);
+        return;
+    }
     nxui::Rect cr = contentRect();
     float bw = 46.f, bh = 22.f;
     float boltSlotW = m_charging ? 22.f : 0.f;
@@ -144,6 +161,52 @@ void BatteryWidget::onContentRender(nxui::Renderer& ren) {
         float tx = cr.x + (cr.width - sz.x * 0.75f) * 0.5f;
         float ty = by + bh + 6.f;
         ren.drawText(buf, {tx, ty}, m_font, m_textColor.withAlpha(op), 0.75f);
+    }
+}
+
+// Icon pack: an empty 3D shell (cavity at x 27..215, y 21..122 of 256x144)
+// with the charge level drawn inside it, and a separate bolt while charging.
+void BatteryWidget::renderIcons(nxui::Renderer& ren) {
+    const nxui::Rect cr = contentRect();
+    const float op = m_opacity;
+    const float level = std::clamp(m_level, 0.f, 1.f);
+    const float bh = 27.f, bw = bh * 256.f / 144.f;
+    const float boltSlotW = m_charging ? 22.f : 0.f;
+    const float gap = m_charging ? 4.f : 0.f;
+    const float textH = m_font ? m_font->measure("100%").y * 0.75f : 14.f;
+    const float contentH = bh + 4.f + textH;
+    const float bx = cr.x + (cr.width - (bw + gap + boltSlotW)) * 0.5f;
+    const float by = cr.y + (cr.height - contentH) * 0.5f;
+    const nxui::Rect shell{bx, by, bw, bh};
+
+    const nxui::Rect cavity{bx + bw * (27.f / 256.f), by + bh * (21.f / 144.f),
+                            bw * (188.f / 256.f), bh * (101.f / 144.f)};
+    const float pulse = m_charging ? (0.74f + 0.26f * (0.5f + 0.5f * std::sin(m_chargeAnim * 5.2f))) : 1.f;
+    nxui::Color fill = level > 0.20f ? nxui::Color(0.32f, 0.93f, 0.52f, op * pulse)
+                                     : nxui::Color(0.95f, 0.24f, 0.20f, op);
+    if (m_charging && level > 0.20f) fill = nxui::Color(0.46f, 0.96f, 0.66f, op * pulse);
+
+    ren.drawTexture(&m_shellTex, shell, nxui::Color::white().withAlpha(op));
+    const float fw = cavity.width * level;
+    if (fw > 0.5f)
+        ren.drawRoundedRect({cavity.x, cavity.y, fw, cavity.height}, fill,
+                            std::min(cavity.height * 0.22f, fw * 0.5f));
+
+    if (m_charging) {
+        const float boltPulse = 0.70f + 0.30f * (0.5f + 0.5f * std::sin(m_chargeAnim * 6.8f));
+        const float s = 24.f + 2.f * boltPulse;
+        const nxui::Rect boltRect{shell.right() + gap + (boltSlotW - s) * 0.5f, by + (bh - s) * 0.5f, s, s};
+        if (m_boltTex.valid())
+            ren.drawTexture(&m_boltTex, boltRect, nxui::Color::white().withAlpha(op * (0.88f + 0.12f * boltPulse)));
+        else
+            drawLightningBolt(ren, boltRect, nxui::Color(1.f, 0.86f, 0.18f, op), nxui::Color(1.f, 0.64f, 0.08f, op * 0.72f), 1.15f);
+    }
+
+    if (m_font) {
+        char buf[16];
+        std::snprintf(buf, sizeof(buf), "%d%%", static_cast<int>(level * 100));
+        const nxui::Vec2 sz = m_font->measure(buf);
+        ren.drawText(buf, {cr.x + (cr.width - sz.x * 0.75f) * 0.5f, by + bh + 4.f}, m_font, m_textColor.withAlpha(op), 0.75f);
     }
 }
 

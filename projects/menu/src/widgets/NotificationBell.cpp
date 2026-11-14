@@ -46,12 +46,23 @@ void NotificationBell::onContentRender(nxui::Renderer& ren) {
     const float cx = r.x + r.width * 0.5f, top = r.y + (r.height - s) * 0.5f;
     const nxui::Color ink = m_theme ? m_theme->textPrimary.withAlpha(0.85f * a) : nxui::Color::white().withAlpha(0.85f * a);
 
-    // The bell: knob, dome, body, rim, clapper.
-    ren.drawCircle({cx, top + s * 0.17f}, s * 0.05f, ink, 12);
-    ren.drawCircle({cx, top + s * 0.42f}, s * 0.22f, ink, 28);
-    ren.drawRect({cx - s * 0.22f, top + s * 0.42f, s * 0.44f, s * 0.24f}, ink);
-    ren.drawRoundedRect({cx - s * 0.33f, top + s * 0.63f, s * 0.66f, s * 0.09f}, ink, s * 0.045f);
-    ren.drawCircle({cx, top + s * 0.80f}, s * 0.07f, ink, 16);
+    if (!m_texLoaded) {
+        m_texLoaded = true;
+        if (!m_bellTex.loadFromFile(ren.gpu(), ren, "sdmc:/switch/OmniLaunch/icons/bell.png", 128))
+            m_bellTex.loadFromFile(ren.gpu(), ren, "romfs:/icons/bell.png", 128);
+    }
+    if (m_bellTex.valid()) {
+        // Icon pack bell, slightly inset so the unread badge still sits on its shoulder.
+        const float is = s * 0.86f;
+        ren.drawTexture(&m_bellTex, {cx - is * 0.5f, top + (s - is) * 0.5f, is, is}, nxui::Color::white().withAlpha(a));
+    } else {
+        // The bell: knob, dome, body, rim, clapper.
+        ren.drawCircle({cx, top + s * 0.17f}, s * 0.05f, ink, 12);
+        ren.drawCircle({cx, top + s * 0.42f}, s * 0.22f, ink, 28);
+        ren.drawRect({cx - s * 0.22f, top + s * 0.42f, s * 0.44f, s * 0.24f}, ink);
+        ren.drawRoundedRect({cx - s * 0.33f, top + s * 0.63f, s * 0.66f, s * 0.09f}, ink, s * 0.045f);
+        ren.drawCircle({cx, top + s * 0.80f}, s * 0.07f, ink, 16);
+    }
 
     if (m_unread > 0) {
         const nxui::Vec2 c{r.x + r.width - s * 0.12f, r.y + s * 0.12f};

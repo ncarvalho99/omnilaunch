@@ -3,6 +3,7 @@
 #include <nxui/Theme.hpp>
 #include <nxui/core/Font.hpp>
 #include <nxui/core/Renderer.hpp>
+#include <nxui/core/Texture.hpp>
 #include <nxui/widgets/GlassWidget.hpp>
 
 // HOME's notification centre button, next to the profile tile: a bell, with a
@@ -29,4 +30,6 @@ private:
     const nxui::Theme* m_theme = nullptr;
     nxui::Font* m_font = nullptr;
     int m_unread = 0;
+    nxui::Texture m_bellTex; // icon pack bell; the drawn bell is the fallback
+    bool m_texLoaded = false;
 };
