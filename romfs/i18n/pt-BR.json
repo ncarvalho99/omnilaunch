@@ -899,9 +899,9 @@
     "badge_off": "NÃO",
     "mode": {
       "custom_first": "SD Card Primeiro",
-      "custom_first_desc": "Toca músicas do cartão SD. Usa música do tema se a pasta estiver vazia.",
+      "custom_first_desc": "Toca primeiro as músicas do cartão SD e depois a música do tema.",
       "theme_first": "Música do Tema Primeiro",
-      "theme_first_desc": "Música do tema tem prioridade. Usa cartão SD se o tema não tiver música.",
+      "theme_first_desc": "Toca primeiro a música do tema e depois as músicas do cartão SD.",
       "custom_only": "Somente Cartão SD",
       "custom_only_desc": "Toca apenas músicas do cartão SD. Música do tema é ignorada.",
       "theme_only": "Somente Tema e Padrão",

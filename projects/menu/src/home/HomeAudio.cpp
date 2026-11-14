@@ -299,17 +299,19 @@ bool HomeAudio::reloadMusicTracks(const AppConfig& config, const std::vector<The
             DebugLog::log("[audio] Custom Only: Loaded %zu custom track(s)", customBgmTracks.size());
         }
     } else if (pref == "theme_first") {
-        if (themeMusicAllowed && !themeMusicTracks.empty()) {
+        // "First" orders the playlist; it no longer hides the other source.
+        // Downloading one song used to drop the theme music from both players.
+        const size_t themeCount = themeMusicAllowed ? themeMusicTracks.size() : 0;
+        if (themeMusicAllowed) {
             for (const auto& track : themeMusicTracks)
                 desired.push_back({track, std::filesystem::path(track).stem().string()});
-            loaded = true;
-            DebugLog::log("[audio] Theme First: Loaded %zu theme track(s)", themeMusicTracks.size());
-        } else if (!customBgmTracks.empty()) {
-            for (const auto& track : customBgmTracks)
-                desired.push_back(track);
-            loaded = true;
-            DebugLog::log("[audio] Theme First (fallback): Loaded %zu custom track(s)", customBgmTracks.size());
         }
+        for (const auto& track : customBgmTracks)
+            desired.push_back(track);
+        loaded = !desired.empty();
+        if (loaded)
+            DebugLog::log("[audio] Theme First: Loaded %zu theme + %zu custom track(s)",
+                          themeCount, customBgmTracks.size());
     } else if (pref == "theme_only") {
         if (themeMusicAllowed && !themeMusicTracks.empty()) {
             for (const auto& track : themeMusicTracks)
@@ -318,17 +320,19 @@ bool HomeAudio::reloadMusicTracks(const AppConfig& config, const std::vector<The
             DebugLog::log("[audio] Theme Only: Loaded %zu theme track(s)", themeMusicTracks.size());
         }
     } else { // "custom_first" (default)
-        if (!customBgmTracks.empty()) {
-            for (const auto& track : customBgmTracks)
-                desired.push_back(track);
-            loaded = true;
-            DebugLog::log("[audio] Custom First: Loaded %zu custom track(s)", customBgmTracks.size());
-        } else if (themeMusicAllowed && !themeMusicTracks.empty()) {
+        // SD songs play first, then the theme music stays in the playlist so
+        // the Classic and Cards players can still select it.
+        for (const auto& track : customBgmTracks)
+            desired.push_back(track);
+        const size_t themeCount = themeMusicAllowed ? themeMusicTracks.size() : 0;
+        if (themeMusicAllowed) {
             for (const auto& track : themeMusicTracks)
                 desired.push_back({track, std::filesystem::path(track).stem().string()});
-            loaded = true;
-            DebugLog::log("[audio] Custom First (fallback): Loaded %zu theme track(s)", themeMusicTracks.size());
         }
+        loaded = !desired.empty();
+        if (loaded)
+            DebugLog::log("[audio] Custom First: Loaded %zu custom + %zu theme track(s)",
+                          customBgmTracks.size(), themeCount);
     }
 
     // Fallback to Preset Music if nothing loaded and mode allows it

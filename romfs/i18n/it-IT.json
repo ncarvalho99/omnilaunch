@@ -899,9 +899,9 @@
     "badge_off": "NO",
     "mode": {
       "custom_first": "Scheda SD Prima",
-      "custom_first_desc": "Riproduce la musica della scheda SD. Usa la musica del tema se la cartella è vuota.",
+      "custom_first_desc": "Riproduce prima la musica della scheda SD, poi quella del tema.",
       "theme_first": "Musica del Tema Prima",
-      "theme_first_desc": "La musica del tema ha la priorità. Usa la scheda SD se il tema non ha musica.",
+      "theme_first_desc": "Riproduce prima la musica del tema, poi quella della scheda SD.",
       "custom_only": "Solo Scheda SD",
       "custom_only_desc": "Riproduce solo la musica della scheda SD. La musica del tema viene ignorata.",
       "theme_only": "Solo Tema e Predefinito",

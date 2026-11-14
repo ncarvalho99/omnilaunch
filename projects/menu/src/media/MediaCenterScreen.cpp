@@ -287,10 +287,10 @@ std::string MediaCenterScreen::getAudioModeDesc() const {
     if (m_audioMode == "custom_only")
         return i18n.tr("media.mode.custom_only_desc", "Plays only SD card music. Theme music is ignored.");
     if (m_audioMode == "theme_first")
-        return i18n.tr("media.mode.theme_first_desc", "Theme music takes precedence. Falls back to SD card if none.");
+        return i18n.tr("media.mode.theme_first_desc", "Plays the theme music first, then SD card music.");
     if (m_audioMode == "theme_only")
         return i18n.tr("media.mode.theme_only_desc", "Plays theme or preset sounds only. SD music ignored.");
-    return i18n.tr("media.mode.custom_first_desc", "Plays SD card music. Falls back to theme music if folder empty.");
+    return i18n.tr("media.mode.custom_first_desc", "Plays SD card music first, then the theme music.");
 }
 
 void MediaCenterScreen::cycleAudioMode(int dir) {

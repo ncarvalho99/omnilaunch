@@ -899,9 +899,9 @@
     "badge_off": "UIT",
     "mode": {
       "custom_first": "Eerst SD-kaart",
-      "custom_first_desc": "Speelt muziek van SD-kaart. Gebruikt themamuziek als de map leeg is.",
+      "custom_first_desc": "Speelt eerst muziek van de SD-kaart, daarna de themamuziek.",
       "theme_first": "Eerst themamuziek",
-      "theme_first_desc": "Themamuziek heeft prioriteit. Gebruikt SD-kaart als het thema geen muziek heeft.",
+      "theme_first_desc": "Speelt eerst de themamuziek, daarna muziek van de SD-kaart.",
       "custom_only": "Alleen SD-kaart",
       "custom_only_desc": "Speelt alleen SD-kaartmuziek. Themamuziek wordt genegeerd.",
       "theme_only": "Alleen thema & standaard",

@@ -899,9 +899,9 @@
     "badge_off": "OFF",
     "mode": {
       "custom_first": "Custom SD First",
-      "custom_first_desc": "Plays SD card music. Falls back to theme music if folder empty.",
+      "custom_first_desc": "Plays SD card music first, then the theme music.",
       "theme_first": "Theme Music First",
-      "theme_first_desc": "Theme music takes precedence. Falls back to SD card if none.",
+      "theme_first_desc": "Plays the theme music first, then SD card music.",
       "custom_only": "Custom SD Only",
       "custom_only_desc": "Plays only SD card music. Theme music is ignored.",
       "theme_only": "Theme & Preset Only",

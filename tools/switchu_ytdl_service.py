@@ -30,6 +30,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -78,6 +79,11 @@ def _parse_routes():
         part = part.strip()
         if not part:
             continue
+        if part.lower().startswith("upstream="):
+            # Another instance of this service that prepares the MP3 itself
+            # (for example on a residential network) and hands over the file.
+            routes.append({"proxy": "", "pot": "", "upstream": part[len("upstream="):].strip().rstrip("/")})
+            continue
         proxy, _, pot = part.partition("|")
         proxy = proxy.strip()
         routes.append({
@@ -90,8 +96,18 @@ def _parse_routes():
 YTDL_ROUTES = _parse_routes()
 
 
+YTDL_UPSTREAM_KEY = os.environ.get("YTDL_UPSTREAM_KEY", "").strip()
+
+
 def route_label(route):
+    if route.get("upstream"):
+        return "upstream"
     return ("proxy" if route["proxy"] else "direct") + ("+pot" if route["pot"] else "")
+
+
+def local_routes():
+    """Routes that run yt-dlp in this process (upstream routes excluded)."""
+    return [r for r in YTDL_ROUTES if not r.get("upstream")]
 
 
 def cookies_usable():
@@ -329,7 +345,7 @@ def resolve_stream_info(video_id):
     # Metadata only: googlevideo URLs are bound to the address that resolved
     # them, so clients must download through /api/download instead.
     if ytdl_lib:
-        for route in YTDL_ROUTES:
+        for route in local_routes():
             ck = cookie_copy()
             cmd = ytdl_cli_base(route, ck) + ["-g", "-f", "bestaudio/best", "--get-title", url]
             try:
@@ -408,6 +424,44 @@ def _kill(p):
         pass
 
 
+def fetch_from_upstream(base, video_id, dest, job):
+    """Ask another instance to prepare the track, then copy its MP3 to dest."""
+    headers = {"User-Agent": "switchu-ytdl-relay/1.0"}
+    if YTDL_UPSTREAM_KEY:
+        headers["X-SwitchU-Key"] = YTDL_UPSTREAM_KEY
+    deadline = time.time() + JOB_TIMEOUT_SECONDS
+    while True:
+        req = urllib.request.Request(f"{base}/api/prepare?id={video_id}", headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                info = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            raise RuntimeError(f"prepare HTTP {e.code}")
+        status = info.get("status")
+        if status == "ready":
+            break
+        if status != "working":
+            raise RuntimeError(f"prepare status {status}")
+        job["bytes"] = int(info.get("bytes", 0) or 0)
+        if time.time() > deadline:
+            raise RuntimeError("upstream prepare timed out")
+        time.sleep(1.0)
+    req = urllib.request.Request(f"{base}/api/download?id={video_id}", headers=headers)
+    size = 0
+    with urllib.request.urlopen(req, timeout=60) as resp, open(dest, "wb") as out:
+        if resp.headers.get_content_type() != "audio/mpeg":
+            raise RuntimeError("upstream returned " + resp.headers.get_content_type())
+        while True:
+            chunk = resp.read(262144)
+            if not chunk:
+                break
+            out.write(chunk)
+            size += len(chunk)
+    if size <= 1024:
+        raise RuntimeError("upstream file too small")
+    return size
+
+
 def run_prepare_job(video_id):
     """Fetch and encode one track into the cache, trying each route in order."""
     job = JOBS[video_id]
@@ -418,6 +472,20 @@ def run_prepare_job(video_id):
     try:
         for route in YTDL_ROUTES:
             job["route"] = route_label(route)
+            if route.get("upstream"):
+                try:
+                    size = fetch_from_upstream(route["upstream"], video_id, part, job)
+                    os.replace(part, final)
+                    job.update(state="ready", bytes=size)
+                    logger.info("Prepared %s via upstream (%d bytes)", video_id, size)
+                    return
+                except Exception as e:
+                    logger.warning("Route upstream failed for %s: %s", video_id, str(e)[:300])
+                    try:
+                        os.remove(part)
+                    except OSError:
+                        pass
+                    continue
             fetch = proc = None
             ck = cookie_copy()
             try:
@@ -649,7 +717,7 @@ class YtdlRequestHandler(BaseHTTPRequestHandler):
                 # until one produces encoded audio; only then is 200 committed.
                 url = f"https://www.youtube.com/watch?v={vid}"
                 first = b""
-                for route in YTDL_ROUTES:
+                for route in local_routes():
                     ck = cookie_copy()
                     fetch = subprocess.Popen(
                         ytdl_cli_base(route, ck) + ["--extractor-args", "youtube:skip=hls",
