@@ -251,6 +251,9 @@
     "omnilaunch": {
       "order": "Sidebar buttons",
       "order_desc": "Choose the button for this spot; it swaps with the spot it was in.",
+      "order_show_desc": "Show the ten side-column positions to choose which button goes where.",
+      "lock_pw_forced": "On while a password is set. Remove the password to turn it off.",
+      "lock_pw_forced_toast": "Remove the password first to turn the lock screen off.",
       "left": "Left",
       "right": "Right",
       "hb_app": "Sphaira as an application",

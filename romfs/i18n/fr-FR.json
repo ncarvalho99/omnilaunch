@@ -251,6 +251,9 @@
     "omnilaunch": {
       "order": "Boutons de la barre latérale",
       "order_desc": "Choisissez le bouton de cet emplacement ; il s'échange avec celui qui s'y trouvait.",
+      "order_show_desc": "Affiche les dix emplacements des colonnes latérales pour choisir le bouton de chacun.",
+      "lock_pw_forced": "Activé tant qu'un mot de passe existe. Supprimez-le pour désactiver.",
+      "lock_pw_forced_toast": "Supprimez d'abord le mot de passe pour désactiver l'écran de verrouillage.",
       "left": "Gauche",
       "right": "Droite",
       "hb_app": "Sphaira en tant qu'application",

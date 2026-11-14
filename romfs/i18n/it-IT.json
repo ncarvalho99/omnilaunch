@@ -251,6 +251,9 @@
     "omnilaunch": {
       "order": "Pulsanti della barra laterale",
       "order_desc": "Scegli il pulsante per questa posizione; si scambia con quello che c'era.",
+      "order_show_desc": "Mostra le dieci posizioni delle colonne laterali per scegliere quale pulsante va in ciascuna.",
+      "lock_pw_forced": "Attiva finché c'è una password. Rimuovi la password per disattivarla.",
+      "lock_pw_forced_toast": "Rimuovi prima la password per disattivare la schermata di blocco.",
       "left": "Sinistra",
       "right": "Destra",
       "hb_app": "Sphaira come applicazione",

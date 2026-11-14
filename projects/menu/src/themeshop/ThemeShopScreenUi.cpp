@@ -1125,6 +1125,11 @@ void ThemeShopScreen::activateDetailButton(int buttonIndex) {
 }
 
 void ThemeShopScreen::updateCustomContent(float dt) {
+    if (m_omniTabRebuildPending) {
+        // Requested by an OmniLaunch row; done here, outside its callback.
+        m_omniTabRebuildPending = false;
+        rebuildCurrentTab();
+    }
     if (!usesCustomContentLayout())
         return;
 

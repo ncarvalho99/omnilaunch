@@ -463,6 +463,8 @@ private:
     VoidCb m_rebuildControlCacheCb;
     VoidCb m_switchToCardsCb;
     SharedPrefs m_sharedPrefs;
+    bool m_sidebarOrderExpanded = false;   // OmniLaunch tab: slot rows shown
+    bool m_omniTabRebuildPending = false;  // rebuild the tab next frame (not inside a row callback)
     BoolCb m_askUserCb, m_lockScreenCb, m_lockMusicCb, m_mtpCb, m_repeatCb;
     VoidCb m_lockNowCb, m_lockPasswordSetCb, m_lockPasswordRemoveCb;
     std::function<void()> m_releaseNotesCb;

@@ -251,6 +251,9 @@
     "omnilaunch": {
       "order": "Botões da barra lateral",
       "order_desc": "Escolha o botão para esta posição; ele troca com o botão que estava nela.",
+      "order_show_desc": "Mostra as dez posições das colunas laterais para escolher qual botão fica em cada uma.",
+      "lock_pw_forced": "Ligada enquanto houver senha. Remova a senha para desligar.",
+      "lock_pw_forced_toast": "Remova a senha antes de desligar a tela de bloqueio.",
       "left": "Esquerda",
       "right": "Direita",
       "hb_app": "Sphaira como aplicativo",

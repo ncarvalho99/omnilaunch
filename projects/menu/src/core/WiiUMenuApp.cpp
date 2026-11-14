@@ -6157,6 +6157,24 @@ std::shared_ptr<GlossyIcon> WiiUMenuApp::makeIcon(const AppEntry& entry) {
                     DebugLog::log("[launcher] default profile enabled but uid is invalid");
                 }
 
+                // Ask who's playing is off: start as the HOME user (last opened
+                // account, else the first one) instead of falling back to the picker.
+                if (!m_config.cardsAskUser) {
+                    AccountUid homeUid = {};
+                    if (R_FAILED(accountGetLastOpenedUser(&homeUid)) || !accountUidIsValid(&homeUid)) {
+                        AccountUid uids[8] = {};
+                        s32 count = 0;
+                        if (R_SUCCEEDED(accountListAllUsers(uids, 8, &count)) && count > 0)
+                            homeUid = uids[0];
+                    }
+                    if (accountUidIsValid(&homeUid)) {
+                        DebugLog::log("[launcher] skipping user select: ask user off, HOME user uid[0]=0x%016lX",
+                                      homeUid.uid[0]);
+                        startLaunch(homeUid);
+                        return;
+                    }
+                }
+
                 AccountUid silentUid = {};
                 const bool networkRequired = entry->startupUserAccount == 2;
                 Result silentRc = askUser ? MAKERESULT(Module_Libnx, LibnxError_NotFound)

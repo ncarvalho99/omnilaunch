@@ -251,6 +251,9 @@
     "omnilaunch": {
       "order": "Zijbalkknoppen",
       "order_desc": "Kies de knop voor deze plek; hij ruilt met de knop die er stond.",
+      "order_show_desc": "Toont de tien plaatsen van de zijkolommen om te kiezen welke knop waar komt.",
+      "lock_pw_forced": "Aan zolang er een wachtwoord is. Verwijder het wachtwoord om uit te zetten.",
+      "lock_pw_forced_toast": "Verwijder eerst het wachtwoord om het vergrendelscherm uit te zetten.",
       "left": "Links",
       "right": "Rechts",
       "hb_app": "Sphaira als applicatie",

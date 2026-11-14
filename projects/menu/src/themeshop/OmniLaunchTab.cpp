@@ -17,9 +17,19 @@ ThemeShopScreen::Tab OmniLaunchTab::build(ThemeShopScreen& screen) {
     t.name = "OmniLaunch";
 
     {
+        // The ten slot rows take a whole screen: a switch shows or hides them.
+        // The tab is rebuilt on the next frame (ThemeShopScreen::updateCustomContent),
+        // never inside this onChange, which a rebuild would destroy while it runs.
         SettingItem it;
         it.label = i18n.tr("settings.omnilaunch.order", "Botões da barra lateral");
-        it.type = ItemType::Section;
+        it.description = i18n.tr("settings.omnilaunch.order_show_desc",
+            "Show the ten side-column positions to choose which button goes where.");
+        it.type = ItemType::Toggle;
+        it.boolVal = screen.m_sidebarOrderExpanded;
+        it.onChange = [&screen](SettingItem& self) {
+            screen.m_sidebarOrderExpanded = self.boolVal;
+            screen.m_omniTabRebuildPending = true;
+        };
         t.items.push_back(std::move(it));
     }
 
@@ -29,7 +39,7 @@ ThemeShopScreen::Tab OmniLaunchTab::build(ThemeShopScreen& screen) {
              + " " + std::to_string(left ? slot + 1 : slot - 4);
     };
 
-    if (screen.m_sidebarOrder.size() == 10 && !screen.m_sidebarNames.empty()) {
+    if (screen.m_sidebarOrderExpanded && screen.m_sidebarOrder.size() == 10 && !screen.m_sidebarNames.empty()) {
         for (int slot = 0; slot < 10; ++slot) {
             SettingItem it;
             it.label = slotLabel(slot);
@@ -219,9 +229,25 @@ ThemeShopScreen::Tab OmniLaunchTab::build(ThemeShopScreen& screen) {
         it.type = ItemType::Section;
         t.items.push_back(std::move(it));
     }
-    toggleRow(i18n.tr("settings.omnilaunch.lock", "Lock screen"),
-              i18n.tr("cards.set_lock_desc", "After sleep. A password always locks."),
-              sp.lockScreen, &screen.m_lockScreenCb, &sp.lockScreen);
+    if (sp.passwordActive) {
+        // A password always locks, so the switch stays on and says why.
+        SettingItem it;
+        it.label = i18n.tr("settings.omnilaunch.lock", "Lock screen");
+        it.description = i18n.tr("settings.omnilaunch.lock_pw_forced",
+            "On while a password is set. Remove the password to turn it off.");
+        it.type = ItemType::Toggle;
+        it.boolVal = true;
+        it.onChange = [&screen](SettingItem& self) {
+            self.boolVal = true;
+            screen.requestToast(nxui::I18n::instance().tr("settings.omnilaunch.lock_pw_forced_toast",
+                "Remove the password first to turn the lock screen off."));
+        };
+        t.items.push_back(std::move(it));
+    } else {
+        toggleRow(i18n.tr("settings.omnilaunch.lock", "Lock screen"),
+                  i18n.tr("cards.set_lock_desc", "After sleep. A password always locks."),
+                  sp.lockScreen, &screen.m_lockScreenCb, &sp.lockScreen);
+    }
     toggleRow(i18n.tr("cards.set_lock_music", "Music on the lock screen"), std::string(),
               sp.lockMusic, &screen.m_lockMusicCb, &sp.lockMusic);
     actionRow(i18n.tr("cards.lock_now", "Lock now"), std::string(), &screen.m_lockNowCb);

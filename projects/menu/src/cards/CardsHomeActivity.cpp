@@ -1714,6 +1714,21 @@ void CardsHomeActivity::launchTitle(const CardEntry& card) {
             return;
         }
     }
+    // Ask who's playing is off: start as the HOME user (the avatar in the
+    // top bar: last opened account, else the first), as HomeNX does.
+    if (!m_core.config().cardsAskUser) {
+        AccountUid homeUid{};
+        if (R_FAILED(accountGetLastOpenedUser(&homeUid)) || !accountUidIsValid(&homeUid)) {
+            AccountUid uids[8]{};
+            s32 count = 0;
+            if (R_SUCCEEDED(accountListAllUsers(uids, 8, &count)) && count > 0)
+                homeUid = uids[0];
+        }
+        if (accountUidIsValid(&homeUid)) {
+            startLaunch(titleId, homeUid);
+            return;
+        }
+    }
     AccountUid silentUid{};
     const bool networkRequired = entry.startupUserAccount == 2;
     if (R_SUCCEEDED(accountTrySelectUserWithoutInteraction(&silentUid, networkRequired)) &&

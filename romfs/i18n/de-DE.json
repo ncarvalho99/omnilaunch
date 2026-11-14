@@ -251,6 +251,9 @@
     "omnilaunch": {
       "order": "Seitenleisten-Tasten",
       "order_desc": "Wähle die Taste für diesen Platz; sie tauscht mit der Taste, die dort war.",
+      "order_show_desc": "Zeigt die zehn Plätze der Seitenspalten, um jedem eine Taste zuzuweisen.",
+      "lock_pw_forced": "An, solange ein Passwort gesetzt ist. Passwort entfernen zum Ausschalten.",
+      "lock_pw_forced_toast": "Entferne zuerst das Passwort, um den Sperrbildschirm auszuschalten.",
       "left": "Links",
       "right": "Rechts",
       "hb_app": "Sphaira als Anwendung",
