@@ -5,6 +5,8 @@
 #include "settings/SettingsGlassTuning.hpp"
 #include "themeshop/ThemeHttp.hpp"
 #include "widgets/GlossyIcon.hpp"
+#include "widgets/LockPassword.hpp"
+#include "usb/Mtp.hpp"
 #include "DebugLog.hpp"
 
 #include <switchu/fs_remove.hpp>
@@ -1440,6 +1442,7 @@ void WiiUMenuApp::createThemeShop() {
     m_themeShop->setGridLayoutState(m_config.gridColumns, m_config.gridRows);
     m_themeShop->setIconScaleState(m_config.iconScalePercent);
     m_themeShop->setSidebarScaleState(m_config.sidebarScalePercent);
+    m_themeShop->setSharedPrefsState(sharedPrefsState());
     m_themeShop->setDynamicPagesState(m_config.dynamicPages);
     m_themeShop->setViewSwitchButtonState(m_config.viewSwitchButton);
     m_themeShop->setAppearanceState(m_config.glassSharpness,
@@ -1746,6 +1749,56 @@ void WiiUMenuApp::createThemeShop() {
         }
         m_refreshQueued = true;
         m_deferredRefreshFrames = std::max(m_deferredRefreshFrames, 3);
+    });
+    // Settings shared with Cards (same Config fields; saved when the shop closes,
+    // MTP and the password right away).
+    m_themeShop->onAskUserChange([this](bool v) { m_config.cardsAskUser = v; });
+    m_themeShop->onLockScreenChange([this](bool v) { m_config.cards.lockScreen = v; });
+    m_themeShop->onLockMusicChange([this](bool v) { m_config.cards.lockMusic = v; });
+    m_themeShop->onRepeatChange([this](bool v) {
+        m_config.bgmRepeat = v;
+        m_audio.setRepeat(v);
+    });
+    m_themeShop->onMtpChange([this](bool v) {
+        m_config.mtpEnabled = v;
+#ifdef SWITCHU_MENU
+        if (v) switchu::usb::mtpStart();
+        else switchu::usb::mtpStop();
+#endif
+        DebugLog::log("[themeshop] mtp -> %d", v ? 1 : 0);
+    });
+    m_themeShop->onLockNow([this]() {
+        if (m_themeShop) m_themeShop->hide();
+        ensureClockFont();
+        m_lockScreen.lockNow();
+    });
+    m_themeShop->onLockPasswordSet([this]() {
+        if (m_themeShop) m_themeShop->hide();
+        ensureClockFont();
+        m_lockScreen.beginPasswordSetup([this](const std::string& presses) {
+#ifdef SWITCHU_MENU
+            const bool ok = lockpw::save(lockpw::sha256Hex, presses);
+            switchu::commitSdCard("lock password");
+            lockpw::attach(m_lockScreen);
+            DebugLog::log("[themeshop] lock password saved=%d", ok ? 1 : 0);
+#else
+            (void)presses;
+#endif
+        });
+    });
+    m_themeShop->onLockPasswordRemove([this]() {
+#ifdef SWITCHU_MENU
+        lockpw::save(lockpw::sha256Hex, "");
+        switchu::commitSdCard("lock password removed");
+        lockpw::attach(m_lockScreen);
+#endif
+        // No tab rebuild here: this runs inside the row's own onChange, and a
+        // rebuild would destroy that std::function while it runs. The rows
+        // show the new state the next time the tab is built.
+        if (m_themeShop) {
+            m_themeShop->setSharedPrefsState(sharedPrefsState());
+            m_themeShop->requestToast(nxui::I18n::instance().tr("cards.lock_password_removed", "Password removed"));
+        }
     });
     m_themeShop->onSwitchToCardsRequest([this]() {
         m_frontendSwitchQueued = true;
@@ -2495,6 +2548,17 @@ std::vector<ThemeShopScreen::ThemeShopEntry> WiiUMenuApp::buildThemeShopEntries(
     return entries;
 }
 
+ThemeShopScreen::SharedPrefs WiiUMenuApp::sharedPrefsState() const {
+    ThemeShopScreen::SharedPrefs p;
+    p.askUser = m_config.cardsAskUser;
+    p.lockScreen = m_config.cards.lockScreen;
+    p.lockMusic = m_config.cards.lockMusic;
+    p.mtp = m_config.mtpEnabled;
+    p.repeat = m_config.bgmRepeat;
+    p.passwordActive = m_lockScreen.passwordActive();
+    return p;
+}
+
 void WiiUMenuApp::refreshThemeShopState(bool rescanPresets) {
     if (!m_themeShop) return;
 
@@ -2507,6 +2571,7 @@ void WiiUMenuApp::refreshThemeShopState(bool rescanPresets) {
 
     m_themeShop->setTheme(&m_theme);
     m_themeShop->setMusicState(m_audio.isPlaying(), m_audio.volume(), m_audio.sfxVolume(), m_config.themeMusicEnabled);
+    m_themeShop->setSharedPrefsState(sharedPrefsState());
     m_themeShop->setThemeShopState(buildThemeShopEntries(), activeId);
     m_themeShop->refreshState();
 }

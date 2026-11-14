@@ -6136,7 +6136,17 @@ std::shared_ptr<GlossyIcon> WiiUMenuApp::makeIcon(const AppEntry& entry) {
                     return;
                 }
 
-                if (m_config.defaultProfileEnabled) {
+                // "Ask who's playing" (shared with Cards): with more than one
+                // user, go straight to the picker, as Cards does.
+                bool askUser = false;
+                if (m_config.cardsAskUser && m_userSelect) {
+                    s32 userCount = 0;
+                    AccountUid uids[8] = {};
+                    askUser = R_SUCCEEDED(accountListAllUsers(uids, 8, &userCount)) && userCount > 1;
+                    DebugLog::log("[launcher] ask user enabled users=%d", static_cast<int>(userCount));
+                }
+
+                if (!askUser && m_config.defaultProfileEnabled) {
                     AccountUid defaultUid = {};
                     if (hexToAccountUid(m_config.defaultProfileUid, defaultUid)) {
                         DebugLog::log("[launcher] skipping user select: default profile configured uid[0]=0x%016lX uid[1]=0x%016lX",
@@ -6149,7 +6159,8 @@ std::shared_ptr<GlossyIcon> WiiUMenuApp::makeIcon(const AppEntry& entry) {
 
                 AccountUid silentUid = {};
                 const bool networkRequired = entry->startupUserAccount == 2;
-                Result silentRc = accountTrySelectUserWithoutInteraction(&silentUid, networkRequired);
+                Result silentRc = askUser ? MAKERESULT(Module_Libnx, LibnxError_NotFound)
+                                          : accountTrySelectUserWithoutInteraction(&silentUid, networkRequired);
                 DebugLog::log("[launcher] TrySelectUserWithoutInteraction network_required=%d rc=0x%X uid_valid=%d uid[0]=0x%016lX uid[1]=0x%016lX",
                               networkRequired ? 1 : 0,
                               silentRc,
@@ -6162,7 +6173,7 @@ std::shared_ptr<GlossyIcon> WiiUMenuApp::makeIcon(const AppEntry& entry) {
                     return;
                 }
 
-                if (!entry->userRequired) {
+                if (!askUser && !entry->userRequired) {
                     AccountUid emptyUid = {};
                     DebugLog::log("[launcher] skipping user select fallback: startup_user=%u option=%u did not require interactive picker",
                                   (unsigned)entry->startupUserAccount,
@@ -7610,7 +7621,10 @@ void WiiUMenuApp::setupLockScreen() {
 #else
         closeActiveOverlays();
 #endif
-        m_audio.stopAll();
+        // Music on the lock screen (shared with Cards): keep HOME music playing.
+        m_lockMusicPlaying = m_config.cards.lockMusic && m_audio.isPlaying();
+        if (!m_lockMusicPlaying)
+            m_audio.stopAll();
         m_accessibility.announce(i18n.tr("lock_screen.locked",
                                          "Screen locked. Press the same button three times to unlock."),
                                  true, true);
@@ -7620,8 +7634,9 @@ void WiiUMenuApp::setupLockScreen() {
         // Covers the 0.26 s release fade plus a short window after it.
         m_unlockInputGuard = 0.75f;
         m_switchWaitRelease = true;
-        if (m_config.musicEnabled && m_audioStarted)
+        if (m_config.musicEnabled && m_audioStarted && !m_lockMusicPlaying)
             m_audio.play();
+        m_lockMusicPlaying = false;
         m_audio.playSfx(Sfx::ModalHide);
         m_accessibility.announce(i18n.tr("lock_screen.unlocked", "Unlocked."), true, true);
     });
@@ -8352,16 +8367,23 @@ void WiiUMenuApp::onUpdate(float dt) {
                 // Lock on the way under, so the console is already in the state
                 // the owner will come back to. Best effort: Horizon may suspend
                 // the applet before this runs, which is why WakeUp locks too.
-                ensureClockFont();
-                m_lockScreen.lockNow();
+                // ThemeShop > OmniLaunch > Lock screen (shared with Cards) can
+                // turn this off; a password always locks.
+                if (m_config.cards.lockScreen || m_lockScreen.passwordActive()) {
+                    ensureClockFont();
+                    m_lockScreen.lockNow();
+                }
                 break;
             case switchu::smi::MenuMessage::WakeUp:
-                // The lock screen exists for this moment. Waking is the one
-                // thing that raises it, and it is not optional, the same way
-                // the stock home menu does not offer to skip it.
-                ensureClockFont();
-                m_lockScreen.lockNow();
-                m_lockScreen.showAfterSystemWake();
+                // Waking raises the lock screen unless the owner turned it off
+                // (shared setting, as in Cards); a password always locks.
+                if (m_config.cards.lockScreen || m_lockScreen.passwordActive()) {
+                    ensureClockFont();
+                    m_lockScreen.lockNow();
+                }
+                // A lock taken by hand still shows itself on wake.
+                if (m_lockScreen.isLocked())
+                    m_lockScreen.showAfterSystemWake();
                 // Rendering is restored either way: the black frame belongs to
                 // the lock screen, but a stopped presentation loop would strand
                 // any menu, locked or not.

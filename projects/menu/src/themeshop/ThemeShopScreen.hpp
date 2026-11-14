@@ -165,6 +165,25 @@ public:
     void setSidebarScaleState(int percent) { m_sidebarScalePercent = std::clamp(percent, 80, 130); }
     void onRebuildControlCache(VoidCb cb) { m_rebuildControlCacheCb = std::move(cb); }
     void onSwitchToCardsRequest(VoidCb cb) { m_switchToCardsCb = std::move(cb); }
+    // Settings shared with Cards, shown in the OmniLaunch tab (Config-backed;
+    // the app applies them and the config is saved when the shop closes).
+    struct SharedPrefs {
+        bool askUser = false;
+        bool lockScreen = true;
+        bool lockMusic = false;
+        bool mtp = true;
+        bool repeat = false;
+        bool passwordActive = false;
+    };
+    void setSharedPrefsState(const SharedPrefs& p) { m_sharedPrefs = p; }
+    void onAskUserChange(BoolCb cb)    { m_askUserCb = std::move(cb); }
+    void onLockScreenChange(BoolCb cb) { m_lockScreenCb = std::move(cb); }
+    void onLockMusicChange(BoolCb cb)  { m_lockMusicCb = std::move(cb); }
+    void onMtpChange(BoolCb cb)        { m_mtpCb = std::move(cb); }
+    void onRepeatChange(BoolCb cb)     { m_repeatCb = std::move(cb); }
+    void onLockNow(VoidCb cb)          { m_lockNowCb = std::move(cb); }
+    void onLockPasswordSet(VoidCb cb)  { m_lockPasswordSetCb = std::move(cb); }
+    void onLockPasswordRemove(VoidCb cb) { m_lockPasswordRemoveCb = std::move(cb); }
 
     void setMusicState(bool enabled, float musicVol, float sfxVol, bool themeMusicEnabled = true) {
         m_musicEnabled = enabled;
@@ -443,6 +462,9 @@ private:
     int m_sidebarScalePercent = 100;
     VoidCb m_rebuildControlCacheCb;
     VoidCb m_switchToCardsCb;
+    SharedPrefs m_sharedPrefs;
+    BoolCb m_askUserCb, m_lockScreenCb, m_lockMusicCb, m_mtpCb, m_repeatCb;
+    VoidCb m_lockNowCb, m_lockPasswordSetCb, m_lockPasswordRemoveCb;
     std::function<void()> m_releaseNotesCb;
     std::string m_updateLatestVersion;
     std::string m_updateLatestNotes;

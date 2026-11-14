@@ -170,42 +170,38 @@ ThemeShopScreen::Tab OmniLaunchTab::build(ThemeShopScreen& screen) {
         };
         t.items.push_back(std::move(it));
     }
-    {
-        static constexpr const char* kAskFlag = "sdmc:/config/OmniLaunch/ask_user";
-        std::error_code ec;
+    // Shared with Cards: the same Config fields Cards uses (they used to be
+    // flag files here that nothing read).
+    auto toggleRow = [&t](std::string label, std::string desc, bool value, ThemeShopScreen::BoolCb* cb, bool* state) {
         SettingItem it;
-        it.label = i18n.tr("settings.omnilaunch.ask_user", "Perguntar quem está jogando");
-        it.description = i18n.tr("settings.omnilaunch.ask_user_desc",
-            "Iniciar um jogo exibe a seleção de usuários antes, como o HOME original da Nintendo.");
+        it.label = std::move(label);
+        it.description = std::move(desc);
         it.type = ItemType::Toggle;
-        it.boolVal = std::filesystem::exists(kAskFlag, ec);
-        it.onChange = [](SettingItem& self) {
-            std::error_code err;
-            if (self.boolVal)
-                std::ofstream(kAskFlag) << "1";
-            else
-                std::filesystem::remove(kAskFlag, err);
+        it.boolVal = value;
+        it.onChange = [cb, state](SettingItem& self) {
+            *state = self.boolVal;
+            if (*cb) (*cb)(self.boolVal);
         };
         t.items.push_back(std::move(it));
-    }
-    {
-        static constexpr const char* kLockFlag = "sdmc:/config/OmniLaunch/lock_screen";
-        std::error_code ec;
+    };
+    auto actionRow = [&t](std::string label, std::string desc, ThemeShopScreen::VoidCb* cb) {
         SettingItem it;
-        it.label = i18n.tr("settings.omnilaunch.lock", "Tela de bloqueio");
-        it.description = i18n.tr("settings.omnilaunch.lock_desc",
-            "Exibe hora e data ao ligar ou despertar o console. A abre o HOME.");
-        it.type = ItemType::Toggle;
-        it.boolVal = std::filesystem::exists(kLockFlag, ec);
-        it.onChange = [](SettingItem& self) {
-            std::error_code err;
-            if (self.boolVal)
-                std::ofstream(kLockFlag) << "1";
-            else
-                std::filesystem::remove(kLockFlag, err);
-        };
+        it.label = std::move(label);
+        it.description = std::move(desc);
+        it.type = ItemType::Action;
+        it.onChange = [cb](SettingItem&) { if (*cb) (*cb)(); };
         t.items.push_back(std::move(it));
-    }
+    };
+    auto& sp = screen.m_sharedPrefs;
+    toggleRow(i18n.tr("settings.omnilaunch.ask_user", "Ask who's playing"),
+              i18n.tr("settings.omnilaunch.ask_user_desc",
+                      "Starting a game shows the user picker first, like Nintendo's own HOME."),
+              sp.askUser, &screen.m_askUserCb, &sp.askUser);
+    toggleRow(i18n.tr("cards.set_repeat", "Repeat song"), std::string(),
+              sp.repeat, &screen.m_repeatCb, &sp.repeat);
+    toggleRow(i18n.tr("cards.set_mtp", "Connect to a computer"),
+              i18n.tr("cards.set_mtp_desc", "Plug in a USB cable: the SD card shows up as a drive (MTP)"),
+              sp.mtp, &screen.m_mtpCb, &sp.mtp);
     {
         SettingItem it;
         it.label = i18n.tr("settings.omnilaunch.look_software", "Procurar novos softwares");
@@ -217,6 +213,24 @@ ThemeShopScreen::Tab OmniLaunchTab::build(ThemeShopScreen& screen) {
         };
         t.items.push_back(std::move(it));
     }
+    {
+        SettingItem it;
+        it.label = i18n.tr("cards.set_lock", "Lock screen");
+        it.type = ItemType::Section;
+        t.items.push_back(std::move(it));
+    }
+    toggleRow(i18n.tr("settings.omnilaunch.lock", "Lock screen"),
+              i18n.tr("cards.set_lock_desc", "After sleep. A password always locks."),
+              sp.lockScreen, &screen.m_lockScreenCb, &sp.lockScreen);
+    toggleRow(i18n.tr("cards.set_lock_music", "Music on the lock screen"), std::string(),
+              sp.lockMusic, &screen.m_lockMusicCb, &sp.lockMusic);
+    actionRow(i18n.tr("cards.lock_now", "Lock now"), std::string(), &screen.m_lockNowCb);
+    actionRow(i18n.tr("cards.lock_password", "Password") + ": "
+                  + (sp.passwordActive ? i18n.tr("cards.lock_password_on", "On") : i18n.tr("cards.lock_password_off", "Off")),
+              i18n.tr("cards.lock_password_desc", "4 to 8 D-pad presses. Forgot it: HOME, then hold Minus + Plus for 3 s."),
+              &screen.m_lockPasswordSetCb);
+    if (sp.passwordActive)
+        actionRow(i18n.tr("cards.lock_password_remove", "Remove password"), std::string(), &screen.m_lockPasswordRemoveCb);
 #endif
 
     return t;

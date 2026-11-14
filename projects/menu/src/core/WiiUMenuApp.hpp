@@ -543,6 +543,8 @@ private:
     // rescanPresets=false reuses the preset list when a full scan already ran
     // (opening the shop); installs, deletes and applies keep the full rescan.
     void refreshThemeShopState(bool rescanPresets = true);
+    ThemeShopScreen::SharedPrefs sharedPrefsState() const;
+    bool m_lockMusicPlaying = false; // music kept playing across the current lock
     bool m_presetsFullyScanned = false;
     std::vector<ThemeShopScreen::ThemeShopEntry> buildThemeShopEntries();
     void startThemePackageTransfer(const ThemeCatalogClient::Entry& entry, bool installMode);
