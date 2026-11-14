@@ -1658,6 +1658,7 @@
     "menu_news": "Notizie",
     "tile_news": "Notizie",
     "panel_button": "Pulsante del pannello",
+    "panel_button_desc": "Il pulsante destro del pannello. Qualsiasi app: + sulla sua scheda > Metti sul pulsante del pannello",
     "panel_button_news": "Notizie",
     "panel_button_none": "Nessuno",
     "panel_unpin": "Rimuovi dal pulsante del pannello",

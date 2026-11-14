@@ -1675,6 +1675,7 @@
     "menu_news": "News",
     "tile_news": "News",
     "panel_button": "Panel button",
+    "panel_button_desc": "The panel's right button. Any app: + on its card > Put on panel button",
     "panel_button_news": "News",
     "panel_button_none": "None",
     "panel_unpin": "Remove from panel button",

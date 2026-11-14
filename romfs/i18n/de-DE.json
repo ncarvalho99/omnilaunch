@@ -1658,6 +1658,7 @@
     "menu_news": "Neuigkeiten",
     "tile_news": "Neuigkeiten",
     "panel_button": "Leistentaste",
+    "panel_button_desc": "Die rechte Panel-Taste. Jede App: + auf ihrer Karte > Auf die Panel-Taste legen",
     "panel_button_news": "Neuigkeiten",
     "panel_button_none": "Keine",
     "panel_unpin": "Von Leistentaste entfernen",

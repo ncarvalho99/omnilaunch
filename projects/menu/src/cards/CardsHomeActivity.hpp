@@ -219,6 +219,7 @@ private:
     // Live frontend switch (D2): queued by the style sheet, then a short fade
     // to black before home::switchFrontend.
     bool m_switchQueued = false;
+    std::uint64_t m_panelPinMemory = 0; // last pinned panel app, so the panel row can cycle back to it
     // Hold Minus: back to Classic, the same gesture Classic uses for Cards.
     static constexpr float kFrontendHoldSeconds = 0.6f;
     float m_minusHeld = 0.f;

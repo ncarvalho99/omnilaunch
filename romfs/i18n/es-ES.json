@@ -1660,6 +1660,7 @@
     "menu_news": "Noticias",
     "tile_news": "Noticias",
     "panel_button": "Botón del panel",
+    "panel_button_desc": "El botón derecho del panel. Cualquier aplicación: + en su tarjeta > Poner en el botón del panel",
     "panel_button_news": "Noticias",
     "panel_button_none": "Ninguno",
     "panel_unpin": "Quitar del botón del panel",

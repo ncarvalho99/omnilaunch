@@ -1658,6 +1658,7 @@
     "menu_news": "Nieuws",
     "tile_news": "Nieuws",
     "panel_button": "Paneelknop",
+    "panel_button_desc": "De rechterknop van het paneel. Elke app: + op de kaart > Op de paneelknop zetten",
     "panel_button_news": "Nieuws",
     "panel_button_none": "Geen",
     "panel_unpin": "Verwijderen van paneelknop",

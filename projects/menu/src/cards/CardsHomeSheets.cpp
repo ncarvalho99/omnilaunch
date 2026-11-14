@@ -1949,16 +1949,28 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
                 if (a.titleId == pin) return a.title;
             return t.tr("cards.panel_missing", "Software unavailable");
         };
-        panel.onChange = [this, reopen](int) {
+        panel.detail = i18n.tr("cards.panel_button_desc",
+                               "The panel's right button. Any app: + on its card > Put on panel button");
+        // Cycle None <-> News <-> pinned app (only when one is pinned). Right
+        // goes forward, Left back, so the two directions differ.
+        panel.onChange = [this, reopen](int dir) {
             auto& c = m_core.config().cards;
-            if (c.panelTitleId != 0) {
-                c.panelTitleId = 0;
-                c.panelButtonEnabled = true;
-            } else if (c.panelButtonEnabled) {
-                c.panelButtonEnabled = false;
-            } else {
-                c.panelButtonEnabled = true;
-            }
+            if (c.panelTitleId != 0) m_panelPinMemory = c.panelTitleId;
+            std::uint64_t pin = m_panelPinMemory;
+            bool pinExists = false;
+            for (const auto& a : m_catalog.all())
+                if (pin != 0 && a.titleId == pin) pinExists = true;
+            if (!pinExists && c.panelTitleId == 0) pin = 0; // pinned app was removed
+            std::vector<int> states{0, 1}; // 0 None, 1 News, 2 pinned
+            if (pin != 0) states.push_back(2);
+            const int cur = !c.panelButtonEnabled ? 0 : (c.panelTitleId != 0 ? 2 : 1);
+            int idx = 0;
+            for (std::size_t i = 0; i < states.size(); ++i)
+                if (states[i] == cur) idx = static_cast<int>(i);
+            const int n = static_cast<int>(states.size());
+            const int next = states[static_cast<std::size_t>(((idx + (dir < 0 ? -1 : 1)) % n + n) % n)];
+            c.panelButtonEnabled = next != 0;
+            c.panelTitleId = next == 2 ? pin : 0;
             saveConfig("cards panel button");
             reopen();
         };
@@ -1978,6 +1990,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         nextendo.value = [this]() {
             return onOff(m_core.config().cards.showNextendo);
         };
+        nextendo.toggle = [this]() { return m_core.config().cards.showNextendo; };
         nextendo.onChange = [this, reopen](int) {
             auto& c = m_core.config().cards;
             c.showNextendo = !c.showNextendo;
@@ -2643,6 +2656,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         Row r;
         r.label = "Bluetooth";
         r.value = []() { return bluetooth::IsAvailable() ? onOff(bluetooth::IsRadioEnabled()) : std::string("..."); };
+        r.toggle = []() { return bluetooth::IsAvailable() && bluetooth::IsRadioEnabled(); };
         r.onChange = [this](int) {
             m_core.startBluetooth();
             const Result rc = bluetooth::SetRadioEnabled(!bluetooth::IsRadioEnabled());
@@ -2702,6 +2716,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         titlePics.value = [this]() {
             return onOff(m_core.config().cards.titlePics);
         };
+        titlePics.toggle = [this]() { return m_core.config().cards.titlePics; };
         titlePics.onChange = [this](int) {
             auto& c = m_core.config().cards;
             c.titlePics = !c.titlePics;

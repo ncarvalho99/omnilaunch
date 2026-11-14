@@ -1675,6 +1675,7 @@
     "menu_news": "Notícias",
     "tile_news": "Notícias",
     "panel_button": "Botão do painel",
+    "panel_button_desc": "O botão direito do painel. Qualquer app: + no cartão > Colocar no botão do painel",
     "panel_button_news": "Notícias",
     "panel_button_none": "Nenhum",
     "panel_unpin": "Remover do botão do painel",

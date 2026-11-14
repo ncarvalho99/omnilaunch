@@ -1658,6 +1658,7 @@
     "menu_news": "Nouvelles",
     "tile_news": "Nouvelles",
     "panel_button": "Bouton du panneau",
+    "panel_button_desc": "Le bouton droit du panneau. N'importe quelle application : + sur sa carte > Mettre sur le bouton du panneau",
     "panel_button_news": "Nouvelles",
     "panel_button_none": "Aucun",
     "panel_unpin": "Retirer du bouton du panneau",
