@@ -3395,6 +3395,7 @@ void WiiUMenuApp::openFriends(AccountUid forUser) {
     if (!m_social) {
         m_social = std::make_shared<SocialScreen>();
         m_social->setFonts(&m_fontNormal, &m_fontSmall);
+        m_social->setIconFont(&m_fontIcons);
         m_social->setGpu(&app().gpu(), &app().renderer());
         m_social->setTheme(&m_theme);
         m_social->setIconDir(std::string(SD_ASSETS) + "/icons");

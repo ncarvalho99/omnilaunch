@@ -62,6 +62,7 @@ bool AppConfig::load() {
     readJsonOpt(j, "themeMusicEnabled", themeMusicEnabled);
     readJsonOpt(j, "customBgmEnabled", customBgmEnabled);
     readJsonOpt(j, "customBgmShuffle", customBgmShuffle);
+    readJsonOpt(j, "bgmRepeat", bgmRepeat);
     readJsonOpt(j, "audioSourcePreference", audioSourcePreference);
     readJsonOpt(j, "musicVolume", musicVolume);
     readJsonOpt(j, "sfxVolume", sfxVolume);
@@ -364,6 +365,7 @@ bool AppConfig::save() const {
     j["themeMusicEnabled"] = themeMusicEnabled;
     j["customBgmEnabled"] = (m_safe && !m_touchedBgm) ? m_savedCustomBgm : customBgmEnabled;
     j["customBgmShuffle"] = customBgmShuffle;
+    j["bgmRepeat"] = bgmRepeat;
     j["audioSourcePreference"] = audioSourcePreference;
     j["musicVolume"] = musicVolume;
     j["sfxVolume"] = sfxVolume;

@@ -81,6 +81,7 @@ void CardsMusicSheet::controlAction(int col, AudioManager& audio, AppConfig& con
         break;
     case 4:
         audio.setRepeat(!audio.isRepeat());
+        config.bgmRepeat = audio.isRepeat(); // saved with the config, like shuffle
         break;
     default:
         break;

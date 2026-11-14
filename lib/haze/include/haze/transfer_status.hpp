@@ -34,6 +34,12 @@ namespace haze {
     /* writes are pieces of a file and are not counted. */
     void TransferEnd(bool counted);
 
+    /* OmniLaunch addition: called on the server thread each time the USB device */
+    /* state changes while waiting to be configured (diagnostics only). */
+    using UsbStateHook = void (*)(u32 state);
+    void SetUsbStateHook(UsbStateHook hook);
+    void ReportUsbState(u32 state);
+
     /* Copies the current name; false if it changed mid-copy (try next frame). */
     bool TransferName(char *out, size_t size);
 

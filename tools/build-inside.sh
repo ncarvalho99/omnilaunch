@@ -107,9 +107,6 @@ if [ "$VARIANT" = sysmodule ]; then
     # BrowseNX is not shipped: the Cards Browser tile downloads it from the
     # author's release on first use. Never leave a stale copy in the package.
     rm -rf "$DIST/switch/OmniLaunch/apps"
-    # Ultrahand package: the in-game Discord on/off switch inside Ultrahand.
-    mkdir -p "$DIST/switch/.packages/OmniLaunch"
-    cp -r projects/notifier/ultrahand/. "$DIST/switch/.packages/OmniLaunch/"
     mkdir -p artifacts
     ZIP="$PWD/artifacts/OmniLaunch-1.3.0.zip"
     rm -f "$ZIP" "$PWD/artifacts/OmniLaunch-sysmodule-$MODE.zip"

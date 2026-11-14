@@ -1,5 +1,6 @@
 #include "widgets/SocialScreen.hpp"
 #include "core/BackgroundThread.hpp"
+#include "core/ButtonGlyph.hpp"
 #include "core/DebugLog.hpp"
 #include "launcher/AppListLoader.hpp"
 #include "themeshop/ThemeHttp.hpp"
@@ -75,6 +76,17 @@ std::vector<std::string> wrap(nxui::Font* font, const std::string& text, float m
 
 bool inside(const nxui::Rect& r, float x, float y) {
     return x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height;
+}
+
+using Hints = std::vector<ui::glyph::ActionHint>;
+
+std::string glyphOf(nxui::Button b) { return ui::glyph::button(b); }
+std::string glyphLR() { return ui::glyph::button(nxui::Button::L) + ui::glyph::button(nxui::Button::R); }
+std::string glyphDpad() { return ui::glyph::dpad(); }
+
+// Hint labels live in the shared "hint" table, next to Open/Close/Back.
+std::string hl(const char* key, const char* fallback) {
+    return nxui::I18n::instance().tr(std::string("hint.") + key, fallback);
 }
 
 }  // namespace
@@ -1122,8 +1134,9 @@ void SocialScreen::drawMiiEditor(nxui::Renderer& ren, const nxui::Rect& r, float
         ren.drawRoundedRectOutline(box, accent.withAlpha(0.9f * a), 20.f, 2.f);
         const std::string q = i18n.tr("mii.save_question", "Save the changes to this Mii?");
         ren.drawText(fit(m_font, q, box.width - 40.f, 0.86f), {box.x + 20.f, box.y + 26.f}, m_font, text, 0.86f);
-        const std::string keys = i18n.tr("mii.save_keys", "A  Save     X  Don't save     B  Keep editing");
-        ren.drawText(fit(m_smallFont, keys, box.width - 40.f, 0.8f), {box.x + 20.f, box.y + 92.f}, m_smallFont, muted, 0.8f);
+        drawHintRow(ren, Hints{{glyphOf(nxui::Button::A), hl("save", "Save")}, {glyphOf(nxui::Button::X), hl("dont_save", "Don't save")},
+                               {glyphOf(nxui::Button::B), hl("keep_editing", "Keep editing")}},
+                    box.x + 20.f, box.y + 124.f, a, false);
     }
 }
 
@@ -1672,11 +1685,13 @@ void SocialScreen::drawRequests(nxui::Renderer& ren, const nxui::Rect& r, float 
     ren.drawText(fit(m_font, name, r.x + r.width - 30.f - tx, 1.1f), {tx, av.y + 26.f}, m_font, text, 1.1f);
     ren.drawText(i18n.tr("social.wants_friend", "Wants to be your friend"), {tx, av.y + 72.f}, m_smallFont, muted, 0.8f);
     float y = av.y + av.height + 36.f;
-    const std::string hint = m_answering != 0 ? i18n.tr("social.answering", "Sending your answer...")
-                                              : i18n.tr("social.accept_hint", "A  Accept      X  Decline");
-    for (const auto& l : wrap(m_font, hint, w, 0.86f)) {
-        ren.drawText(l, {x, y}, m_font, m_theme->cursorNormal.withAlpha(a), 0.86f);
-        y += 32.f;
+    if (m_answering != 0) {
+        for (const auto& l : wrap(m_font, i18n.tr("social.answering", "Sending your answer..."), w, 0.86f)) {
+            ren.drawText(l, {x, y}, m_font, m_theme->cursorNormal.withAlpha(a), 0.86f);
+            y += 32.f;
+        }
+    } else {
+        drawHintRow(ren, Hints{{glyphOf(nxui::Button::A), hl("accept", "Accept")}, {glyphOf(nxui::Button::X), hl("decline", "Decline")}}, x, y + 26.f, a, false);
     }
 }
 
@@ -1706,8 +1721,8 @@ void SocialScreen::drawAddFriend(nxui::Renderer& ren, const nxui::Rect& r, float
                 y += 32.f;
             }
             if (m_add == Add::Found)
-                ren.drawText(i18n.tr("social.send_hint", "A  Send request      B  Cancel"), {x, y + 14.f}, m_font,
-                             m_theme->cursorNormal.withAlpha(a), 0.86f);
+                drawHintRow(ren, Hints{{glyphOf(nxui::Button::A), hl("send_request", "Send request")}, {glyphOf(nxui::Button::B), hl("cancel", "Cancel")}},
+                            x, y + 40.f, a, false);
             return;
         }
         case Add::Sent:
@@ -1791,7 +1806,6 @@ void SocialScreen::drawMiis(nxui::Renderer& ren, const nxui::Rect& r, float a) {
 void SocialScreen::drawDetail(nxui::Renderer& ren, const nxui::Rect& r, float a) {
     auto& i18n = nxui::I18n::instance();
     const nxui::Color text = m_theme->textPrimary.withAlpha(a);
-    const nxui::Color accent = m_theme->cursorNormal.withAlpha(a);
     ren.drawRoundedRect(r, m_theme->textPrimary.withAlpha(0.045f * a), 24.f);
     if (m_add != Add::Idle) {
         drawAddFriend(ren, r, a);
@@ -1813,7 +1827,7 @@ void SocialScreen::drawDetail(nxui::Renderer& ren, const nxui::Rect& r, float a)
 
     // A quick button: its picture, name and what it does.
     const float x = r.x + 30.f, w = r.width - 60.f;
-    std::string title, body, hint = i18n.tr("social.press_a", "Press A to open");
+    std::string title, body, hint = hl("open", "Open");
     switch (m_tile) {
         case 0:
             title = i18n.tr("social.miis", "Miis");
@@ -1843,7 +1857,7 @@ void SocialScreen::drawDetail(nxui::Renderer& ren, const nxui::Rect& r, float a)
                                "Your Discord messages and who's online, in a panel on the left. Sign in once with "
                                "the Discord app on your phone.");
             }
-            hint = i18n.tr("social.discord_open", "Press A to open Discord");
+            hint = hl("open_discord", "Open Discord");
             break;
         }
     }
@@ -1855,7 +1869,21 @@ void SocialScreen::drawDetail(nxui::Renderer& ren, const nxui::Rect& r, float a)
         ren.drawText(l, {x, y}, m_font, text, 0.82f);
         y += 30.f;
     }
-    ren.drawText(hint, {x, y + 14.f}, m_smallFont, accent, 0.86f);
+    drawHintRow(ren, Hints{{glyphOf(nxui::Button::A), hint}}, x, y + 40.f, a, false);
+}
+
+// OmniLaunch hint capsules (button glyph + label), as in every other panel.
+// Starts at x, or ends at x when rightAligned. Returns the row width.
+float SocialScreen::drawHintRow(nxui::Renderer& ren, const std::vector<ui::glyph::ActionHint>& hints, float x,
+                                float bottomY, float a, bool rightAligned) {
+    if (hints.empty() || !m_smallFont) return 0.f;
+    nxui::Font& icons = m_iconFont && m_iconFont->valid() ? *m_iconFont : *m_smallFont;
+    constexpr float kGap = 10.f;
+    float total = 0.f;
+    for (const auto& h : hints) total += ui::glyph::capsuleWidth(icons, *m_smallFont, h.icon, h.label) + kGap;
+    total -= kGap;
+    ui::glyph::drawHintBar(ren, icons, *m_smallFont, hints, rightAligned ? x : x + total, bottomY, a);
+    return total;
 }
 
 void SocialScreen::onRender(nxui::Renderer& ren) {
@@ -2066,40 +2094,48 @@ void SocialScreen::onRender(nxui::Renderer& ren) {
     drawDetail(ren, detailRect(), a);
 
     // What the buttons do right now, and the last thing that happened.
-    std::string hints;
+    Hints hints;
     if (m_editing) {
         if (m_editAsk)
-            hints = i18n.tr("mii.save_keys", "A  Save     X  Don't save     B  Keep editing");
+            hints = {{glyphOf(nxui::Button::A), hl("save", "Save")}, {glyphOf(nxui::Button::X), hl("dont_save", "Don't save")}, {glyphOf(nxui::Button::B), hl("keep_editing", "Keep editing")}};
         else if (!m_editInPage)
-            hints = i18n.tr("mii.hint_pages", "Up/Down  Part     A  Open     X  Surprise part     B  Done");
+            hints = {{glyphDpad(), hl("part", "Part")}, {glyphOf(nxui::Button::A), hl("open", "Open")},
+                     {glyphOf(nxui::Button::X), hl("surprise_part", "Surprise part")}, {glyphOf(nxui::Button::B), hl("done", "Done")}};
         else if (kMiiTabs[m_editTab].grid)
-            hints = i18n.tr("mii.hint_grid", "D-pad  Choose     L/R  Tab     Y  Surprise     B  Back");
+            hints = {{glyphDpad(), hl("choose", "Choose")}, {glyphLR(), hl("tab", "Tab")},
+                     {glyphOf(nxui::Button::Y), hl("surprise", "Surprise")}, {glyphOf(nxui::Button::B), hl("back", "Back")}};
         else
-            hints = i18n.tr("mii.hint_adjust", "Up/Down  Choose     Left/Right  Change     L/R  Tab     B  Back");
+            hints = {{glyphDpad(), hl("change", "Change")}, {glyphLR(), hl("tab", "Tab")}, {glyphOf(nxui::Button::B), hl("back", "Back")}};
     } else if (m_add == Add::Found) {
-        hints = i18n.tr("social.hint_send", "A  Send     B  Cancel");
+        hints = {{glyphOf(nxui::Button::A), hl("send", "Send")}, {glyphOf(nxui::Button::B), hl("cancel", "Cancel")}};
     } else if (m_add == Add::Sent || m_add == Add::Failed) {
-        hints = i18n.tr("social.hint_ok", "A  OK");
+        hints = {{glyphOf(nxui::Button::A), hl("ok", "OK")}};
     } else if (m_add != Add::Idle) {
         hints.clear();
     } else if (m_mode == Mode::Miis) {
-        hints = m_sel == 0 ? (m_haveCandidate ? i18n.tr("mii.hint_new", "A  Keep     Y  Another     X  Boy / Girl     B  Back")
-                                              : i18n.tr("mii.hint_make", "A  Make one     B  Back"))
-                           : i18n.tr("mii.hint_mii2", "A  Rename     X  Delete     Y  Change looks     B  Back");
+        if (m_sel == 0)
+            hints = m_haveCandidate
+                ? Hints{{glyphOf(nxui::Button::A), hl("keep", "Keep")}, {glyphOf(nxui::Button::Y), hl("another", "Another")},
+                        {glyphOf(nxui::Button::X), hl("boy_girl", "Boy / Girl")}, {glyphOf(nxui::Button::B), hl("back", "Back")}}
+                : Hints{{glyphOf(nxui::Button::A), hl("make_one", "Make one")}, {glyphOf(nxui::Button::B), hl("back", "Back")}};
+        else
+            hints = {{glyphOf(nxui::Button::A), hl("rename", "Rename")}, {glyphOf(nxui::Button::X), hl("delete", "Delete")},
+                     {glyphOf(nxui::Button::Y), hl("change_looks", "Change looks")}, {glyphOf(nxui::Button::B), hl("back", "Back")}};
     } else if (m_mode == Mode::Requests) {
-        hints = m_requests.empty() ? i18n.tr("social.hint_back", "B  Back")
-                                   : i18n.tr("social.hint_requests", "A  Accept     X  Decline     B  Back");
+        if (m_requests.empty())
+            hints = {{glyphOf(nxui::Button::B), hl("back", "Back")}};
+        else
+            hints = {{glyphOf(nxui::Button::A), hl("accept", "Accept")}, {glyphOf(nxui::Button::X), hl("decline", "Decline")}, {glyphOf(nxui::Button::B), hl("back", "Back")}};
     } else if (m_zone == Zone::Tiles) {
-        hints = i18n.tr("social.hint_tiles", "A  Open     B  Close");
+        hints = {{glyphOf(nxui::Button::A), hl("open", "Open")}, {glyphOf(nxui::Button::B), hl("close", "Close")}};
     } else if (m_zone == Zone::Detail) {
-        hints = i18n.tr("social.hint_detail", "Up/Down  Scroll     B  Back");
+        hints = {{glyphDpad(), hl("scroll", "Scroll")}, {glyphOf(nxui::Button::B), hl("back", "Back")}};
+    } else if (m_sel == 0) {
+        hints = {{glyphOf(nxui::Button::A), hl("play_history", "Play history")}, {glyphOf(nxui::Button::Y), hl("sort", "Sort")}, {glyphOf(nxui::Button::B), hl("close", "Close")}};
     } else {
-        hints = m_sel == 0 ? i18n.tr("social.hint_you", "A  Play history     Y  Sort     B  Close")
-                           : i18n.tr("social.hint_person", "A  Play history     B  Close");
+        hints = {{glyphOf(nxui::Button::A), hl("play_history", "Play history")}, {glyphOf(nxui::Button::B), hl("close", "Close")}};
     }
-    if (!hints.empty())
-        ren.drawText(hints, {p.x + kPanelW - 28.f - m_smallFont->measure(hints).x * 0.78f, p.y + kPanelH - 36.f},
-                     m_smallFont, muted, 0.78f);
+    drawHintRow(ren, hints, p.x + kPanelW - 28.f, p.y + kPanelH - 12.f, a, true);
     if (!m_notice.empty() && armTicksToNs(armGetSystemTick() - m_noticeAt) < 6'000'000'000ULL)
         ren.drawText(fit(m_smallFont, m_notice, kPanelW * 0.55f, 0.78f), {p.x + 32.f, p.y + kPanelH - 36.f},
                      m_smallFont, accent.withAlpha(a), 0.78f);

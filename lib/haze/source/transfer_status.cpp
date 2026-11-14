@@ -14,6 +14,12 @@ namespace haze {
 
     TransferStatus &GetTransferStatus() { return g_status; }
 
+    namespace { std::atomic<UsbStateHook> g_state_hook { nullptr }; }
+    void SetUsbStateHook(UsbStateHook hook) { g_state_hook.store(hook, std::memory_order_release); }
+    void ReportUsbState(u32 state) {
+        if (auto hook = g_state_hook.load(std::memory_order_acquire)) hook(state);
+    }
+
     void TransferBegin(TransferOp op, const char *path, u64 total) {
         g_status.name_seq.fetch_add(1, std::memory_order_acq_rel);
         std::strncpy(g_status.name, path, sizeof(g_status.name) - 1);

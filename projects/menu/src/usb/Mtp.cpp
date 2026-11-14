@@ -31,6 +31,31 @@ namespace {
     std::atomic<bool>   g_serving{false};
     std::atomic<bool>   g_connected{false};
 
+    const char* stateName(u32 s) {
+        switch (s) {
+        case UsbState_Detached: return "detached";
+        case UsbState_Attached: return "attached";
+        case UsbState_Powered: return "powered";
+        case UsbState_Default: return "default";
+        case UsbState_Address: return "address";
+        case UsbState_Configured: return "configured";
+        case UsbState_Suspended: return "suspended";
+        default: return "unknown";
+        }
+    }
+
+    // Each USB state change the host causes, so "no computer answered" can be
+    // told apart from a link that never leaves "detached".
+    void onUsbState(u32 s) {
+        if (s == UsbState_Configured) {
+            UsbDeviceSpeed speed{};
+            const Result rc = usbDsGetSpeed(&speed);
+            DebugLog::log("[mtp] usb state %s speed=%d rc=0x%X", stateName(s), static_cast<int>(speed), rc);
+        } else {
+            DebugLog::log("[mtp] usb state %s", stateName(s));
+        }
+    }
+
     void run(void*) {
         if (R_FAILED(haze::LoadDeviceProperties())) {
             DebugLog::log("[mtp] LoadDeviceProperties failed");
@@ -38,8 +63,11 @@ namespace {
         }
 
         // Fails when something else still holds USB; the menu runs without file transfer
-        if (R_FAILED(g_responder.Initialize(&g_reactor, &g_heap))) {
-            DebugLog::log("[mtp] Responder Initialize failed (USB in use?)");
+        haze::SetUsbStateHook(onUsbState);
+        bool usb30 = false;
+        const Result usb30Rc = setsysGetUsb30EnableFlag(&usb30);
+        if (const auto rc = g_responder.Initialize(&g_reactor, &g_heap).GetValue(); R_FAILED(rc)) {
+            DebugLog::log("[mtp] Responder Initialize failed rc=0x%X (USB in use?)", rc);
             g_responder.Finalize();
             return;
         }
@@ -47,8 +75,12 @@ namespace {
         g_stop.reactor = &g_reactor;
         if (g_reactor.AddConsumer(&g_stop, waiterForUEvent(&g_stop_event))) {
             g_serving = true;
-            DebugLog::log("[mtp] MTP server active and listening on USB");
-            (void)g_responder.LoopProcess();
+            UsbState st = UsbState_Detached;
+            const Result stRc = usbDsGetState(&st);
+            DebugLog::log("[mtp] MTP server active and listening on USB (state=%s rc=0x%X usb30=%d rc=0x%X)",
+                          stateName(st), stRc, usb30 ? 1 : 0, usb30Rc);
+            const auto loopRc = g_responder.LoopProcess().GetValue();
+            DebugLog::log("[mtp] loop ended rc=0x%X", loopRc);
             g_serving = false;
             g_reactor.RemoveConsumer(&g_stop);
             DebugLog::log("[mtp] MTP server stopped");

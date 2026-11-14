@@ -14,6 +14,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include <haze.hpp>
+#include <haze/transfer_status.hpp>
 
 namespace haze {
 
@@ -44,6 +45,9 @@ namespace haze {
         if (!g_usb_session.GetConfigured()) {
             R_TRY(m_reactor->WaitFor(std::addressof(waiter_idx), waiterForEvent(usbDsGetStateChangeEvent())));
             R_TRY(eventClear(usbDsGetStateChangeEvent()));
+
+            UsbState state = UsbState_Detached;
+            if (R_SUCCEEDED(usbDsGetState(std::addressof(state)))) ReportUsbState(static_cast<u32>(state));
 
             R_THROW(haze::ResultNotConfigured());
         }

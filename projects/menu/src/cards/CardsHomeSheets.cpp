@@ -2196,7 +2196,12 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         repeat.label = i18n.tr("cards.set_repeat", "Repeat song");
         repeat.detail = i18n.tr("cards.set_repeat_desc", "Play the same song again");
         repeat.toggle = [this]() { return m_audio.isRepeat(); };
-        repeat.onChange = [this](int) { m_audio.setRepeat(!m_audio.isRepeat()); };
+        repeat.onChange = [this](int) {
+            auto& c = m_core.config();
+            c.bgmRepeat = !m_audio.isRepeat();
+            m_audio.setRepeat(c.bgmRepeat);
+            saveConfig("cards repeat");
+        };
         s.rows.push_back(std::move(repeat));
         Row sounds;
         sounds.label = i18n.tr("cards.set_sounds", "Sounds");
@@ -2241,7 +2246,8 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         };
         vibration.progress = []() { return settings::system_prefs::vibrationVolume(); };
         vibration.onChange = [](int d) {
-            settings::system_prefs::setVibrationVolume(settings::system_prefs::vibrationVolume() + 0.1f * static_cast<float>(d));
+            const bool ok = settings::system_prefs::setVibrationVolume(settings::system_prefs::vibrationVolume() + 0.1f * static_cast<float>(d));
+            DebugLog::log("[settings] vibration -> %.2f ok=%d", settings::system_prefs::vibrationVolume(), ok ? 1 : 0);
         };
         s.rows.push_back(std::move(vibration));
         Row tvRes;
@@ -2258,7 +2264,8 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         };
         tvRes.onChange = [](int d) {
             const int n = settings::system_prefs::kTvResolutionCount;
-            settings::system_prefs::setTvResolution((settings::system_prefs::tvResolution() + d + n) % n);
+            const bool ok = settings::system_prefs::setTvResolution((settings::system_prefs::tvResolution() + d + n) % n);
+            DebugLog::log("[settings] tv resolution -> %d ok=%d", settings::system_prefs::tvResolution(), ok ? 1 : 0);
         };
         s.rows.push_back(std::move(tvRes));
         Row native;
@@ -2289,6 +2296,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
             m_sheet.close();
             m_tutorialCard = 1;
             m_tutorialIn = 0.f;
+            m_popupBackdropValid = false;
         };
         s.rows.push_back(std::move(tut));
         Row mtp;
@@ -2362,7 +2370,9 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         autoTime.onChange = [this](int) {
             bool on = false;
             setsysIsUserSystemClockAutomaticCorrectionEnabled(&on);
-            if (R_FAILED(switchu::menu::smi_cmd::setInternetTimeSync(!on)))
+            const Result rc = switchu::menu::smi_cmd::setInternetTimeSync(!on);
+            DebugLog::log("[settings] auto time -> %d rc=0x%X", on ? 0 : 1, rc);
+            if (R_FAILED(rc))
                 showToast(nxui::I18n::instance().tr("settings.system.time_change_failed",
                                                     "The date and time setting could not be changed."));
         };
@@ -2403,7 +2413,8 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
                 if (R_FAILED(setsysGetSleepSettings(&st))) return;
                 auto& plan = docked ? st.console_sleep_plan : st.handheld_sleep_plan;
                 plan = static_cast<decltype(st.console_sleep_plan)>((static_cast<int>(plan) + d + 6) % 6);
-                setsysSetSleepSettings(&st);
+                const Result rc = setsysSetSleepSettings(&st);
+                DebugLog::log("[settings] sleep %s -> %d rc=0x%X", docked ? "tv" : "handheld", static_cast<int>(plan), rc);
             };
             s.rows.push_back(std::move(r));
         }
@@ -2417,9 +2428,11 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
         bright.onChange = [](int) {
             bool on = false;
             lblIsAutoBrightnessControlEnabled(&on);
-            if (on) lblDisableAutoBrightnessControl();
-            else lblEnableAutoBrightnessControl();
-            lblSaveCurrentSetting();
+            const Result rc = on ? lblDisableAutoBrightnessControl() : lblEnableAutoBrightnessControl();
+            const Result saveRc = lblSaveCurrentSetting();
+            bool now = false;
+            lblIsAutoBrightnessControlEnabled(&now);
+            DebugLog::log("[settings] auto brightness -> %d rc=0x%X save=0x%X", now ? 1 : 0, rc, saveRc);
         };
         s.rows.push_back(std::move(bright));
 #endif
@@ -2785,6 +2798,7 @@ void CardsHomeActivity::maybeShowTutorial() {
         return;
     m_tutorialCard = 1;
     m_tutorialIn = 0.f;
+    m_popupBackdropValid = false;
 }
 
 void CardsHomeActivity::drawTutorial(nxui::Renderer& ren) {
@@ -2802,10 +2816,10 @@ void CardsHomeActivity::drawTutorial(nxui::Renderer& ren) {
     };
     const Card& c = kCards[std::clamp(m_tutorialCard, 1, 4) - 1];
     const float a = m_tutorialIn;
-    ren.drawRect({0.f, 0.f, 1280.f, 720.f}, {0.f, 0.f, 0.f, 0.55f * a});
+    // Same frosted glass as the power menu and the sheets (blurred screen copy
+    // under a translucent tint), not an opaque coloured box.
     const nxui::Rect p{290.f, 190.f, 700.f, 320.f};
-    ren.drawRoundedRect(p, {0.08f, 0.09f, 0.13f, 0.94f * a}, 30.f);
-    ren.drawRoundedRectOutline(p, {1.f, 1.f, 1.f, 0.16f * a}, 30.f, 1.5f);
+    drawGlassCard(ren, p, 30.f, a);
     m_chrome.textMid(ren, m_chrome.titleFont(), i18n.tr(c.tk, c.tf), p.x + 40.f, p.y + 60.f,
                      CardsChrome::kWhite.withAlpha(a));
     // The body wraps (it was cut to one line with "..."); four lines fit

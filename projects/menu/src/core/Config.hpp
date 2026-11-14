@@ -14,6 +14,7 @@ struct AppConfig {
     bool  themeMusicEnabled = true;
     bool  customBgmEnabled = false;
     bool  customBgmShuffle = true;
+    bool  bgmRepeat = false; // repeat the current song (Cards music sheet / settings)
     std::string audioSourcePreference = "custom_first";
     // Levels asked for after people used the menu on real hardware: the music
     // sits under the game audio rather than competing with it, and the effects

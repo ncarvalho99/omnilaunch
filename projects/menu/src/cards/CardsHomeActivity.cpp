@@ -817,6 +817,7 @@ void CardsHomeActivity::finishAudioLoad() {
     m_audio.setVolume(config.musicVolume);
     m_audio.setSfxVolume(config.cards.sounds ? config.sfxVolume : 0.f);
     m_audio.setShuffle(config.customBgmShuffle); // one setting for both frontends
+    m_audio.setRepeat(config.bgmRepeat);
     if (config.musicEnabled && !m_lock.isLocked())
         m_audio.play();
     m_audioStarted = true;

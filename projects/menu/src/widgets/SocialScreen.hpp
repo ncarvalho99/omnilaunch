@@ -2,6 +2,7 @@
 #include "friends/FriendStore.hpp"
 #include "discord/DiscordService.hpp"
 #include "social/MiiStore.hpp"
+#include "core/ButtonGlyph.hpp"
 
 #include <nxui/Theme.hpp>
 #include <nxui/core/Font.hpp>
@@ -42,6 +43,8 @@ public:
 
     SocialScreen();
     void setFonts(nxui::Font* font, nxui::Font* small) { m_font = font; m_smallFont = small; }
+    // Button glyphs for the hint capsules (icon + label, like the rest of OmniLaunch).
+    void setIconFont(nxui::Font* icons) { m_iconFont = icons; }
     void setGpu(nxui::GpuDevice* gpu, nxui::Renderer* ren) { m_gpu = gpu; m_ren = ren; }
     void setTheme(const nxui::Theme* t) { m_theme = t; }
     void setIconDir(std::string dir) { m_iconDir = std::move(dir); }
@@ -170,11 +173,14 @@ private:
     void drawHistory(nxui::Renderer& ren, const nxui::Rect& r, float a, const HistoryView* hv, bool mine);
     void drawRequests(nxui::Renderer& ren, const nxui::Rect& r, float a);
     void drawAddFriend(nxui::Renderer& ren, const nxui::Rect& r, float a);
+    float drawHintRow(nxui::Renderer& ren, const std::vector<ui::glyph::ActionHint>& hints, float x, float bottomY,
+                      float a, bool rightAligned);
     void drawMessage(nxui::Renderer& ren, const nxui::Rect& r, float a, const std::string& title,
                      const std::string& body);
 
     nxui::Font* m_font = nullptr;
     nxui::Font* m_smallFont = nullptr;
+    nxui::Font* m_iconFont = nullptr;
     nxui::GpuDevice* m_gpu = nullptr;
     nxui::Renderer* m_ren = nullptr;
     const nxui::Theme* m_theme = nullptr;

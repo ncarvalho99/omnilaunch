@@ -283,6 +283,7 @@ bool HomeAudio::reloadMusicTracks(const AppConfig& config, const std::vector<The
     const bool wasPlaying = audio.isPlaying();
     std::vector<TrackInfo> desired;
     audio.setShuffle(config.customBgmShuffle);
+    audio.setRepeat(config.bgmRepeat);
 
     const std::string& pref = config.audioSourcePreference;
     customBgmTracks = scanCustomBgmTracks(config);
