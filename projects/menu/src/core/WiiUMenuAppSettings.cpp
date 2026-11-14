@@ -1765,6 +1765,7 @@ void WiiUMenuApp::createThemeShop() {
         if (v) switchu::usb::mtpStart();
         else switchu::usb::mtpStop();
 #endif
+        m_config.save(); // as Cards: survives a reboot without closing the shop
         DebugLog::log("[themeshop] mtp -> %d", v ? 1 : 0);
     });
     m_themeShop->onLockNow([this]() {
@@ -1792,11 +1793,12 @@ void WiiUMenuApp::createThemeShop() {
         switchu::commitSdCard("lock password removed");
         lockpw::attach(m_lockScreen);
 #endif
-        // No tab rebuild here: this runs inside the row's own onChange, and a
-        // rebuild would destroy that std::function while it runs. The rows
-        // show the new state the next time the tab is built.
+        // Close the shop, as Cards closes its sheet: a tab rebuild here would
+        // destroy this row's std::function while it runs, and leaving the tab
+        // open would show stale password rows. Reopening rebuilds them.
         if (m_themeShop) {
             m_themeShop->setSharedPrefsState(sharedPrefsState());
+            m_themeShop->hide();
             m_themeShop->requestToast(nxui::I18n::instance().tr("cards.lock_password_removed", "Password removed"));
         }
     });

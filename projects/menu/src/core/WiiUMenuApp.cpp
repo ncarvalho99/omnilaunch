@@ -7622,8 +7622,7 @@ void WiiUMenuApp::setupLockScreen() {
         closeActiveOverlays();
 #endif
         // Music on the lock screen (shared with Cards): keep HOME music playing.
-        m_lockMusicPlaying = m_config.cards.lockMusic && m_audio.isPlaying();
-        if (!m_lockMusicPlaying)
+        if (!m_config.cards.lockMusic)
             m_audio.stopAll();
         m_accessibility.announce(i18n.tr("lock_screen.locked",
                                          "Screen locked. Press the same button three times to unlock."),
@@ -7634,9 +7633,10 @@ void WiiUMenuApp::setupLockScreen() {
         // Covers the 0.26 s release fade plus a short window after it.
         m_unlockInputGuard = 0.75f;
         m_switchWaitRelease = true;
-        if (m_config.musicEnabled && m_audioStarted && !m_lockMusicPlaying)
+        // Resume unless it is still playing (lock music on), as Cards does; a
+        // track that ended or audio stopped by sleep starts again.
+        if (m_config.musicEnabled && m_audioStarted && !m_audio.isPlaying())
             m_audio.play();
-        m_lockMusicPlaying = false;
         m_audio.playSfx(Sfx::ModalHide);
         m_accessibility.announce(i18n.tr("lock_screen.unlocked", "Unlocked."), true, true);
     });
