@@ -24,6 +24,8 @@ class Renderer;
 namespace iconpack {
 
 constexpr const char* kRoot = "sdmc:/config/OmniLaunch/icon-packs";
+// Written by the installer: SHA-256 of the archive the pack came from.
+constexpr const char* kPackageMarker = "package.sha256";
 
 struct Installed {
     std::string id;
@@ -33,6 +35,7 @@ struct Installed {
     std::string path;      // folder on the SD card
     std::uint64_t bytes = 0;
     int files = 0;
+    std::string packageSha256; // empty for packs installed before CL 345
 };
 
 // Catalogue ids become folder names: lowercase letters, digits, '-' and '_'.
@@ -41,6 +44,9 @@ bool safeId(const std::string& id);
 // Selects the active pack. An id that is unsafe or has no installed folder
 // selects the built-in icons. Bumps generation() when the choice changes.
 void setActive(const std::string& id);
+// Bumps generation() without changing the pack: its files were replaced (an
+// update of the active pack) and every icon has to be read again.
+void refresh();
 std::string activeId();
 // Folder of the active pack, "" for the built-in icons.
 std::string activeDir();

@@ -76,6 +76,7 @@ Catalog fetchCatalog() {
             e.author = str(item, "author");
             e.version = str(item, "version");
             e.package = str(item, "package");
+            e.packageSha256 = str(item, "packageSha256");
             e.packageBytes = u64(item, "packageBytes");
             e.installedBytes = u64(item, "installedBytes");
             if (auto f = item.find("files"); f != item.end() && f->is_number_integer())
@@ -158,6 +159,14 @@ InstallResult install(const ThemeCatalogClient::Entry& entry, const Progress& pr
         struct stat st {};
         if (stat((staging + "/pack.json").c_str(), &st) != 0)
             throw std::runtime_error("pack.json missing from the archive");
+        // Which archive this is, so the store can tell when the server has a
+        // newer one (iconpack::Installed::packageSha256).
+        if (!entry.packageSha256.empty()) {
+            if (FILE* f = std::fopen((staging + "/" + iconpack::kPackageMarker).c_str(), "w")) {
+                std::fputs(entry.packageSha256.c_str(), f);
+                std::fclose(f);
+            }
+        }
 
         // Swap: the old copy aside, the new one in, the old one removed.
         removeTree(previous);

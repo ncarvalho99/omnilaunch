@@ -1862,6 +1862,11 @@
     "icons_count": "pictogrammen",
     "pack_one": "pakket",
     "pack_many": "pakketten",
-    "installed_count": "geïnstalleerd"
+    "installed_count": "geïnstalleerd",
+    "update": "Bijwerken",
+    "update_badge": "Update",
+    "update_available": "Update beschikbaar",
+    "update_one": "update",
+    "update_many": "updates"
   }
 }

@@ -67,6 +67,11 @@ void setActive(const std::string& id) {
                   (unsigned)g_generation.load());
 }
 
+void refresh() {
+    g_generation.fetch_add(1);
+    DebugLog::log("[icon-pack] refresh gen=%u", (unsigned)g_generation.load());
+}
+
 std::string activeId() {
     std::lock_guard<std::mutex> lk(g_mutex);
     return g_activeId;
@@ -142,6 +147,15 @@ std::vector<Installed> scanInstalled() {
                 }
             }
         } catch (...) {
+        }
+        {
+            std::ifstream marker(pack.path + "/" + kPackageMarker);
+            std::string sha;
+            if (marker && std::getline(marker, sha)) {
+                while (!sha.empty() && (sha.back() == '\r' || sha.back() == ' '))
+                    sha.pop_back();
+                pack.packageSha256 = sha;
+            }
         }
         for (const auto& file : std::filesystem::directory_iterator(pack.path, dirEc)) {
             if (dirEc)

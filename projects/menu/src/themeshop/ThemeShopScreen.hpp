@@ -385,6 +385,8 @@ private:
     void rebuildIconEntries();
     const iconpack::Installed* installedIconPack(const std::string& id) const;
     bool iconPackActive(const ThemeCatalogClient::Entry& entry) const;
+    // The server has a different archive than the one installed.
+    bool iconPackHasUpdate(const ThemeCatalogClient::Entry& entry) const;
     void startIconInstall(const std::string& id, bool apply);
     void startIconRemove(const std::string& id);
     std::string iconCatalogueTotals() const;

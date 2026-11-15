@@ -49,6 +49,8 @@ public:
         // many icons a pack carries.
         bool builtin = false;
         int files = 0;
+        // SHA-256 of the pack archive: tells an installed pack it is outdated.
+        std::string packageSha256;
         // Which index this came from. Entries carry relative paths, so once two
         // catalogues are merged the resolving base can no longer be a single
         // property of the client.

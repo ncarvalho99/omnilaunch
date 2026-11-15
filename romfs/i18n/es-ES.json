@@ -1864,6 +1864,11 @@
     "icons_count": "iconos",
     "pack_one": "paquete",
     "pack_many": "paquetes",
-    "installed_count": "instalados"
+    "installed_count": "instalados",
+    "update": "Actualizar",
+    "update_badge": "Actualización",
+    "update_available": "Actualización disponible",
+    "update_one": "actualización",
+    "update_many": "actualizaciones"
   }
 }

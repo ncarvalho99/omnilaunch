@@ -1019,9 +1019,6 @@ void ThemeShopScreen::closeDetail() {
         m_packageTransferState.reset();
         m_packageTransferThemeId.clear();
         m_packageTransferInstallMode = false;
-    } else if (isCommunityTab()) {
-        clearCommunityPreviewCache();
-        m_lastPreviewPrimeKey.clear();
     }
 }
 
@@ -1162,6 +1159,16 @@ void ThemeShopScreen::activateDetailButton(int buttonIndex) {
             requestToast(i18n.tr("iconstore.applied", "Icons applied."), 2.f);
             return;
         }
+        if (installedIconPack(id) && iconPackHasUpdate(*entry)) {
+            // Update / Remove. Updating the pack in use switches the icons live.
+            if (buttonIndex == 0) {
+                startIconInstall(id, false);
+            } else {
+                closeDetail();
+                startIconRemove(id);
+            }
+            return;
+        }
         if (installedIconPack(id)) {
             closeDetail();
             if (buttonIndex == 0) {
@@ -1207,8 +1214,8 @@ void ThemeShopScreen::activateDetailButton(int buttonIndex) {
             return;
         }
 
-        clearCommunityPreviewCache();
-        m_lastPreviewPrimeKey.clear();
+        // The preview stays on screen while the download runs (see
+        // setPackageTransferState for when it is released).
         if (buttonIndex == 0) {
             if (m_themeShopDownloadCb) {
                 m_themeShopDownloadCb(themeId);
@@ -1293,6 +1300,7 @@ void ThemeShopScreen::updateCustomContent(float dt) {
             m_communitySelectedId = m_catalogSelectedId[now];
             m_communityScrollRow = m_catalogScrollRow[now];
             clearCommunityPreviewCache();
+            m_lastPreviewPrimeKey.clear(); // request this tab's previews now
         }
         m_lastCustomTabIndex = m_tabIndex;
         m_contentFocusArea = ContentFocusArea::Grid;
@@ -1371,8 +1379,10 @@ void ThemeShopScreen::updateCustomContent(float dt) {
             }
         }
     } else if (isCommunityTab()) {
-        clearCommunityPreviewCache();
-        m_lastPreviewPrimeKey.clear();
+        // A transfer is running: keep what is loaded and finish the uploads
+        // already under way, but start no new downloads beside it. This used
+        // to clear the cache on every frame of the transfer.
+        syncFinishedCommunityPreviewLoads();
     }
 }
 
@@ -2486,6 +2496,7 @@ void ThemeShopScreen::drawCustomContent(nxui::Renderer& ren, const nxui::Rect&, 
         bool builtInLightPreview = false;
         bool activeTheme = false;
         bool installedHere = false;
+        bool updateHere = false; // icon pack with a newer archive on the server
         int sheetCols = 0, sheetRows = 0;
         float sheetFps = 10.f;
 
@@ -2542,8 +2553,9 @@ void ThemeShopScreen::drawCustomContent(nxui::Renderer& ren, const nxui::Rect&, 
                     sizeText = formatBytes(pack->bytes);
                 if (entry.builtin)
                     sizeText = i18n.tr("iconstore.builtin", "Built-in");
-                if (activeTheme)
-                    installedHere = false; // the Active chip takes its place
+                updateHere = iconPackHasUpdate(entry);
+                if (activeTheme || updateHere)
+                    installedHere = false; // the Active / Update chip takes its place
             } else {
                 installedHere = installedEntryForCatalogue(entry.id) != nullptr;
             }
@@ -2627,6 +2639,22 @@ void ThemeShopScreen::drawCustomContent(nxui::Renderer& ren, const nxui::Rect&, 
                      m_theme->textPrimary,
                      rowOpacity,
                      0.66f);
+        }
+
+        if (updateHere) {
+            const std::string label = i18n.tr("iconstore.update_badge", "Update");
+            float chipWidth = std::max(92.f, std::min(140.f, 32.f + measureTextCached(m_smallFont, label).x * 0.66f));
+            // Beside the Active chip when the pack is in use.
+            float x = preview.x + 10.f;
+            if (activeTheme) {
+                const std::string activeLabel = i18n.tr("themeshop.installed.status_active", "Active");
+                x += std::max(82.f, std::min(114.f, 32.f + measureTextCached(m_smallFont, activeLabel).x * 0.66f)) + 8.f;
+            }
+            nxui::Rect chip = {x, preview.y + 10.f, chipWidth, 26.f};
+            drawChip(ren, m_smallFont, chip, label,
+                     nxui::Color(0.42f, 0.28f, 0.06f, 0.40f),
+                     nxui::Color(1.f, 0.74f, 0.30f, 0.60f),
+                     m_theme->textPrimary, rowOpacity, 0.66f);
         }
 
         if (activeTheme) {
@@ -2793,6 +2821,11 @@ void ThemeShopScreen::drawCustomContent(nxui::Renderer& ren, const nxui::Rect&, 
                 if (!card.empty())
                     detailInfoBExtra = card + " " + i18n.tr("themeshop.catalog.on_card", "on the SD card")
                         + (pack ? " (" + i18n.tr("themeshop.community.installed", "Installed") + ")" : std::string());
+                if (pack && iconPackHasUpdate(*entry))
+                    detailInfoA += "  -  " + i18n.tr("iconstore.update_available", "Update available")
+                        + (pack->version.empty() || pack->version == entry->version
+                               ? std::string()
+                               : " (" + pack->version + " > " + entry->version + ")");
             }
         }
         detailScreenshotTotal = std::max(0, (int)entry->screenshots.size());
@@ -3082,6 +3115,9 @@ void ThemeShopScreen::drawCustomContent(nxui::Renderer& ren, const nxui::Rect&, 
         if (entry && entry->builtin) {
             buttonLabels.push_back(iconPackActive(*entry) ? i18n.tr("iconstore.in_use", "In use")
                                                           : i18n.tr("iconstore.apply", "Apply Icons"));
+        } else if (entry && installedIconPack(entry->id) && iconPackHasUpdate(*entry)) {
+            buttonLabels.push_back(i18n.tr("iconstore.update", "Update"));
+            buttonLabels.push_back(i18n.tr("iconstore.remove", "Remove Icons"));
         } else if (entry && installedIconPack(entry->id)) {
             buttonLabels.push_back(iconPackActive(*entry) ? i18n.tr("iconstore.in_use", "In use")
                                                           : i18n.tr("iconstore.apply", "Apply Icons"));

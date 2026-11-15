@@ -73,6 +73,19 @@ const iconpack::Installed* ThemeShopScreen::installedIconPack(const std::string&
     return nullptr;
 }
 
+// Packs installed by CL 343 carry no archive hash; for those the version
+// decides, so the packs installed today are not all flagged at once.
+bool ThemeShopScreen::iconPackHasUpdate(const ThemeCatalogClient::Entry& entry) const {
+    if (entry.builtin || entry.package.empty())
+        return false;
+    const auto* pack = installedIconPack(entry.id);
+    if (!pack)
+        return false;
+    if (!pack->packageSha256.empty() && !entry.packageSha256.empty())
+        return pack->packageSha256 != entry.packageSha256;
+    return !entry.version.empty() && !pack->version.empty() && entry.version != pack->version;
+}
+
 bool ThemeShopScreen::iconPackActive(const ThemeCatalogClient::Entry& entry) const {
     const std::string active = iconpack::activeId();
     return entry.builtin ? active.empty() : active == entry.id;
@@ -115,8 +128,13 @@ void ThemeShopScreen::rebuildIconEntries() {
         // No catalogue entry, so no preview URL: the card shows its placeholder.
         m_allIconEntries.push_back(std::move(local));
     }
-    if (isIconTab())
+    if (isIconTab()) {
         applySearchFilter();
+        // The prime key (revision, selection, page) does not change when the
+        // icon list arrives, so the visible previews were never requested and
+        // the cards read "Screenshot unavailable" until the selection moved.
+        m_lastPreviewPrimeKey.clear();
+    }
 }
 
 void ThemeShopScreen::pollIconStore() {
@@ -163,6 +181,13 @@ void ThemeShopScreen::pollIconStore() {
     }
 
     if (opFinished) {
+        const bool updatedActive = opOk && !opRemove && !opApply && iconpack::activeId() == opId;
+        if (updatedActive) {
+            // The pack in use was replaced on the card: read every icon again.
+            iconpack::refresh();
+            if (m_iconPackApplyCb)
+                m_iconPackApplyCb(opId);
+        }
         if (opOk && opApply && m_iconPackApplyCb)
             m_iconPackApplyCb(opId);
         if (opOk && opRemove && iconpack::activeId() == opId && m_iconPackApplyCb)
@@ -269,6 +294,10 @@ std::string ThemeShopScreen::iconCatalogueTotals() const {
     std::uint64_t onCard = 0;
     for (const auto& p : m_installedIconPacks)
         onCard += p.bytes;
+    int updates = 0;
+    for (const auto& e : m_allIconEntries)
+        if (iconPackHasUpdate(e))
+            ++updates;
     if (packs == 0)
         return {};
     std::string line = std::to_string(packs) + " "
@@ -281,5 +310,8 @@ std::string ThemeShopScreen::iconCatalogueTotals() const {
         if (onCard > 0)
             line += " (" + formatSize(onCard) + " " + i18n.tr("themeshop.catalog.on_card", "on the SD card") + ")";
     }
+    if (updates > 0)
+        line += " - " + std::to_string(updates) + " "
+            + (updates == 1 ? i18n.tr("iconstore.update_one", "update") : i18n.tr("iconstore.update_many", "updates"));
     return line;
 }

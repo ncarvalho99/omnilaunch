@@ -225,7 +225,11 @@ void ThemeShopScreen::setPackageTransferState(const ThemeTransferState& state,
     m_packageTransferThemeId = std::move(themeId);
     m_packageTransferInstallMode = installMode;
 
-    if (m_packageTransferState.isRunning()) {
+    // The previews stay up while the theme downloads: dropping them here made
+    // the detail sheet show "Screenshot unavailable" for the whole transfer.
+    // They are released only right before an installed theme is applied, when
+    // its wallpaper needs the image memory.
+    if (m_packageTransferState.isReady() && m_packageTransferInstallMode) {
         clearCommunityPreviewCache();
         m_lastPreviewPrimeKey.clear();
     }

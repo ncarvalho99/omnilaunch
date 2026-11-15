@@ -1862,6 +1862,11 @@
     "icons_count": "значков",
     "pack_one": "набор",
     "pack_many": "наборов",
-    "installed_count": "установлено"
+    "installed_count": "установлено",
+    "update": "Обновить",
+    "update_badge": "Обновление",
+    "update_available": "Доступно обновление",
+    "update_one": "обновление",
+    "update_many": "обновлений"
   }
 }
