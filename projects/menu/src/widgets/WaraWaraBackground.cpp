@@ -1,5 +1,6 @@
 #include "WaraWaraBackground.hpp"
 #include "core/DebugLog.hpp"
+#include <nxui/Appearance.hpp>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -739,6 +740,9 @@ void WaraWaraBackground::onRender(nxui::Renderer& ren) {
 
 void WaraWaraBackground::renderLayer(nxui::Renderer& ren, bool intoOffscreen) {
     (void)intoOffscreen;
+    // The theme's shapes keep the roundness their author gave them; the
+    // player's corner setting is for windows and controls.
+    const nxui::Appearance::RadiusExemptScope keepThemeShapes;
 
     // Skip procedural gradient pass when an opaque video wallpaper is active
     if (!isVideoActive() || m_config.imageOpacity < 0.99f) {

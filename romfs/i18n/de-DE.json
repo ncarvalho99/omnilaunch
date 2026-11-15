@@ -1157,7 +1157,8 @@
     },
     "options": {
       "auto_theme": "Automatisches Theme",
-      "auto_theme_desc": "Wechselt selbstständig zwischen Tag- und Nacht-Theme."
+      "auto_theme_desc": "Wechselt selbstständig zwischen Tag- und Nacht-Theme.",
+      "side_section": "Seitentasten und Symbole"
     },
     "themes": {
       "title": "Designs",
@@ -1170,6 +1171,28 @@
     "icons": {
       "title": "Symbole",
       "subtitle": "Symbolpakete für das Menü, sofort angewendet."
+    },
+    "look": {
+      "hue": "Farbton",
+      "saturation": "Sättigung",
+      "brightness": "Helligkeit",
+      "opacity": "Deckkraft",
+      "hex": "Farbcode",
+      "hex_desc_alpha": "Gib einen Code wie #000000 oder #1A1A2ECC ein (die letzten zwei Stellen sind die Deckkraft).",
+      "hex_desc": "Gib einen Code wie #FFFFFF oder #FFD54F ein.",
+      "hex_invalid": "Das ist kein Farbcode. Verwende 6 oder 8 Stellen, 0-9 und A-F.",
+      "windows": "Fenster",
+      "solid": "Einfarbige Fenster",
+      "solid_desc": "Aus: das Glas des Themes. An: Fenster, Seitentasten und Bereiche erhalten eine flache Farbe. Eine Vollfarbe spart die Unschärfe und entlastet die Konsole; deckendes Schwarz passt zu OLED-Bildschirmen.",
+      "corners": "Ecken",
+      "roundness": "Eckenrundung",
+      "roundness_desc": "Fenster, Tasten, Symbole und Auswahlrahmen gemeinsam. 0 % macht alle Ecken eckig.",
+      "text": "Text",
+      "text_custom": "Eigene Textfarbe",
+      "text_custom_desc": "Aus: die Farben des Themes. An: Titel, Beschriftungen und Hinweise nutzen die Farbe unten, für Text, der auf einem Theme schwer lesbar ist.",
+      "reset": "Aussehen des Themes verwenden",
+      "reset_desc": "Setzt die drei Optionen oben auf Glas, Ecken und Text des Themes zurück.",
+      "reset_button": "Zurücksetzen"
     }
   },
   "dialog": {

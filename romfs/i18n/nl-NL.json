@@ -1157,7 +1157,8 @@
     },
     "options": {
       "auto_theme": "Automatisch thema",
-      "auto_theme_desc": "Wisselt zelf tussen een dag- en een nachtthema."
+      "auto_theme_desc": "Wisselt zelf tussen een dag- en een nachtthema.",
+      "side_section": "Zijknoppen en pictogrammen"
     },
     "themes": {
       "title": "Thema's",
@@ -1170,6 +1171,28 @@
     "icons": {
       "title": "Pictogrammen",
       "subtitle": "Pictogrampakketten voor het menu, direct toegepast."
+    },
+    "look": {
+      "hue": "Tint",
+      "saturation": "Verzadiging",
+      "brightness": "Helderheid",
+      "opacity": "Dekking",
+      "hex": "Kleurcode",
+      "hex_desc_alpha": "Typ een code zoals #000000 of #1A1A2ECC (de laatste twee cijfers zijn de dekking).",
+      "hex_desc": "Typ een code zoals #FFFFFF of #FFD54F.",
+      "hex_invalid": "Dat is geen kleurcode. Gebruik 6 of 8 tekens, 0-9 en A-F.",
+      "windows": "Vensters",
+      "solid": "Effen vensterkleur",
+      "solid_desc": "Uit: het glas van het thema. Aan: vensters, zijknoppen en panelen krijgen één effen kleur. Een effen kleur slaat de vervaging over en is lichter voor de console; dekkend zwart past bij OLED-schermen.",
+      "corners": "Hoeken",
+      "roundness": "Ronding van de hoeken",
+      "roundness_desc": "Vensters, knoppen, pictogrammen en het selectiekader samen. 0% maakt alle hoeken recht.",
+      "text": "Tekst",
+      "text_custom": "Eigen tekstkleur",
+      "text_custom_desc": "Uit: de kleuren van het thema. Aan: titels, labels en hints gebruiken de kleur hieronder, voor tekst die slecht leesbaar is op een thema.",
+      "reset": "Uiterlijk van het thema gebruiken",
+      "reset_desc": "Zet de drie opties hierboven terug naar het glas, de hoeken en de tekst van het thema.",
+      "reset_button": "Herstellen"
     }
   },
   "dialog": {

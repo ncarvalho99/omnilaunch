@@ -1,6 +1,7 @@
 #include <nxui/core/Renderer.hpp>
 #include <nxui/core/Texture.hpp>
 #include <nxui/core/Font.hpp>
+#include <nxui/Appearance.hpp>
 #include <SDL2/SDL.h>
 #include <cstring>
 #include <cstdio>
@@ -232,6 +233,7 @@ void Renderer::drawGradientRect(const Rect& r, const Color& top, const Color& bo
 }
 
 void Renderer::drawRoundedRect(const Rect& r, const Color& c, float radius) {
+    radius = Appearance::get().radius(radius);
     if (radius <= 0.f) { drawRect(r, c); return; }
     float rad = std::min(radius, std::min(r.width, r.height) * 0.5f);
 
@@ -272,6 +274,7 @@ void Renderer::drawRoundedRect(const Rect& r, const Color& c, float radius) {
 }
 
 void Renderer::drawRoundedRectOutline(const Rect& r, const Color& c, float radius, float t) {
+    radius = Appearance::get().radius(radius);
     if (radius <= 0.f) { drawRectOutline(r, c, t); return; }
     float rad = std::min(radius, std::min(r.width, r.height) * 0.5f);
 
@@ -538,14 +541,18 @@ void Renderer::drawOffscreen(int target, const Rect& dest, const Color& tint) {
 
 void Renderer::drawOffscreenRounded(int target, const Rect& dest, float radius, const Color& tint) {
     (void)target;
-    drawRoundedRect(dest, tint, radius);
+    const Color fill = Appearance::get().solidPanels
+        ? Appearance::get().panelColor.withAlpha(Appearance::get().panelColor.a * tint.a)
+        : tint;
+    drawRoundedRect(dest, fill, radius);
 }
 
 void Renderer::drawLiquidGlass(int target, const Rect& panelRect, float radius,
                                const Color& tint, float opacity, float shade) {
     (void)target;
     (void)shade;
-    drawRoundedRect(panelRect, tint.withAlpha(tint.a * opacity), radius);
+    const Color fill = Appearance::get().solidPanels ? Appearance::get().panelColor : tint;
+    drawRoundedRect(panelRect, fill.withAlpha(fill.a * opacity), radius);
 }
 
 void Renderer::applyBlur(float radius, int passes) {

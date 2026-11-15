@@ -1157,7 +1157,8 @@
     },
     "options": {
       "auto_theme": "Automatic theme",
-      "auto_theme_desc": "Switches between a day and a night theme by itself."
+      "auto_theme_desc": "Switches between a day and a night theme by itself.",
+      "side_section": "Side buttons and icons"
     },
     "themes": {
       "title": "Themes",
@@ -1170,6 +1171,28 @@
     "icons": {
       "title": "Icons",
       "subtitle": "Icon packs for the menu, applied instantly."
+    },
+    "look": {
+      "hue": "Hue",
+      "saturation": "Saturation",
+      "brightness": "Brightness",
+      "opacity": "Opacity",
+      "hex": "Colour code",
+      "hex_desc_alpha": "Type a code such as #000000 or #1A1A2ECC (the last two digits are the opacity).",
+      "hex_desc": "Type a code such as #FFFFFF or #FFD54F.",
+      "hex_invalid": "That is not a colour code. Use 6 or 8 digits, 0-9 and A-F.",
+      "windows": "Windows",
+      "solid": "Solid window colour",
+      "solid_desc": "Off: the theme's glass. On: windows, side buttons and panels take one flat colour. A solid colour skips the blur, so it is lighter on the console; opaque black suits OLED screens.",
+      "corners": "Corners",
+      "roundness": "Corner roundness",
+      "roundness_desc": "Windows, buttons, icons and the selection frame together. 0% makes every corner square.",
+      "text": "Text",
+      "text_custom": "Custom text colour",
+      "text_custom_desc": "Off: the theme's colours. On: titles, labels and hints use the colour below, for text that is hard to read over a theme.",
+      "reset": "Use the theme's look",
+      "reset_desc": "Turns the three options above back to the theme's own glass, corners and text.",
+      "reset_button": "Reset"
     }
   },
   "dialog": {

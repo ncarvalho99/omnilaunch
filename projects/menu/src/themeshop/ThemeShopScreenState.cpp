@@ -1,6 +1,8 @@
 #include "ThemeShopScreen.hpp"
 #include "ThemeShopTabBuilders.hpp"
 #include "core/DebugLog.hpp"
+#include <nxui/core/I18n.hpp>
+#include <algorithm>
 
 void ThemeShopScreen::buildTabs() {
     DebugLog::log("[themeshop] buildTabs() start");
@@ -47,8 +49,26 @@ void ThemeShopScreen::buildTabs() {
 
 // The sidebar order and names arrive after the tabs were first built (the
 // shop is created once, warmed up, then fed state on every open). Without
-// this the OmniLaunch tab kept its empty first build: no sidebar rows.
-void ThemeShopScreen::rebuildOmniLaunchTab() {
+// this the Options tab kept its empty first build: no sidebar rows.
+void ThemeShopScreen::rebuildOptionsTab() {
+    const std::string name = nxui::I18n::instance().tr("themeshop.tabs.options", "Options");
+    for (std::size_t i = 0; i < m_tabs.size(); ++i) {
+        if (m_tabs[i].name != name)
+            continue;
+        m_tabs[i] = themeshop::tabs::OptionsTab::build(*this);
+        if (i < m_cachedTabContentWidgets.size())
+            m_cachedTabContentWidgets[i].clear();
+        if (static_cast<int>(i) == m_tabIndex)
+            refreshState();
+        return;
+    }
+}
+
+void ThemeShopScreen::setAppearanceChoice(const AppearanceChoice& c) {
+    m_appearance = c;
+    m_appearance.cornerRoundness = std::clamp(c.cornerRoundness, 0.f, 1.f);
+    m_panelHsva = colorhex::fromColor(c.panelColor, m_panelHsva.h);
+    m_textHsva = colorhex::fromColor(c.textColor, m_textHsva.h);
     for (std::size_t i = 0; i < m_tabs.size(); ++i) {
         if (m_tabs[i].name != "OmniLaunch")
             continue;
@@ -58,5 +78,25 @@ void ThemeShopScreen::rebuildOmniLaunchTab() {
         if (static_cast<int>(i) == m_tabIndex)
             refreshState();
         return;
+    }
+}
+
+void ThemeShopScreen::publishAppearance() {
+    if (m_appearanceCb)
+        m_appearanceCb(m_appearance);
+}
+
+void ThemeShopScreen::refreshAppearanceHexRows() {
+    const std::string panelHex = colorhex::format(m_appearance.panelColor);
+    const std::string textHex = colorhex::format(m_appearance.textColor, false);
+    for (auto& tab : m_tabs) {
+        if (tab.name != "OmniLaunch")
+            continue;
+        for (auto& row : tab.items) {
+            if (row.key == "appearance.panel_hex")
+                row.buttonLabel = panelHex;
+            else if (row.key == "appearance.text_hex")
+                row.buttonLabel = textHex;
+        }
     }
 }

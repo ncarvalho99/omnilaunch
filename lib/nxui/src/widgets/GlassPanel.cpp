@@ -1,5 +1,6 @@
 #include <nxui/widgets/GlassPanel.hpp>
 #include <nxui/core/Renderer.hpp>
+#include <nxui/Appearance.hpp>
 #include <algorithm>
 #include <cmath>
 
@@ -101,8 +102,23 @@ void GlassPanel::onRender(Renderer& ren) {
         && (m_forceLiquidGlass || aspectRatio <= 1.35f);
     bool useWideLiquidGlassFallback = m_liquidGlassEnabled && !useLiquidGlassShader;
     bool useAnyLiquidGlass = useLiquidGlassShader || useWideLiquidGlassFallback;
-    bool needsBackdrop = (m_blurEnabled || useAnyLiquidGlass) && op > 0.01f;
+    // Solid windows draw no backdrop, so the scene copy (a full-screen blit and
+    // two pipeline barriers) and the blur passes are skipped altogether.
+    bool needsBackdrop = (m_blurEnabled || useAnyLiquidGlass) && op > 0.01f
+        && !Appearance::get().solidPanels;
     bool canReuseBackdropCapture = useAnyLiquidGlass && !m_blurEnabled;
+
+    // Solid windows: a glass surface becomes one flat fill in the player's
+    // colour plus its rim. Panels that were never glass keep their own fill.
+    if ((m_blurEnabled || useAnyLiquidGlass) && Appearance::get().solidPanels) {
+        if (op <= 0.01f) return;
+        const Color& pc = Appearance::get().panelColor;
+        ren.drawRoundedRect(r, pc.withAlpha(pc.a * op), m_radius);
+        if (m_borderW > 0.f)
+            ren.drawRoundedRectOutline(r, m_border.withAlpha(m_border.a * 0.80f * op),
+                                       m_radius, m_borderW);
+        return;
+    }
 
     if (needsBackdrop) {
         ren.captureToOffscreen(canReuseBackdropCapture);

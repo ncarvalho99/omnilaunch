@@ -1,6 +1,7 @@
 #include <nxui/core/Renderer.hpp>
 #include <nxui/core/Texture.hpp>
 #include <nxui/core/Font.hpp>
+#include <nxui/Appearance.hpp>
 #include <algorithm>
 #include <cstring>
 #include <cstdio>
@@ -712,6 +713,11 @@ void Renderer::captureToOffscreen(bool reuseIfValid) {
     if (reuseIfValid && m_reusableOffscreenCaptureValid) {
         return;
     }
+    // Only glass reads this scene copy, and solid windows draw no glass: skip
+    // the full-screen blit and its two barriers every frame.
+    if (Appearance::get().solidPanels) {
+        return;
+    }
 
     flush();
     ++m_frameCaptures;
@@ -818,6 +824,14 @@ void Renderer::drawOffscreen(int target, const Rect& dest, const Color& tint) {
 }
 
 void Renderer::drawOffscreenRounded(int target, const Rect& dest, float radius, const Color& tint) {
+    // Solid windows: the frosted capture becomes the player's flat colour, so
+    // the panel reads no texture at all.
+    if (Appearance::get().solidPanels) {
+        const Color& pc = Appearance::get().panelColor;
+        drawRoundedRect(dest, pc.withAlpha(pc.a * tint.a), radius);
+        return;
+    }
+    radius = Appearance::get().radius(radius);
     if (GpuDevice::offscreenIsOverlay(target) && !m_gpu.overlayOffscreenReady())
         return;
     if (target < 0 || target >= GpuDevice::NUM_OFFSCREEN) return;
@@ -843,12 +857,26 @@ void Renderer::drawOffscreenRounded(int target, const Rect& dest, float radius, 
 
 void Renderer::drawLiquidGlass(int target, const Rect& panelRect, float radius,
                                const Color& tint, float opacity, float shade) {
-    if (opacity <= 0.01f || target < 0 || target >= GpuDevice::NUM_OFFSCREEN) return;
+    if (opacity <= 0.01f) return;
+    // Solid windows: one flat fill instead of the refraction shader. No
+    // backdrop is sampled, so an opaque panel is the cheapest draw there is.
+    if (Appearance::get().solidPanels) {
+        const Color& pc = Appearance::get().panelColor;
+        drawRoundedRect(panelRect, pc.withAlpha(pc.a * opacity), radius);
+        return;
+    }
+    if (target < 0 || target >= GpuDevice::NUM_OFFSCREEN) return;
     if (GpuDevice::offscreenIsOverlay(target) && !m_gpu.overlayOffscreenReady())
         return;
     if (!m_gpu.offscreenReady()) {
         drawRoundedRect(panelRect, tint.withAlpha(tint.a * opacity), radius);
         return;
+    }
+    {
+        const float scaled = Appearance::get().radius(radius);
+        // Below half a pixel the shader switches to its superellipse, which is
+        // rounded; a square request keeps a token radius so the box stays square.
+        radius = (radius > 0.f && scaled < 0.51f) ? 0.51f : scaled;
     }
 
     useShader(ShaderProgram::LiquidGlass);
@@ -1151,6 +1179,7 @@ void Renderer::drawGradientRect(const Rect& r, const Color& top, const Color& bo
 }
 
 void Renderer::drawRoundedRect(const Rect& r, const Color& c, float radius) {
+    radius = Appearance::get().radius(radius);
     if (radius <= 0.f) { drawRect(r, c); return; }
     bindTexture(-1);
     drawRoundedMasked(r, std::min(radius, std::min(r.width, r.height) * 0.5f),
@@ -1170,6 +1199,7 @@ void Renderer::drawRoundedRect(const Rect& r, const Color& c, float radius) {
 // One pixel of bleed outward keeps somewhere for the outer half of the
 // antialiasing ramp to land.
 void Renderer::drawRoundedRectOutline(const Rect& r, const Color& c, float radius, float t) {
+    radius = Appearance::get().radius(radius);
     if (radius <= 0.f) { drawRectOutline(r, c, t); return; }
     if (t <= 0.f || r.width <= 0.f || r.height <= 0.f) return;
 
@@ -1323,6 +1353,7 @@ void Renderer::drawRoundedMasked(const Rect& dest, float radius, const Color& c,
 
 void Renderer::drawTextureRounded(const Texture* tex, const Rect& dest, float radius, const Color& tint) {
     if (!tex) { return; }
+    radius = Appearance::get().radius(radius);
     if (radius <= 0) { drawTexture(tex, dest, tint); return; }
     bindTexture(tex->descriptorSlot());
     drawRoundedMasked(dest, std::min(radius, std::min(dest.width, dest.height) * 0.5f),
@@ -1338,6 +1369,7 @@ void Renderer::drawTextureRoundedSub(const Texture* tex, const Rect& src,
     const float tw = (float)tex->width(), th = (float)tex->height();
     if (tw <= 0.f || th <= 0.f) return;
     const Rect uv{src.x / tw, src.y / th, src.width / tw, src.height / th};
+    radius = Appearance::get().radius(radius);
     bindTexture(tex->descriptorSlot());
     if (radius <= 0.f) {
         addQuad(dest.x, dest.y, dest.right(), dest.bottom(),

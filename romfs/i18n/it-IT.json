@@ -1157,7 +1157,8 @@
     },
     "options": {
       "auto_theme": "Tema automatico",
-      "auto_theme_desc": "Alterna da solo tra un tema diurno e uno notturno."
+      "auto_theme_desc": "Alterna da solo tra un tema diurno e uno notturno.",
+      "side_section": "Pulsanti laterali e icone"
     },
     "themes": {
       "title": "Temi",
@@ -1170,6 +1171,28 @@
     "icons": {
       "title": "Icone",
       "subtitle": "Pacchetti di icone per il menu, applicati subito."
+    },
+    "look": {
+      "hue": "Tonalità",
+      "saturation": "Saturazione",
+      "brightness": "Luminosità",
+      "opacity": "Opacità",
+      "hex": "Codice colore",
+      "hex_desc_alpha": "Scrivi un codice come #000000 o #1A1A2ECC (le ultime due cifre sono l'opacità).",
+      "hex_desc": "Scrivi un codice come #FFFFFF o #FFD54F.",
+      "hex_invalid": "Non è un codice colore. Usa 6 o 8 cifre, 0-9 e A-F.",
+      "windows": "Finestre",
+      "solid": "Colore pieno delle finestre",
+      "solid_desc": "Disattivato: il vetro del tema. Attivato: finestre, pulsanti laterali e pannelli usano un colore pieno. Un colore pieno evita la sfocatura e pesa meno sulla console; il nero opaco è adatto agli schermi OLED.",
+      "corners": "Angoli",
+      "roundness": "Arrotondamento degli angoli",
+      "roundness_desc": "Finestre, pulsanti, icone e cornice di selezione insieme. 0% rende tutti gli angoli squadrati.",
+      "text": "Testo",
+      "text_custom": "Colore del testo personalizzato",
+      "text_custom_desc": "Disattivato: i colori del tema. Attivato: titoli, etichette e suggerimenti usano il colore qui sotto, per un testo difficile da leggere su un tema.",
+      "reset": "Usa l'aspetto del tema",
+      "reset_desc": "Riporta le tre opzioni qui sopra al vetro, agli angoli e al testo del tema.",
+      "reset_button": "Ripristina"
     }
   },
   "dialog": {

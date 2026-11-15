@@ -3,6 +3,7 @@
 #include "ThemeCatalogClient.hpp"
 #include "YouTubeClient.hpp"
 #include "core/IconPack.hpp"
+#include "core/ColorHex.hpp"
 #include <atomic>
 #include <unordered_set>
 #include "settings/TabbedOverlayScreen.hpp"
@@ -88,9 +89,22 @@ public:
     void setSidebarOrderState(const std::vector<int>& order, const std::vector<std::string>& names) {
         m_sidebarOrder = order;
         m_sidebarNames = names;
-        rebuildOmniLaunchTab(); // that tab is built before this state arrives
+        rebuildOptionsTab(); // that tab is built before this state arrives
     }
-    void rebuildOmniLaunchTab();
+    void rebuildOptionsTab();
+
+    // OmniLaunch tab: the player's overrides of the theme's look, applied live
+    // to the whole Classic HOME (see nxui/Appearance.hpp).
+    struct AppearanceChoice {
+        bool solidPanels = false;
+        nxui::Color panelColor{0.f, 0.f, 0.f, 1.f};
+        float cornerRoundness = 1.f;
+        bool customTextColor = false;
+        nxui::Color textColor{1.f, 1.f, 1.f, 1.f};
+    };
+    using AppearanceCb = std::function<void(const AppearanceChoice&)>;
+    void onAppearanceChange(AppearanceCb cb) { m_appearanceCb = std::move(cb); }
+    void setAppearanceChoice(const AppearanceChoice& c);
     // The three appearance controls also live under Settings > Display. They
     // are repeated here because this is the screen someone is on while judging
     // how a theme looks, and walking back out to change them breaks that.
@@ -541,8 +555,16 @@ private:
     VoidCb m_rebuildControlCacheCb;
     VoidCb m_switchToCardsCb;
     SharedPrefs m_sharedPrefs;
-    bool m_sidebarOrderExpanded = false;   // OmniLaunch tab: slot rows shown
-    bool m_omniTabRebuildPending = false;  // rebuild the tab next frame (not inside a row callback)
+    bool m_sidebarOrderExpanded = false;   // Options tab: slot rows shown
+    bool m_omniTabRebuildPending = false;  // rebuild the tabs next frame (not inside a row callback)
+    AppearanceChoice m_appearance;
+    // Hue kept apart from the RGB colour so it survives a pass through grey.
+    colorhex::Hsva m_panelHsva{0.f, 0.f, 0.f, 1.f};
+    colorhex::Hsva m_textHsva{0.f, 0.f, 1.f, 1.f};
+    AppearanceCb m_appearanceCb;
+    void publishAppearance();
+    // Rewrites the hex shown on the colour rows without rebuilding them.
+    void refreshAppearanceHexRows();
     BoolCb m_askUserCb, m_lockScreenCb, m_lockMusicCb, m_mtpCb, m_repeatCb;
     VoidCb m_lockNowCb, m_lockPasswordSetCb, m_lockPasswordRemoveCb;
     std::function<void()> m_releaseNotesCb;

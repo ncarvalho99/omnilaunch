@@ -204,6 +204,12 @@ bool AppConfig::load() {
     readJsonOpt(j, "clockUse12Hour", clockUse12Hour);
     readJsonOpt(j, "backgroundBlur", backgroundBlur);
     readJsonOpt(j, "glassSharpness", glassSharpness);
+    readJsonOpt(j, "solidPanels", solidPanels);
+    readJsonOpt(j, "panelColor", panelColor);
+    readJsonOpt(j, "cornerRoundness", cornerRoundness);
+    cornerRoundness = std::clamp(cornerRoundness, 0.f, 1.f);
+    readJsonOpt(j, "customTextColor", customTextColor);
+    readJsonOpt(j, "textColor", textColor);
     readJsonOpt(j, "backgroundSpeed", backgroundSpeed);
     readJsonOpt(j, "backgroundSpeedChosen", backgroundSpeedChosen);
     readJsonOpt(j, "accessibilityEnabled", accessibilityEnabled);
@@ -458,6 +464,11 @@ bool AppConfig::save() const {
     j["clockUse12Hour"] = clockUse12Hour;
     j["backgroundBlur"] = backgroundBlur;
     j["glassSharpness"] = glassSharpness;
+    j["solidPanels"] = solidPanels;
+    j["panelColor"] = panelColor;
+    j["cornerRoundness"] = cornerRoundness;
+    j["customTextColor"] = customTextColor;
+    j["textColor"] = textColor;
     j["backgroundSpeed"] = backgroundSpeed;
     j["backgroundSpeedChosen"] = backgroundSpeedChosen;
     j["accessibilityEnabled"] = accessibilityEnabled;

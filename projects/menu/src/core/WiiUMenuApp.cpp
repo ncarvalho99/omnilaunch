@@ -13,6 +13,7 @@
 #include "themeshop/ThemeHttp.hpp"
 #include <nxui/core/Animation.hpp>
 #include <nxui/core/I18n.hpp>
+#include <nxui/Appearance.hpp>
 #include "DebugLog.hpp"
 
 // Definido em main.cpp: quanto heap a escada conseguiu no arranque.
@@ -703,6 +704,7 @@ bool WiiUMenuApp::onCreate() {
         m_config.save();
     }
     applyGlassSharpness(m_config.glassSharpness);
+    applyAppearanceOverrides(false);
     loadMenuLayout();
     // The menu is recreated on every return from a game, so this is also the
     // moment the session just played has to reach the grid. The first frame
@@ -888,6 +890,8 @@ void WiiUMenuApp::quiesceWritersForPowerAction() {
 
 void WiiUMenuApp::onDestroy() {
     m_homeCore.setFrontendQuiesce(nullptr);
+    // The look overrides are Classic's; Cards draws with its own glass.
+    nxui::Appearance::get().reset();
 #ifdef SWITCHU_MENU
     // The trace belongs to HomeCore: it stamps the HTTP/Bluetooth teardown in
     // the Services phase and sends MenuClosing in ProcessExit.
@@ -6269,6 +6273,7 @@ void WiiUMenuApp::buildGrid() {
 
     m_effectivePreset = buildEffectiveThemePreset();
     m_theme = m_effectivePreset.toTheme();
+    overrideThemeText();
 
     m_background = std::make_shared<WaraWaraBackground>();
     m_background->setRect({0, 0, 1280, 720});
@@ -7634,6 +7639,11 @@ void WiiUMenuApp::onUpdate(float dt) {
         m_switchWaitRelease = false;
     if (m_switchFadeIn > 0.f)
         m_switchFadeIn = std::max(0.f, m_switchFadeIn - dt / 0.25f);
+    if (m_appearanceRecolorPending) {
+        // Requested by a Theme Shop > OmniLaunch row (see onAppearanceChange).
+        m_appearanceRecolorPending = false;
+        applyAppearanceOverrides(true);
+    }
     syncSteamGridDbVisibility();
     logControllerState(dt);
     m_homeCore.discord().update(m_homeCore);

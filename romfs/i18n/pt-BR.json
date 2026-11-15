@@ -1157,7 +1157,8 @@
     },
     "options": {
       "auto_theme": "Tema automático",
-      "auto_theme_desc": "Alterna sozinho entre um tema de dia e um de noite."
+      "auto_theme_desc": "Alterna sozinho entre um tema de dia e um de noite.",
+      "side_section": "Botões laterais e ícones"
     },
     "themes": {
       "title": "Temas",
@@ -1170,6 +1171,28 @@
     "icons": {
       "title": "Ícones",
       "subtitle": "Pacotes de ícones para o menu, aplicados na hora."
+    },
+    "look": {
+      "hue": "Matiz",
+      "saturation": "Saturação",
+      "brightness": "Brilho",
+      "opacity": "Opacidade",
+      "hex": "Código da cor",
+      "hex_desc_alpha": "Digite um código como #000000 ou #1A1A2ECC (os dois últimos dígitos são a opacidade).",
+      "hex_desc": "Digite um código como #FFFFFF ou #FFD54F.",
+      "hex_invalid": "Isso não é um código de cor. Use 6 ou 8 dígitos, 0-9 e A-F.",
+      "windows": "Janelas",
+      "solid": "Cor sólida nas janelas",
+      "solid_desc": "Desligado: o vidro do tema. Ligado: janelas, botões laterais e painéis usam uma cor lisa. A cor sólida dispensa o desfoque e pesa menos no console; preto opaco combina com telas OLED.",
+      "corners": "Cantos",
+      "roundness": "Arredondamento dos cantos",
+      "roundness_desc": "Janelas, botões, ícones e a moldura de seleção juntos. 0% deixa todos os cantos retos.",
+      "text": "Texto",
+      "text_custom": "Cor do texto personalizada",
+      "text_custom_desc": "Desligado: as cores do tema. Ligado: títulos, rótulos e dicas usam a cor abaixo, para texto difícil de ler sobre um tema.",
+      "reset": "Usar o visual do tema",
+      "reset_desc": "Volta as três opções acima para o vidro, os cantos e o texto do próprio tema.",
+      "reset_button": "Restaurar"
     }
   },
   "dialog": {

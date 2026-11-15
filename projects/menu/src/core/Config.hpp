@@ -151,6 +151,18 @@ struct AppConfig {
     // half-resolution look this replaced, and is the default for that reason.
     float glassSharpness = 0.4f;
 
+    // Classic appearance overrides (Theme Shop > OmniLaunch). Off by default,
+    // so a theme looks exactly as its author made it until the player asks.
+    // solidPanels swaps every glass window for one flat panelColor fill, which
+    // skips the scene capture and blur the glass needs. Colours are "#RRGGBBAA".
+    bool        solidPanels = false;
+    std::string panelColor = "#000000FF";
+    // 1 keeps every corner at its designed radius, 0 makes them square.
+    float       cornerRoundness = 1.f;
+    // Issue 6: text that is hard to read over a theme's glass.
+    bool        customTextColor = false;
+    std::string textColor = "#FFFFFFFF";
+
     // Pace of the drifting shapes, as a slider position: 0 stops them, 0.5 is
     // the speed the theme asked for, 1 doubles it. Below centre by default --
     // the theme's own pace read as restless behind a menu people sit in.

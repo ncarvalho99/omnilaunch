@@ -1157,7 +1157,8 @@
     },
     "options": {
       "auto_theme": "Thème automatique",
-      "auto_theme_desc": "Alterne seul entre un thème de jour et de nuit."
+      "auto_theme_desc": "Alterne seul entre un thème de jour et de nuit.",
+      "side_section": "Boutons latéraux et icônes"
     },
     "themes": {
       "title": "Thèmes",
@@ -1170,6 +1171,28 @@
     "icons": {
       "title": "Icônes",
       "subtitle": "Packs d'icônes pour le menu, appliqués aussitôt."
+    },
+    "look": {
+      "hue": "Teinte",
+      "saturation": "Saturation",
+      "brightness": "Luminosité",
+      "opacity": "Opacité",
+      "hex": "Code couleur",
+      "hex_desc_alpha": "Saisissez un code comme #000000 ou #1A1A2ECC (les deux derniers chiffres sont l'opacité).",
+      "hex_desc": "Saisissez un code comme #FFFFFF ou #FFD54F.",
+      "hex_invalid": "Ce n'est pas un code couleur. Utilisez 6 ou 8 chiffres, 0-9 et A-F.",
+      "windows": "Fenêtres",
+      "solid": "Couleur unie des fenêtres",
+      "solid_desc": "Désactivé : le verre du thème. Activé : fenêtres, boutons latéraux et panneaux prennent une couleur unie. Une couleur unie évite le flou et sollicite moins la console ; le noir opaque convient aux écrans OLED.",
+      "corners": "Coins",
+      "roundness": "Arrondi des coins",
+      "roundness_desc": "Fenêtres, boutons, icônes et cadre de sélection ensemble. 0 % rend tous les coins carrés.",
+      "text": "Texte",
+      "text_custom": "Couleur de texte personnalisée",
+      "text_custom_desc": "Désactivé : les couleurs du thème. Activé : titres, libellés et aides utilisent la couleur ci-dessous, pour un texte difficile à lire sur un thème.",
+      "reset": "Utiliser l'apparence du thème",
+      "reset_desc": "Ramène les trois options ci-dessus au verre, aux coins et au texte du thème.",
+      "reset_button": "Réinitialiser"
     }
   },
   "dialog": {

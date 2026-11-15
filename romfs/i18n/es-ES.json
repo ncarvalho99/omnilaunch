@@ -1158,7 +1158,8 @@
     },
     "options": {
       "auto_theme": "Tema automático",
-      "auto_theme_desc": "Alterna automáticamente entre un tema de día y uno de noche."
+      "auto_theme_desc": "Alterna automáticamente entre un tema de día y uno de noche.",
+      "side_section": "Botones laterales e iconos"
     },
     "themes": {
       "title": "Temas",
@@ -1171,6 +1172,28 @@
     "icons": {
       "title": "Iconos",
       "subtitle": "Paquetes de iconos para el menú, aplicados al instante."
+    },
+    "look": {
+      "hue": "Tono",
+      "saturation": "Saturación",
+      "brightness": "Brillo",
+      "opacity": "Opacidad",
+      "hex": "Código de color",
+      "hex_desc_alpha": "Escribe un código como #000000 o #1A1A2ECC (los dos últimos dígitos son la opacidad).",
+      "hex_desc": "Escribe un código como #FFFFFF o #FFD54F.",
+      "hex_invalid": "Eso no es un código de color. Usa 6 u 8 dígitos, 0-9 y A-F.",
+      "windows": "Ventanas",
+      "solid": "Color sólido en las ventanas",
+      "solid_desc": "Desactivado: el cristal del tema. Activado: ventanas, botones laterales y paneles usan un color liso. El color sólido evita el desenfoque y consume menos; el negro opaco va bien con pantallas OLED.",
+      "corners": "Esquinas",
+      "roundness": "Redondeo de las esquinas",
+      "roundness_desc": "Ventanas, botones, iconos y el marco de selección a la vez. 0% deja todas las esquinas rectas.",
+      "text": "Texto",
+      "text_custom": "Color de texto personalizado",
+      "text_custom_desc": "Desactivado: los colores del tema. Activado: títulos, etiquetas y avisos usan el color de abajo, para texto difícil de leer sobre un tema.",
+      "reset": "Usar el aspecto del tema",
+      "reset_desc": "Devuelve las tres opciones de arriba al cristal, las esquinas y el texto del propio tema.",
+      "reset_button": "Restablecer"
     }
   },
   "dialog": {

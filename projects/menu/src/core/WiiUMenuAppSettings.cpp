@@ -15,6 +15,8 @@
 #include <switchu/self_uninstall.hpp>
 
 #include <nxui/core/I18n.hpp>
+#include <nxui/Appearance.hpp>
+#include "core/ColorHex.hpp"
 #include <fmt/format.h>
 
 #include <algorithm>
@@ -305,6 +307,34 @@ std::string defaultThemeRef() {
 void WiiUMenuApp::applyGlassSharpness(float sharpness) {
     const float s = std::clamp(sharpness, 0.f, 1.f);
     settings::debug::settingsGlassTuning().preBlurRadius = 9.f - s * 7.f;
+}
+
+void WiiUMenuApp::overrideThemeText() {
+    if (!m_config.customTextColor)
+        return;
+    const auto parsed = colorhex::parse(m_config.textColor);
+    if (!parsed)
+        return;
+    const nxui::Color c = parsed->withAlpha(1.f);
+    m_theme.textPrimary = c;
+    // Secondary text keeps the theme's habit of being a little quieter.
+    m_theme.textSecondary = c.withAlpha(0.78f);
+}
+
+void WiiUMenuApp::applyAppearanceOverrides(bool recolor) {
+    auto& look = nxui::Appearance::get();
+    look.solidPanels = m_config.solidPanels;
+    if (const auto parsed = colorhex::parse(m_config.panelColor))
+        look.panelColor = *parsed;
+    look.radiusScale = std::clamp(m_config.cornerRoundness, 0.f, 1.f);
+    if (!recolor)
+        return;
+    // Back to the theme's text, then the override (if any) on top.
+    const nxui::Theme base = m_effectivePreset.toTheme();
+    m_theme.textPrimary = base.textPrimary;
+    m_theme.textSecondary = base.textSecondary;
+    overrideThemeText();
+    applyTheme();
 }
 
 void WiiUMenuApp::createSettings() {
@@ -1501,6 +1531,35 @@ void WiiUMenuApp::createThemeShop() {
     m_themeShop->onGlassSharpnessChange([this](float v) {
         m_config.glassSharpness = v;
         applyGlassSharpness(v);
+    });
+    {
+        ThemeShopScreen::AppearanceChoice look;
+        look.solidPanels = m_config.solidPanels;
+        if (const auto c = colorhex::parse(m_config.panelColor)) look.panelColor = *c;
+        look.cornerRoundness = m_config.cornerRoundness;
+        look.customTextColor = m_config.customTextColor;
+        if (const auto c = colorhex::parse(m_config.textColor)) look.textColor = *c;
+        m_themeShop->setAppearanceChoice(look);
+    }
+    // Live: every change repaints at once. Saved with the config on close.
+    m_themeShop->onAppearanceChange([this](const ThemeShopScreen::AppearanceChoice& look) {
+        const bool textChanged = look.customTextColor != m_config.customTextColor
+            || (look.customTextColor
+                && colorhex::format(look.textColor, false) != colorhex::format(
+                       colorhex::parse(m_config.textColor).value_or(nxui::Color{}), false));
+        const bool panelsChanged = look.solidPanels != m_config.solidPanels;
+        m_config.solidPanels = look.solidPanels;
+        m_config.panelColor = colorhex::format(look.panelColor);
+        m_config.cornerRoundness = std::clamp(look.cornerRoundness, 0.f, 1.f);
+        m_config.customTextColor = look.customTextColor;
+        m_config.textColor = colorhex::format(look.textColor, false);
+        // The renderer part is a few fields and applies now. The widget recolour
+        // (and the shop's backdrop recapture when glass comes back: it was not
+        // blurred while solid) waits for onUpdate, outside this row callback,
+        // and runs at most once a frame while a slider is dragged.
+        applyAppearanceOverrides(false);
+        if (textChanged || panelsChanged)
+            m_appearanceRecolorPending = true;
     });
     m_themeShop->onBackgroundSpeedChange([this](float v) {
         m_config.backgroundSpeed = v;
@@ -3328,6 +3387,7 @@ void WiiUMenuApp::rebuildThemeFromColors() {
                   themeSourceName(m_effectivePreset.source),
                   safeLogPath(m_effectivePreset.installPath));
     m_theme = m_effectivePreset.toTheme();
+    overrideThemeText();
     DebugLog::log("[theme-apply] theme object rebuilt");
 
     DebugLog::log("[theme-apply] applyThemeResources start: preset=%s",

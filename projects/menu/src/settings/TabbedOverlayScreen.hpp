@@ -178,6 +178,10 @@ public:
         // so a long label ran straight off the panel.
         bool                     wrapLabel = false;
 
+        // Optional stable name, for code that has to find a row again after
+        // building it (never shown).
+        std::string              key;
+
         std::function<void(SettingItem&)> onChange;
 
         const std::string& effectiveButtonLabel() const {

@@ -152,6 +152,12 @@ private:
     void reflowHomeGrid();
     void buildGrid();
     void applyGlassSharpness(float sharpness);
+    // Theme Shop > OmniLaunch overrides (solid windows, corner roundness, text
+    // colour). Pushes the renderer-wide part to nxui::Appearance and writes the
+    // text colour over m_theme; `recolor` reruns applyTheme() for the widgets.
+    void applyAppearanceOverrides(bool recolor);
+    void overrideThemeText();
+    bool m_appearanceRecolorPending = false;
     // The + menu on a focused icon: what the stock home menu offers, minus
     // the entries that would need a daemon round trip to answer.
     // Cycles hand-made order, A-Z, most recently opened, most played. The hint

@@ -4,6 +4,7 @@
 #include "core/DebugLog.hpp"
 #include <nxui/core/I18n.hpp>
 #include <nxui/core/Renderer.hpp>
+#include <nxui/Appearance.hpp>
 #include <nxui/widgets/GlassBox.hpp>
 #include <nxui/widgets/Label.hpp>
 #include <switch.h>
@@ -567,7 +568,9 @@ void TabbedOverlayScreen::onRender(nxui::Renderer& ren) {
             // shows, and it has to look like the scene, not like the glass.
             ren.copyOffscreen(nxui::GpuDevice::OFF_SHARP_A,
                               nxui::GpuDevice::OFF_SCENE_FROZEN);
-            if (tuning.blurIterations > 0 && tuning.preBlurRadius > 0.001f) {
+            // Solid windows never sample the blurred copy: skip its passes.
+            if (tuning.blurIterations > 0 && tuning.preBlurRadius > 0.001f
+                && !nxui::Appearance::get().solidPanels) {
                 // Same spread as before, bought with fewer passes: the radius is
                 // kept at the renderer's 2.5 texel limit and the pass count is
                 // what applyBlur would have used, capped.
