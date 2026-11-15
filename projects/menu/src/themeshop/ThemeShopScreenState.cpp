@@ -51,9 +51,8 @@ void ThemeShopScreen::buildTabs() {
 // shop is created once, warmed up, then fed state on every open). Without
 // this the Options tab kept its empty first build: no sidebar rows.
 void ThemeShopScreen::rebuildOptionsTab() {
-    const std::string name = nxui::I18n::instance().tr("themeshop.tabs.options", "Options");
     for (std::size_t i = 0; i < m_tabs.size(); ++i) {
-        if (m_tabs[i].name != name)
+        if (m_tabs[i].key != "options")
             continue;
         m_tabs[i] = themeshop::tabs::OptionsTab::build(*this);
         if (i < m_cachedTabContentWidgets.size())

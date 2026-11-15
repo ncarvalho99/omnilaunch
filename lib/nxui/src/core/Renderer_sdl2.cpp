@@ -430,6 +430,7 @@ void Renderer::drawTextureSubRounded(const Texture* tex, const Rect& src,
     // SDL2 cannot do rounded texture clipping easily; fall back to a regular textured rect,
     // unless a rounded geometry path is explicitly used below.
     if (!tex) return;
+    radius = Appearance::get().radius(radius);
     if (radius <= 0.f) { drawTextureSub(tex, src, dest, tint); return; }
 
     flush();

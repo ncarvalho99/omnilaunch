@@ -16,6 +16,7 @@ ThemeShopScreen::Tab themeshop::tabs::OptionsTab::build(ThemeShopScreen& screen)
 
     Tab t;
     t.name = i18n.tr("themeshop.tabs.options", "Options");
+    t.key = "options";
 
     {
         SettingItem it;

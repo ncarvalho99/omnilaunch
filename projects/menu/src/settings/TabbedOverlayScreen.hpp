@@ -196,6 +196,8 @@ public:
 
     struct Tab {
         std::string              name;
+        // Optional stable id (names are translated). Never shown.
+        std::string              key;
         std::vector<SettingItem> items;
         std::function<void(Tab&, TabbedOverlayScreen&)> onUpdate;
     };
