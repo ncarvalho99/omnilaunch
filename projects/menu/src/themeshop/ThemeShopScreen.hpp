@@ -2,6 +2,8 @@
 
 #include "ThemeCatalogClient.hpp"
 #include "YouTubeClient.hpp"
+#include "core/IconPack.hpp"
+#include <atomic>
 #include <unordered_set>
 #include "settings/TabbedOverlayScreen.hpp"
 #include "core/AppLayoutMode.hpp"
@@ -19,6 +21,7 @@ namespace themeshop::tabs {
 class InstalledTab;
 class CommunityTab;
 class AnimatedTab;
+class IconsTab;
 class MusicTab;
 class SteamGridDbTab;
 class OptionsTab;
@@ -155,6 +158,9 @@ public:
     void onThemeShopDownload(StringCb cb) { m_themeShopDownloadCb = std::move(cb); }
     void onThemeShopDownloadInstall(StringCb cb) { m_themeShopDownloadInstallCb = std::move(cb); }
     void onNetConnectRequest(VoidCb cb)  { m_netConnectCb = std::move(cb); }
+    // Icon store: the app switches the active pack ("" = built-in icons) and
+    // reloads every icon texture; the shop does the download and the removal.
+    void onIconPackApply(StringCb cb)    { m_iconPackApplyCb = std::move(cb); }
     // Recarrega a grade: relê os títulos instalados e descarta nomes e ícones
     // em cache. É a saída para um atalho cujo id foi reaproveitado, que não
     // parece novo para nenhuma verificação automática.
@@ -292,6 +298,7 @@ private:
     friend class themeshop::tabs::InstalledTab;
     friend class themeshop::tabs::CommunityTab;
     friend class themeshop::tabs::AnimatedTab;
+    friend class themeshop::tabs::IconsTab;
     friend class themeshop::tabs::MusicTab;
     friend class themeshop::tabs::OptionsTab;
     friend class themeshop::tabs::UpdateTab;
@@ -354,8 +361,33 @@ private:
 
     bool pollCommunityCatalog();
     void syncCommunityCatalog(const ThemeCatalogClient::Snapshot& snapshot);
+    // Tab layout: 0 Installed, 1 Themes (animated / static), 2 Icons, 3 Music.
+    // The Themes and Icons tabs both draw the catalogue grid from
+    // m_communityEntries; isCommunityTab() is true for both.
     bool isCommunityTab() const;
+    bool isThemesTab() const;
     bool isAnimatedTab() const;
+    bool isIconTab() const;
+    // Header buttons of the open tab, left to right.
+    enum class HeaderAction { ShowAnimated, ShowStatic, Refresh, Search };
+    std::vector<HeaderAction> headerActions() const;
+    HeaderAction headerActionAt(int index) const;
+    int headerButtonCount() const { return (int)headerActions().size(); }
+    void runHeaderAction(HeaderAction action);
+    void setThemeCatalogAnimated(bool animated);
+    const ThemeTransferState& catalogLoadState() const;
+    const ThemeTransferState& activeTransferState() const;
+
+    // Icon store.
+    void refreshIconCatalog();
+    void pollIconStore();
+    void rescanInstalledIconPacks();
+    void rebuildIconEntries();
+    const iconpack::Installed* installedIconPack(const std::string& id) const;
+    bool iconPackActive(const ThemeCatalogClient::Entry& entry) const;
+    void startIconInstall(const std::string& id, bool apply);
+    void startIconRemove(const std::string& id);
+    std::string iconCatalogueTotals() const;
     // One line summarising the open tab's whole catalogue: how many themes it
     // has, and what they cost to download and to keep.
     std::string communityCatalogueTotals() const;
@@ -437,6 +469,46 @@ private:
     StringCb m_themeShopDownloadCb;
     StringCb m_themeShopDownloadInstallCb;
     VoidCb m_netConnectCb;
+    StringCb m_iconPackApplyCb;
+
+    // Themes tab: which of the two catalogues it shows.
+    bool m_themeCatalogAnimated = true;
+    // Selection and page of each catalogue tab (Themes, Icons), saved when one
+    // is left and restored when it is opened again: both draw through
+    // m_communitySelectedId / m_communityScrollRow.
+    std::string m_catalogSelectedId[2];
+    int m_catalogScrollRow[2] = {0, 0};
+
+    struct IconStoreShared {
+        std::mutex mutex;
+        // catalogue
+        bool catalogDone = false;
+        bool catalogOk = false;
+        std::string catalogError;
+        std::vector<ThemeCatalogClient::Entry> catalog;
+        // installed packs
+        bool scanDone = false;
+        std::vector<iconpack::Installed> installed;
+        // install / remove
+        bool opRunning = false;
+        bool opDone = false;
+        bool opOk = false;
+        bool opApply = false;
+        bool opRemove = false;
+        std::string opId;
+        std::string opLabel;
+        float opProgress = -1.f;
+        std::atomic<bool> cancel{false};
+    };
+    std::shared_ptr<IconStoreShared> m_iconShared = std::make_shared<IconStoreShared>();
+    std::vector<ThemeCatalogClient::Entry> m_iconCatalog;    // from icons.json
+    std::vector<ThemeCatalogClient::Entry> m_allIconEntries; // catalogue + built-in + local-only
+    std::vector<iconpack::Installed> m_installedIconPacks;
+    ThemeTransferState m_iconCatalogState;
+    ThemeTransferState m_iconTransferState;
+    std::string m_iconTransferId;
+    bool m_iconCatalogRequested = false;
+    bool m_iconScanRequested = false;
 
     bool m_musicEnabled = true;
     bool m_themeMusicEnabled = true;

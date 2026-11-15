@@ -282,4 +282,5 @@ private:
 
     nxui::Texture m_icons[4];
     bool m_iconTried[4] = {};
+    unsigned m_iconGen = 0;
 };

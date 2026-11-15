@@ -1,4 +1,5 @@
 #include "widgets/SocialScreen.hpp"
+#include "core/IconPack.hpp"
 #include "core/BackgroundThread.hpp"
 #include "core/ButtonGlyph.hpp"
 #include "core/DebugLog.hpp"
@@ -1437,9 +1438,14 @@ nxui::Rect SocialScreen::detailRect() const {
 const nxui::Texture* SocialScreen::icon(int i) {
     static const char* const kFiles[kTiles] = {"mii_editor.png", "friends.png", nullptr, "discord.png"};
     if (i < 0 || i >= kTiles || !kFiles[i] || !m_gpu || !m_ren) return nullptr;
+    if (m_iconGen != iconpack::generation()) { // icon pack changed: load again
+        m_iconGen = iconpack::generation();
+        for (bool& tried : m_iconTried) tried = false;
+    }
     if (!m_iconTried[i]) {
         m_iconTried[i] = true;
-        m_icons[i].loadFromFile(*m_gpu, *m_ren, m_iconDir + "/" + kFiles[i], 128);
+        m_icons[i].loadFromFile(*m_gpu, *m_ren,
+                                iconpack::resolve(kFiles[i], m_iconDir + "/" + kFiles[i]), 128);
     }
     return m_icons[i].valid() ? &m_icons[i] : nullptr;
 }

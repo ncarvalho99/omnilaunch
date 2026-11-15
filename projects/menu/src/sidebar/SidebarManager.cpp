@@ -1,5 +1,6 @@
 #include "SidebarManager.hpp"
 #include "core/DebugLog.hpp"
+#include "core/IconPack.hpp"
 #include <nxui/core/I18n.hpp>
 #include <nxui/core/Input.hpp>
 #include <filesystem>
@@ -261,6 +262,17 @@ void SidebarManager::reloadAssets(nxui::GpuDevice& gpu, nxui::Renderer& ren,
                                   const std::string& customIconsBase) {
     if (m_leftButtons.empty() || m_rightButtons.empty())
         return;
+
+    // A theme that ships its own icons keeps them; otherwise the icon pack
+    // chosen in the icon store replaces the built-in set (static PNGs, so the
+    // built-in WebP animations are skipped, as for theme icons).
+    if (customIconsBase.empty()) {
+        const std::string packDir = iconpack::activeDir();
+        if (!packDir.empty()) {
+            reloadAssets(gpu, ren, assetsBase, packDir);
+            return;
+        }
+    }
 
     if (m_assetsLoaded
         && m_loadedAssetsBase == assetsBase

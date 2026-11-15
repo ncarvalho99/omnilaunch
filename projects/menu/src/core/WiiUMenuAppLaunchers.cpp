@@ -11,6 +11,7 @@
 // on the HOME pool; textures are uploaded here, on the main thread.
 
 #include "WiiUMenuApp.hpp"
+#include "core/IconPack.hpp"
 #include "DebugLog.hpp"
 #include "cards/CardsPages.hpp"
 #include "homebrew/HomebrewStore.hpp"
@@ -312,7 +313,7 @@ void WiiUMenuApp::openSystemLauncher() {
             const int tile = static_cast<int>(t.id);
             e.onActivate = [this, tile]() { openSystemApplet(tile); };
         }
-        const std::string iconPath = iconBase + t.icon;
+        const std::string iconPath = iconpack::resolve(t.icon, iconBase + t.icon);
         e.lazyImage = [this, iconPath]() -> std::shared_ptr<nxui::Texture> {
             auto tex = std::make_shared<nxui::Texture>();
             if (tex->loadFromFile(app().gpu(), app().renderer(), iconPath, 256))

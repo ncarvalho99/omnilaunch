@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 #include <nxui/widgets/GlassWidget.hpp>
 #include <nxui/core/Renderer.hpp>
 #include <nxui/core/Texture.hpp>
@@ -51,6 +53,7 @@ private:
     std::function<void()> m_onActivateCb;
     nxui::Texture m_iconTex;
     bool m_iconLoaded = false;
+    std::uint32_t m_iconGen = 0;
     bool m_metroStyle = false;
     nxui::Texture m_metroMusicTex;
     bool m_metroMusicLoaded = false;

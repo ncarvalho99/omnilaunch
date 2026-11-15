@@ -983,7 +983,9 @@
       "steamgriddb": "SteamGridDB",
       "options": "Опции",
       "update": "Обновление",
-      "uninstall": "Удаление"
+      "uninstall": "Удаление",
+      "themes": "Темы",
+      "icons": "Значки"
     },
     "music": {
       "title": "Музыка и саундтреки",
@@ -1156,6 +1158,18 @@
     "options": {
       "auto_theme": "Автотема",
       "auto_theme_desc": "Сама переключает дневную и ночную темы."
+    },
+    "themes": {
+      "title": "Темы",
+      "animated": "Анимир.",
+      "static": "Статичные"
+    },
+    "static": {
+      "subtitle": "Статичные обои от сообщества."
+    },
+    "icons": {
+      "title": "Значки",
+      "subtitle": "Наборы значков для меню, применяются сразу."
     }
   },
   "dialog": {
@@ -1826,5 +1840,28 @@
   },
   "browser": {
     "close_suspended": "Сначала закройте приостановленную программу."
+  },
+  "iconstore": {
+    "loading": "Загрузка наборов значков...",
+    "downloading": "Загрузка значков",
+    "unpacking": "Установка значков",
+    "removing": "Удаление значков",
+    "installed_ok": "Набор значков установлен.",
+    "install_failed": "Не удалось установить набор значков.",
+    "cancelled": "Загрузка отменена.",
+    "removed": "Набор значков удалён.",
+    "remove_failed": "Не удалось удалить набор значков.",
+    "applied": "Значки применены.",
+    "apply": "Применить",
+    "remove": "Удалить",
+    "in_use": "Используется",
+    "builtin": "Встроенный",
+    "default_name": "OmniLaunch (стандарт)",
+    "builtin_desc": "Значки, входящие в OmniLaunch.",
+    "builtin_size": "Загрузка не нужна.",
+    "icons_count": "значков",
+    "pack_one": "набор",
+    "pack_many": "наборов",
+    "installed_count": "установлено"
   }
 }

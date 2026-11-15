@@ -983,7 +983,9 @@
       "steamgriddb": "SteamGridDB",
       "options": "Options",
       "update": "Update",
-      "uninstall": "Uninstall"
+      "uninstall": "Uninstall",
+      "themes": "Themes",
+      "icons": "Icons"
     },
     "music": {
       "title": "Music & Soundtracks",
@@ -1156,6 +1158,18 @@
     "options": {
       "auto_theme": "Automatic theme",
       "auto_theme_desc": "Switches between a day and a night theme by itself."
+    },
+    "themes": {
+      "title": "Themes",
+      "animated": "Animated",
+      "static": "Static"
+    },
+    "static": {
+      "subtitle": "Still wallpapers made by the community."
+    },
+    "icons": {
+      "title": "Icons",
+      "subtitle": "Icon packs for the menu, applied instantly."
     }
   },
   "dialog": {
@@ -1826,5 +1840,28 @@
   },
   "browser": {
     "close_suspended": "Close the suspended software first."
+  },
+  "iconstore": {
+    "loading": "Loading icon packs...",
+    "downloading": "Downloading icons",
+    "unpacking": "Installing icons",
+    "removing": "Removing icons",
+    "installed_ok": "Icon pack installed.",
+    "install_failed": "The icon pack could not be installed.",
+    "cancelled": "Download cancelled.",
+    "removed": "Icon pack removed.",
+    "remove_failed": "The icon pack could not be removed.",
+    "applied": "Icons applied.",
+    "apply": "Apply Icons",
+    "remove": "Remove Icons",
+    "in_use": "In use",
+    "builtin": "Built-in",
+    "default_name": "OmniLaunch (built-in)",
+    "builtin_desc": "The icons that come with OmniLaunch.",
+    "builtin_size": "Nothing to download.",
+    "icons_count": "icons",
+    "pack_one": "pack",
+    "pack_many": "packs",
+    "installed_count": "installed"
   }
 }

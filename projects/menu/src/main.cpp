@@ -1,5 +1,6 @@
 
 #include "core/WiiUMenuApp.hpp"
+#include "core/IconPack.hpp"
 #include "core/DebugLog.hpp"
 #include "core/Config.hpp"
 #include "core/NsService.hpp"
@@ -393,6 +394,7 @@ int main(int argc, char* argv[]) {
         nxui::Application app;
         homeCore.setRequestExit([&app] { app.requestExit(); });
         homeCore.config().load();
+        iconpack::setActive(homeCore.config().iconPack);
         app.setBeforeGpuShutdown([&homeCore] {
             homeCore.runShutdownPhase(home::ShutdownPhase::GpuResources);
         });

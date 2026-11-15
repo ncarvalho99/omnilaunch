@@ -1,4 +1,5 @@
 #include "WiiUMenuApp.hpp"
+#include "core/IconPack.hpp"
 #include "news/NewsStore.hpp"
 #include "video/VideoPlayer.hpp"
 #include "themeshop/ThemePackageInstaller.hpp"
@@ -1841,6 +1842,9 @@ void WiiUMenuApp::createThemeShop() {
 
         deletePreset(presetId);
     });
+    m_themeShop->onIconPackApply([this](const std::string& packId) {
+        applyIconPack(packId);
+    });
     m_themeShop->onThemeShopDownload([queueThemeTransfer](const std::string& themeId) {
         queueThemeTransfer(themeId, false);
     });
@@ -2672,6 +2676,31 @@ void WiiUMenuApp::applyThemeMusic(const std::vector<std::string>& tracks) {
     reloadMusicTracks();
 }
 
+// Live switch to another icon pack ("" = the built-in icons): every texture
+// that came from romfs:/icons is loaded again from the new pack. Widgets that
+// load their own icon (battery, bell, media button, plaza) notice the new
+// iconpack::generation() on their next frame.
+void WiiUMenuApp::applyIconPack(const std::string& packId) {
+    m_config.iconPack = packId;
+    m_config.save();
+    iconpack::setActive(packId);
+    DebugLog::log("[icon-pack] apply '%s' -> active '%s'", packId.c_str(), iconpack::activeId().c_str());
+
+    // Sidebar: the theme's own icons still win (see SidebarManager::reloadAssets).
+    m_sidebar.invalidateAssetsCache();
+    const std::string customIconsBase = resolveThemeAssetPath(m_effectivePreset, m_effectivePreset.icons.basePath);
+    m_sidebar.reloadAssets(app().gpu(), app().renderer(), SD_ASSETS, customIconsBase);
+
+    // Page arrows, battery widgets, game card, XMB tiles.
+    loadStaticTextures();
+    // A theme with its own game card keeps it.
+    if (!customIconsBase.empty()) {
+        const std::string themeCard = joinPath(customIconsBase, "gamecard.png");
+        if (pathExists(themeCard) && m_gameCardTex.loadFromFile(app().gpu(), app().renderer(), themeCard))
+            m_loadedGameCardPath = themeCard;
+    }
+}
+
 void WiiUMenuApp::applyAutoThemeConfig() {
     using switchu::services::AutoThemeMode;
     using switchu::services::AutoThemeSettings;
@@ -2923,7 +2952,7 @@ void WiiUMenuApp::applyThemeResources(const ThemePreset& preset) {
     const std::string desiredSmallFontPath = smallFontExists ? smallFontPath : fallbackFontPath;
     const bool smallFontNeedsReload = forceResourceReload || m_loadedSmallFontPath != desiredSmallFontPath;
 
-    const std::string defaultGameCardPath = std::string(SD_ASSETS) + "/icons/gamecard.png";
+    const std::string defaultGameCardPath = iconpack::resolve("gamecard.png", std::string(SD_ASSETS) + "/icons/gamecard.png");
     const std::string gameCardPath = !themeIconsBase.empty() ? joinPath(themeIconsBase, "gamecard.png") : std::string();
     const bool gameCardExists = !gameCardPath.empty() && pathExists(gameCardPath);
     const std::string desiredGameCardPath = gameCardExists ? gameCardPath : defaultGameCardPath;

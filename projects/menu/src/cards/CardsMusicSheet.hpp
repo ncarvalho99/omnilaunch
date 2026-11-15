@@ -62,6 +62,8 @@ private:
     void pollThemeScan();
     void cycleSourceMode(AppConfig& config);
     std::vector<TrackInfo> listTracks(const home::HomeAudio& service) const;
+    std::vector<int> homeQueueRows(const home::HomeAudio& service) const;
+    static bool isThemeSong(const home::HomeAudio& service, const std::string& path);
     int playingRow(const home::HomeAudio& service) const;
     void sfx(Sfx s) const { if (m_onSfx) m_onSfx(s); }
 

@@ -983,7 +983,9 @@
       "steamgriddb": "SteamGridDB",
       "options": "Options",
       "update": "Mise à jour",
-      "uninstall": "Désinstaller"
+      "uninstall": "Désinstaller",
+      "themes": "Thèmes",
+      "icons": "Icônes"
     },
     "music": {
       "title": "Musique et bandes-son",
@@ -1156,6 +1158,18 @@
     "options": {
       "auto_theme": "Thème automatique",
       "auto_theme_desc": "Alterne seul entre un thème de jour et de nuit."
+    },
+    "themes": {
+      "title": "Thèmes",
+      "animated": "Animés",
+      "static": "Statiques"
+    },
+    "static": {
+      "subtitle": "Fonds fixes créés par la communauté."
+    },
+    "icons": {
+      "title": "Icônes",
+      "subtitle": "Packs d'icônes pour le menu, appliqués aussitôt."
     }
   },
   "dialog": {
@@ -1826,5 +1840,28 @@
   },
   "browser": {
     "close_suspended": "Fermez d'abord le logiciel suspendu."
+  },
+  "iconstore": {
+    "loading": "Chargement des packs d'icônes...",
+    "downloading": "Téléchargement des icônes",
+    "unpacking": "Installation des icônes",
+    "removing": "Suppression des icônes",
+    "installed_ok": "Pack d'icônes installé.",
+    "install_failed": "Impossible d'installer le pack d'icônes.",
+    "cancelled": "Téléchargement annulé.",
+    "removed": "Pack d'icônes supprimé.",
+    "remove_failed": "Impossible de supprimer le pack d'icônes.",
+    "applied": "Icônes appliquées.",
+    "apply": "Appliquer",
+    "remove": "Supprimer",
+    "in_use": "Utilisé",
+    "builtin": "Intégré",
+    "default_name": "OmniLaunch (par défaut)",
+    "builtin_desc": "Les icônes fournies avec OmniLaunch.",
+    "builtin_size": "Rien à télécharger.",
+    "icons_count": "icônes",
+    "pack_one": "pack",
+    "pack_many": "packs",
+    "installed_count": "installés"
   }
 }

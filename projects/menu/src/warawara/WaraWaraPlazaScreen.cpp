@@ -1,4 +1,5 @@
 #include "WaraWaraPlazaScreen.hpp"
+#include "core/IconPack.hpp"
 #include "WiiUPointerHandBytes.hpp"
 #include <cmath>
 #include <algorithm>
@@ -28,13 +29,8 @@ WaraWaraPlazaScreen::WaraWaraPlazaScreen() {
 
 void WaraWaraPlazaScreen::initGpuAssets(nxui::GpuDevice& gpu, nxui::Renderer& ren) {
     if (!m_handCursorTex.valid()) {
-        static constexpr const char* kSdIcon = "sdmc:/switch/OmniLaunch/icons/pointer_hand.png";
-        static constexpr const char* kRomfsIcon = "romfs:/icons/pointer_hand.png";
-        if (!m_handCursorTex.loadFromFile(gpu, ren, kSdIcon, 128)) {
-            if (!m_handCursorTex.loadFromFile(gpu, ren, kRomfsIcon, 128)) {
-                m_handCursorTex.loadFromMemory(gpu, ren, kWiiUPointerHandPng, sizeof(kWiiUPointerHandPng), 128);
-            }
-        }
+        if (!iconpack::loadInto(m_handCursorTex, ren, "pointer_hand.png", 128))
+            m_handCursorTex.loadFromMemory(gpu, ren, kWiiUPointerHandPng, sizeof(kWiiUPointerHandPng), 128);
     }
 }
 

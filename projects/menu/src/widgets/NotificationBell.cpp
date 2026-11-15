@@ -1,4 +1,5 @@
 #include "NotificationBell.hpp"
+#include "core/IconPack.hpp"
 
 #include <nxui/core/I18n.hpp>
 
@@ -46,10 +47,10 @@ void NotificationBell::onContentRender(nxui::Renderer& ren) {
     const float cx = r.x + r.width * 0.5f, top = r.y + (r.height - s) * 0.5f;
     const nxui::Color ink = m_theme ? m_theme->textPrimary.withAlpha(0.85f * a) : nxui::Color::white().withAlpha(0.85f * a);
 
-    if (!m_texLoaded) {
+    if (!m_texLoaded || m_iconGen != iconpack::generation()) {
         m_texLoaded = true;
-        if (!m_bellTex.loadFromFile(ren.gpu(), ren, "sdmc:/switch/OmniLaunch/icons/bell.png", 128))
-            m_bellTex.loadFromFile(ren.gpu(), ren, "romfs:/icons/bell.png", 128);
+        m_iconGen = iconpack::generation();
+        iconpack::loadInto(m_bellTex, ren, "bell.png", 128);
     }
     if (m_bellTex.valid()) {
         // Icon pack bell, slightly inset so the unread badge still sits on its shoulder.

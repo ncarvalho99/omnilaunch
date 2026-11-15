@@ -983,7 +983,9 @@
       "steamgriddb": "SteamGridDB",
       "options": "Opzioni",
       "update": "Aggiornamento",
-      "uninstall": "Disinstalla"
+      "uninstall": "Disinstalla",
+      "themes": "Temi",
+      "icons": "Icone"
     },
     "music": {
       "title": "Musica e colonne sonore",
@@ -1156,6 +1158,18 @@
     "options": {
       "auto_theme": "Tema automatico",
       "auto_theme_desc": "Alterna da solo tra un tema diurno e uno notturno."
+    },
+    "themes": {
+      "title": "Temi",
+      "animated": "Animati",
+      "static": "Statici"
+    },
+    "static": {
+      "subtitle": "Sfondi statici creati dalla comunità."
+    },
+    "icons": {
+      "title": "Icone",
+      "subtitle": "Pacchetti di icone per il menu, applicati subito."
     }
   },
   "dialog": {
@@ -1826,5 +1840,28 @@
   },
   "browser": {
     "close_suspended": "Chiudi prima il software sospeso."
+  },
+  "iconstore": {
+    "loading": "Caricamento pacchetti di icone...",
+    "downloading": "Download icone",
+    "unpacking": "Installazione icone",
+    "removing": "Rimozione icone",
+    "installed_ok": "Pacchetto di icone installato.",
+    "install_failed": "Impossibile installare il pacchetto di icone.",
+    "cancelled": "Download annullato.",
+    "removed": "Pacchetto di icone rimosso.",
+    "remove_failed": "Impossibile rimuovere il pacchetto di icone.",
+    "applied": "Icone applicate.",
+    "apply": "Applica icone",
+    "remove": "Rimuovi icone",
+    "in_use": "In uso",
+    "builtin": "Integrato",
+    "default_name": "OmniLaunch (predefinito)",
+    "builtin_desc": "Le icone incluse in OmniLaunch.",
+    "builtin_size": "Niente da scaricare.",
+    "icons_count": "icone",
+    "pack_one": "pacchetto",
+    "pack_many": "pacchetti",
+    "installed_count": "installati"
   }
 }

@@ -1,4 +1,6 @@
 #pragma once
+
+#include <cstdint>
 #include <nxui/widgets/GlassWidget.hpp>
 #include <nxui/core/Font.hpp>
 #include <nxui/core/Types.hpp>
@@ -29,4 +31,5 @@ private:
     nxui::Texture m_shellTex;
     nxui::Texture m_boltTex;
     bool m_texLoaded = false;
+    std::uint32_t m_iconGen = 0; // icon pack generation the textures came from
 };

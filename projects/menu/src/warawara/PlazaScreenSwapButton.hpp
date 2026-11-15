@@ -52,6 +52,7 @@ private:
     std::function<void()> m_onActivateCb;
     nxui::Texture m_uIconTex;
     bool m_uIconLoaded = false;
+    unsigned m_uIconGen = 0;
     bool m_metroStyle = false;
     nxui::Texture m_metroUIconTex;
     bool m_metroUIconLoaded = false;

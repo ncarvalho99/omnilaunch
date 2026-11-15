@@ -1,4 +1,5 @@
 #include "cards/CardsCatalog.hpp"
+#include "core/IconPack.hpp"
 #include "cards/CardsPages.hpp"
 #include "core/Config.hpp"
 #include "core/DebugLog.hpp"
@@ -87,7 +88,7 @@ void CardsCatalog::setPage(int page, const AppConfig& config) {
             c.app.title = config.customTitle(c.app.titleId, i18n.tr(t.key, t.fallback));
             c.app.kind = GridEntryKind::Application;
             c.app.userRequired = false;
-            c.iconFile = m_assetsRoot + "/icons/" + t.icon;
+            c.iconFile = iconpack::resolve(t.icon, m_assetsRoot + "/icons/" + t.icon);
             adopt(c);
             m_entries.push_back(std::move(c));
         }

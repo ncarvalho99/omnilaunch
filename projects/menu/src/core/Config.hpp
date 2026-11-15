@@ -37,6 +37,8 @@ struct AppConfig {
     // USB file transfer (MTP) while HOME is open; off releases the USB port.
     bool mtpEnabled = true;
     std::string soundPreset = "wiiu";
+    // Icon pack from the icon store (folder id under icon-packs); empty = built-in icons.
+    std::string iconPack;
     bool  defaultProfileEnabled = false;
     std::string defaultProfileUid;
     bool  tutorialCompleted = false;

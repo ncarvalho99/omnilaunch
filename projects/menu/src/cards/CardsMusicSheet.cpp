@@ -107,6 +107,13 @@ void CardsMusicSheet::open(home::HomeAudio& service, AppConfig& config, nxui::Th
         if (m_themeTracks.empty())
             m_themeTracks = service.audio.tracks(); // until the full scan lands
         setList(List::Themes);
+    } else if (isThemeSong(service, service.audio.currentTrackPath())) {
+        // The active theme's song is listed under Themes only.
+        if (m_themeTracks.empty())
+            for (const auto& t : service.audio.tracks())
+                if (isThemeSong(service, t.path))
+                    m_themeTracks.push_back(t); // until the full scan lands
+        setList(List::Themes);
     }
     m_row = std::max(0, playingRow(service));
     m_listScroll = -1.f; // snap to the playing song on the first frame
@@ -120,23 +127,57 @@ void CardsMusicSheet::close() {
         m_onClosed();
 }
 
+// The active theme's songs still play from the HOME queue (the order setting
+// decides where), but the owner wants them listed only under Themes: the
+// Playlist tab shows the songs the player downloaded (or the preset music).
+bool CardsMusicSheet::isThemeSong(const home::HomeAudio& service, const std::string& path) {
+    return std::find(service.themeMusicTracks.begin(), service.themeMusicTracks.end(), path)
+        != service.themeMusicTracks.end();
+}
+
+// Queue positions of the rows the Playlist tab shows, in order.
+std::vector<int> CardsMusicSheet::homeQueueRows(const home::HomeAudio& service) const {
+    // The HOME playlist as the player knows it: the queue itself while it
+    // plays, otherwise the list it was last built as.
+    const std::vector<TrackInfo> source = service.queue == home::HomeAudio::Queue::Home
+        ? service.audio.tracks() : service.homeTracks;
+    std::vector<int> rows;
+    rows.reserve(source.size());
+    for (std::size_t i = 0; i < source.size(); ++i)
+        if (!isThemeSong(service, source[i].path))
+            rows.push_back(static_cast<int>(i));
+    return rows;
+}
+
 std::vector<TrackInfo> CardsMusicSheet::listTracks(const home::HomeAudio& service) const {
     if (m_list == List::Themes)
         return m_themeTracks;
-    // The HOME playlist as the player knows it: the queue itself while it
-    // plays, otherwise the list it was last built as.
-    if (service.queue == home::HomeAudio::Queue::Home)
-        return service.audio.tracks();
-    return service.homeTracks;
+    const std::vector<TrackInfo> source = service.queue == home::HomeAudio::Queue::Home
+        ? service.audio.tracks() : service.homeTracks;
+    std::vector<TrackInfo> out;
+    for (int q : homeQueueRows(service))
+        if (q >= 0 && q < static_cast<int>(source.size()))
+            out.push_back(source[static_cast<std::size_t>(q)]);
+    return out;
 }
 
 int CardsMusicSheet::playingRow(const home::HomeAudio& service) const {
     const bool themesPlaying = service.queue == home::HomeAudio::Queue::Themes;
-    if ((m_list == List::Themes) != themesPlaying)
-        return -1;
-    if (m_list == List::Home)
-        return service.audio.currentTrackIndex();
     const std::string path = service.audio.currentTrackPath();
+    if (m_list == List::Home) {
+        if (themesPlaying)
+            return -1;
+        const int now = service.audio.currentTrackIndex();
+        const auto rows = homeQueueRows(service);
+        for (std::size_t i = 0; i < rows.size(); ++i)
+            if (rows[i] == now)
+                return static_cast<int>(i);
+        return -1;
+    }
+    // The theme list: its own queue, or the active theme's song playing from
+    // the HOME queue (it is listed here, not in the Playlist).
+    if (!themesPlaying && !isThemeSong(service, path))
+        return -1;
     for (std::size_t i = 0; i < m_themeTracks.size(); ++i)
         if (m_themeTracks[i].path == path)
             return static_cast<int>(i);
@@ -179,7 +220,9 @@ void CardsMusicSheet::playRow(int row, home::HomeAudio& service, AppConfig& conf
     if (m_list == List::Themes) {
         service.playThemeTrack(m_themeTracks, row);
     } else {
-        service.playHomeTrack(row, config);
+        const auto rows = homeQueueRows(service);
+        if (row >= 0 && row < static_cast<int>(rows.size()))
+            service.playHomeTrack(rows[static_cast<std::size_t>(row)], config);
     }
 }
 

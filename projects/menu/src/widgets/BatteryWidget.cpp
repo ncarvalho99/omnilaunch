@@ -1,4 +1,5 @@
 #include "BatteryWidget.hpp"
+#include "core/IconPack.hpp"
 #include "BatteryDrawing.hpp"
 #include <nxui/core/Renderer.hpp>
 #include <switch.h>
@@ -73,14 +74,14 @@ void BatteryWidget::onContentUpdate(float dt) {
 
 namespace {
 void loadBatteryIcon(nxui::Renderer& ren, nxui::Texture& tex, const char* name, int maxSide) {
-    if (!tex.loadFromFile(ren.gpu(), ren, std::string("sdmc:/switch/OmniLaunch/icons/") + name, maxSide))
-        tex.loadFromFile(ren.gpu(), ren, std::string("romfs:/icons/") + name, maxSide);
+    iconpack::loadInto(tex, ren, name, maxSide);
 }
 } // namespace
 
 void BatteryWidget::onContentRender(nxui::Renderer& ren) {
-    if (!m_texLoaded) {
+    if (!m_texLoaded || m_iconGen != iconpack::generation()) {
         m_texLoaded = true;
+        m_iconGen = iconpack::generation();
         loadBatteryIcon(ren, m_shellTex, "battery.png", 128);
         loadBatteryIcon(ren, m_boltTex, "battery_bolt.png", 64);
     }

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 #include <nxui/Theme.hpp>
 #include <nxui/core/Font.hpp>
 #include <nxui/core/Renderer.hpp>
@@ -32,4 +34,5 @@ private:
     int m_unread = 0;
     nxui::Texture m_bellTex; // icon pack bell; the drawn bell is the fallback
     bool m_texLoaded = false;
+    std::uint32_t m_iconGen = 0;
 };

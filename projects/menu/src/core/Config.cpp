@@ -131,6 +131,7 @@ bool AppConfig::load() {
     readJsonOpt(j, "uiLanguageOverride", uiLanguageOverride);
     readJsonOpt(j, "mtpEnabled", mtpEnabled);
     readJsonOpt(j, "soundPreset", soundPreset);
+    readJsonOpt(j, "iconPack", iconPack);
     readJsonOpt(j, "defaultProfileEnabled", defaultProfileEnabled);
     readJsonOpt(j, "defaultProfileUid", defaultProfileUid);
     readJsonOpt(j, "tutorialCompleted", tutorialCompleted);
@@ -363,6 +364,7 @@ bool AppConfig::save() const {
     }
     j["musicEnabled"] = (m_safe && !m_touchedMusic) ? m_savedMusic : musicEnabled;
     j["themeMusicEnabled"] = themeMusicEnabled;
+    j["iconPack"] = iconPack;
     j["customBgmEnabled"] = (m_safe && !m_touchedBgm) ? m_savedCustomBgm : customBgmEnabled;
     j["customBgmShuffle"] = customBgmShuffle;
     j["bgmRepeat"] = bgmRepeat;

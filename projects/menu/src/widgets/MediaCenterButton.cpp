@@ -1,4 +1,5 @@
 #include "MediaCenterButton.hpp"
+#include "core/IconPack.hpp"
 #include <nxui/core/Input.hpp>
 #include <cmath>
 #include <algorithm>
@@ -69,13 +70,10 @@ void MediaCenterButton::onRender(nxui::Renderer& ren) {
 
     ren.drawRoundedRectOutline(m_rect, borderCol, r, 1.2f);
 
-    if (!m_iconLoaded) {
+    if (!m_iconLoaded || m_iconGen != iconpack::generation()) {
         m_iconLoaded = true;
-        static constexpr const char* kSdIcon = "sdmc:/switch/OmniLaunch/icons/media_center.png";
-        static constexpr const char* kRomfsIcon = "romfs:/icons/media_center.png";
-        if (!m_iconTex.loadFromFile(ren.gpu(), ren, kSdIcon, 128)) {
-            m_iconTex.loadFromFile(ren.gpu(), ren, kRomfsIcon, 128);
-        }
+        m_iconGen = iconpack::generation();
+        iconpack::loadInto(m_iconTex, ren, "media_center.png", 128);
     }
 
     const float cx = m_rect.x + m_rect.width * 0.5f;

@@ -983,7 +983,9 @@
       "steamgriddb": "SteamGridDB",
       "options": "Optionen",
       "update": "Update",
-      "uninstall": "Deinstallieren"
+      "uninstall": "Deinstallieren",
+      "themes": "Designs",
+      "icons": "Symbole"
     },
     "music": {
       "title": "Musik & Soundtracks",
@@ -1156,6 +1158,18 @@
     "options": {
       "auto_theme": "Automatisches Theme",
       "auto_theme_desc": "Wechselt selbstständig zwischen Tag- und Nacht-Theme."
+    },
+    "themes": {
+      "title": "Designs",
+      "animated": "Animiert",
+      "static": "Statisch"
+    },
+    "static": {
+      "subtitle": "Standbilder aus der Community."
+    },
+    "icons": {
+      "title": "Symbole",
+      "subtitle": "Symbolpakete für das Menü, sofort angewendet."
     }
   },
   "dialog": {
@@ -1826,5 +1840,28 @@
   },
   "browser": {
     "close_suspended": "Schließe zuerst die pausierte Software."
+  },
+  "iconstore": {
+    "loading": "Symbolpakete werden geladen...",
+    "downloading": "Symbole werden geladen",
+    "unpacking": "Symbole werden installiert",
+    "removing": "Symbole werden entfernt",
+    "installed_ok": "Symbolpaket installiert.",
+    "install_failed": "Das Symbolpaket konnte nicht installiert werden.",
+    "cancelled": "Download abgebrochen.",
+    "removed": "Symbolpaket entfernt.",
+    "remove_failed": "Das Symbolpaket konnte nicht entfernt werden.",
+    "applied": "Symbole angewendet.",
+    "apply": "Symbole anwenden",
+    "remove": "Symbole entfernen",
+    "in_use": "Aktiv",
+    "builtin": "Integriert",
+    "default_name": "OmniLaunch (Standard)",
+    "builtin_desc": "Die Symbole, die OmniLaunch mitbringt.",
+    "builtin_size": "Kein Download nötig.",
+    "icons_count": "Symbole",
+    "pack_one": "Paket",
+    "pack_many": "Pakete",
+    "installed_count": "installiert"
   }
 }

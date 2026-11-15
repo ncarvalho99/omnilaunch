@@ -346,17 +346,24 @@ void ThemeShopScreen::applySearchFilter() {
     // One fetch feeds two tabs. Entries remember which index they came from,
     // so the split is a filter here rather than a second catalogue client and
     // a second download.
-    const bool wantAnimated = isAnimatedTab();
+    // The Icons tab draws the same grid from the icon store's list.
+    const bool wantAnimated = m_themeCatalogAnimated;
     m_communityEntries.clear();
-    m_communityEntries.reserve(m_allCommunityEntries.size());
-    for (const auto& entry : m_allCommunityEntries) {
-        const bool fromOurs =
-            (entry.catalogUrl == ThemeCatalogClient::kDefaultCatalogUrl ||
-             entry.catalogUrl == ThemeCatalogClient::kFallbackCatalogUrl);
-        if (fromOurs != wantAnimated)
-            continue;
-        if (matchesSearch(entry, needleLower))
-            m_communityEntries.push_back(entry);
+    if (isIconTab()) {
+        for (const auto& entry : m_allIconEntries)
+            if (matchesSearch(entry, needleLower))
+                m_communityEntries.push_back(entry);
+    } else {
+        m_communityEntries.reserve(m_allCommunityEntries.size());
+        for (const auto& entry : m_allCommunityEntries) {
+            const bool fromOurs =
+                (entry.catalogUrl == ThemeCatalogClient::kDefaultCatalogUrl ||
+                 entry.catalogUrl == ThemeCatalogClient::kFallbackCatalogUrl);
+            if (fromOurs != wantAnimated)
+                continue;
+            if (matchesSearch(entry, needleLower))
+                m_communityEntries.push_back(entry);
+        }
     }
 
     auto syncSelection = [](const auto& entries, std::string& selectedId) {

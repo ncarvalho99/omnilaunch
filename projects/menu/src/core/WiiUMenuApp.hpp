@@ -141,6 +141,7 @@ private:
     void loadStaticTextures();
     void ensureWaraWaraServices();
     void ensureXmbTextures();
+    void applyIconPack(const std::string& packId);
     void ensureMetroTextures();
     void ensureClockFont();
     void setupLockScreen();
@@ -753,6 +754,7 @@ private:
     nxui::Texture m_xmbNetworkTex;
     nxui::Texture m_xmbBrowserTex;
     nxui::Texture m_xmbHomebrewTex;
+    unsigned m_xmbIconGen = 0;
     nxui::Texture m_metroThemesTex;
     nxui::Texture m_metroControllersTex;
     nxui::Texture m_metroAlbumTex;

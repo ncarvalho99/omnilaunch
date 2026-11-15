@@ -11,8 +11,10 @@ void ThemeShopScreen::buildTabs() {
     // Os estaticos do PoloNX ficam logo depois.
     DebugLog::log("[themeshop]   AnimatedTab...");
     m_tabs.push_back(themeshop::tabs::AnimatedTab::build(*this));
-    DebugLog::log("[themeshop]   CommunityTab...");
-    m_tabs.push_back(themeshop::tabs::CommunityTab::build(*this));
+    // Static themes live inside the Themes tab now (its Animated / Static
+    // switch); the Icons store takes the slot the static tab had.
+    DebugLog::log("[themeshop]   IconsTab...");
+    m_tabs.push_back(themeshop::tabs::IconsTab::build(*this));
     DebugLog::log("[themeshop]   MusicTab...");
     m_tabs.push_back(themeshop::tabs::MusicTab::build(*this));
     DebugLog::log("[themeshop]   SteamGridDbTab...");

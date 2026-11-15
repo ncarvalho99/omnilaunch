@@ -19,6 +19,11 @@ public:
     static ThemeShopScreen::Tab build(ThemeShopScreen& screen);
 };
 
+class IconsTab {
+public:
+    static ThemeShopScreen::Tab build(ThemeShopScreen& screen);
+};
+
 class MusicTab {
 public:
     static ThemeShopScreen::Tab build(ThemeShopScreen& screen);

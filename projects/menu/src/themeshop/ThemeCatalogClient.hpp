@@ -45,6 +45,10 @@ public:
         std::vector<std::string> screenshots;
         std::vector<std::string> music;
         std::size_t catalogOrder = 0;
+        // Icon store only: the built-in icon set (nothing to download) and how
+        // many icons a pack carries.
+        bool builtin = false;
+        int files = 0;
         // Which index this came from. Entries carry relative paths, so once two
         // catalogues are merged the resolving base can no longer be a single
         // property of the client.

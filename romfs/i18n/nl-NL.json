@@ -983,7 +983,9 @@
       "steamgriddb": "SteamGridDB",
       "options": "Opties",
       "update": "Bijwerken",
-      "uninstall": "Verwijderen"
+      "uninstall": "Verwijderen",
+      "themes": "Thema's",
+      "icons": "Pictogrammen"
     },
     "music": {
       "title": "Muziek & soundtracks",
@@ -1156,6 +1158,18 @@
     "options": {
       "auto_theme": "Automatisch thema",
       "auto_theme_desc": "Wisselt zelf tussen een dag- en een nachtthema."
+    },
+    "themes": {
+      "title": "Thema's",
+      "animated": "Bewegend",
+      "static": "Statisch"
+    },
+    "static": {
+      "subtitle": "Stilstaande achtergronden van de community."
+    },
+    "icons": {
+      "title": "Pictogrammen",
+      "subtitle": "Pictogrampakketten voor het menu, direct toegepast."
     }
   },
   "dialog": {
@@ -1826,5 +1840,28 @@
   },
   "browser": {
     "close_suspended": "Sluit eerst de gepauzeerde software."
+  },
+  "iconstore": {
+    "loading": "Pictogrampakketten laden...",
+    "downloading": "Pictogrammen downloaden",
+    "unpacking": "Pictogrammen installeren",
+    "removing": "Pictogrammen verwijderen",
+    "installed_ok": "Pictogrampakket geïnstalleerd.",
+    "install_failed": "Het pictogrampakket kon niet worden geïnstalleerd.",
+    "cancelled": "Download geannuleerd.",
+    "removed": "Pictogrampakket verwijderd.",
+    "remove_failed": "Het pictogrampakket kon niet worden verwijderd.",
+    "applied": "Pictogrammen toegepast.",
+    "apply": "Toepassen",
+    "remove": "Verwijderen",
+    "in_use": "In gebruik",
+    "builtin": "Ingebouwd",
+    "default_name": "OmniLaunch (standaard)",
+    "builtin_desc": "De pictogrammen die bij OmniLaunch horen.",
+    "builtin_size": "Niets te downloaden.",
+    "icons_count": "pictogrammen",
+    "pack_one": "pakket",
+    "pack_many": "pakketten",
+    "installed_count": "geïnstalleerd"
   }
 }

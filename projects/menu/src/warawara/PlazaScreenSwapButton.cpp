@@ -1,4 +1,5 @@
 #include "PlazaScreenSwapButton.hpp"
+#include "core/IconPack.hpp"
 #include <nxui/core/Input.hpp>
 #include <cmath>
 #include <algorithm>
@@ -51,13 +52,10 @@ void PlazaScreenSwapButton::onRender(nxui::Renderer& ren) {
         return;
     }
 
-    if (!m_uIconLoaded) {
+    if (!m_uIconLoaded || m_uIconGen != iconpack::generation()) {
         m_uIconLoaded = true;
-        static constexpr const char* kSdIcon = "sdmc:/switch/OmniLaunch/icons/warawara_u.png";
-        static constexpr const char* kRomfsIcon = "romfs:/icons/warawara_u.png";
-        if (!m_uIconTex.loadFromFile(ren.gpu(), ren, kSdIcon, 128)) {
-            m_uIconTex.loadFromFile(ren.gpu(), ren, kRomfsIcon, 128);
-        }
+        m_uIconGen = iconpack::generation();
+        iconpack::loadInto(m_uIconTex, ren, "warawara_u.png", 128);
     }
 
     // Background glass pill
