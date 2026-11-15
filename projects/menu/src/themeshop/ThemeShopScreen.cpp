@@ -1,6 +1,7 @@
 #include "ThemeShopScreen.hpp"
 
 #include "ThemeHttp.hpp"
+#include "PreviewDiskCache.hpp"
 
 #include "core/DebugLog.hpp"
 
@@ -506,6 +507,29 @@ std::string ThemeShopScreen::resolveCommunityPreviewUrl(const std::string& previ
     return catalogUrl.substr(0, slash + 1) + trimLeadingSlashes(previewPath);
 }
 
+// What identifies the published revision of the entry a preview belongs to:
+// its version and archive size / hash. A republished theme or pack changes it,
+// which makes the SD copy of its preview stale (PreviewDiskCache).
+std::string ThemeShopScreen::previewRevisionToken(const std::string& previewPath) const {
+    auto owns = [&](const ThemeCatalogClient::Entry& e) {
+        if (previewPath.empty())
+            return false;
+        if (e.cover == previewPath || e.thumbSheet == previewPath || e.thumbSheetHd == previewPath)
+            return true;
+        return std::find(e.screenshots.begin(), e.screenshots.end(), previewPath) != e.screenshots.end();
+    };
+    auto token = [](const ThemeCatalogClient::Entry& e) {
+        return e.id + "|" + e.version + "|" + std::to_string(e.packageBytes) + "|" + e.packageSha256;
+    };
+    for (const auto& e : m_allIconEntries)
+        if (owns(e))
+            return token(e);
+    for (const auto& e : m_allCommunityEntries)
+        if (owns(e))
+            return token(e);
+    return {};
+}
+
 std::shared_ptr<ThemeShopScreen::PreviewImageState> ThemeShopScreen::communityPreviewState(const std::string& previewPath) const {
     std::string url = resolveCommunityPreviewUrl(previewPath);
     if (url.empty())
@@ -900,7 +924,8 @@ void ThemeShopScreen::primeCommunityPreview(const std::string& previewPath) {
         return;
 
     m_hasPendingCommunityPreviewWork = true;
-    slot->future = m_threadPool->submit([slot, url]() {
+    const std::string token = previewRevisionToken(previewPath);
+    slot->future = m_threadPool->submit([slot, url, token]() {
         try {
             {
                 std::lock_guard<std::mutex> lk(slot->mutex);
@@ -908,7 +933,13 @@ void ThemeShopScreen::primeCommunityPreview(const std::string& previewPath) {
                     return;
             }
 
-            std::vector<std::uint8_t> bytes = themeshop::http::getBytes(url);
+            // The SD card first: a preview already downloaded for this
+            // revision of the theme / pack is not asked for again.
+            std::vector<std::uint8_t> bytes;
+            if (!themeshop::previewcache::load(url, token, bytes)) {
+                bytes = themeshop::http::getBytes(url);
+                themeshop::previewcache::store(url, token, bytes);
+            }
             std::lock_guard<std::mutex> lk(slot->mutex);
             if (slot->cancelled) {
                 slot->bytes.clear();
@@ -1080,6 +1111,59 @@ void ThemeShopScreen::syncFinishedCommunityPreviewLoads() {
     m_hasPendingCommunityPreviewWork = hasPendingWork;
 }
 
+// Was clearCommunityPreviewCache(): every visit to another tab threw the
+// downloaded previews away and coming back fetched them all again (owner
+// screenshots 17:30:45-17:31:02, 18 requests per preview in one session).
+// Now only the GPU textures are released; the compressed bytes of up to
+// kMaxParkedPreviews entries stay in RAM, and the SD cache covers the rest.
+void ThemeShopScreen::parkCommunityPreviews() {
+    constexpr int kMaxParkedPreviews = 16;
+    if (m_communityPreviewCache.empty())
+        return;
+    bool hasTexture = false;
+    bool needsWork = false;
+    int parked = 0;
+    for (const auto& entry : m_communityPreviewCache) {
+        if (!entry.second)
+            continue;
+        std::lock_guard<std::mutex> lk(entry.second->mutex);
+        if (entry.second->texture.valid())
+            hasTexture = true;
+        const bool kept = entry.second->phase == PreviewPhase::Downloaded && !entry.second->bytes.empty();
+        if (kept)
+            ++parked;
+        if (!kept || parked > kMaxParkedPreviews)
+            needsWork = true;
+    }
+    if (!hasTexture && !needsWork)
+        return; // already parked: nothing to do this frame
+    if (hasTexture && m_gpu)
+        m_gpu->waitIdle();
+    parked = 0;
+    for (auto it = m_communityPreviewCache.begin(); it != m_communityPreviewCache.end();) {
+        auto state = it->second;
+        bool keep = false;
+        if (state) {
+            std::lock_guard<std::mutex> lk(state->mutex);
+            const bool settled = state->phase == PreviewPhase::Ready || state->phase == PreviewPhase::Downloaded;
+            keep = settled && !state->bytes.empty() && parked < kMaxParkedPreviews;
+            state->texture = nxui::Texture();
+            if (keep) {
+                state->phase = PreviewPhase::Downloaded;
+                ++parked;
+            } else {
+                state->cancelled = true;
+                state->bytes.clear();
+            }
+        }
+        if (keep)
+            ++it;
+        else
+            it = m_communityPreviewCache.erase(it);
+    }
+    m_hasPendingCommunityPreviewWork = parked > 0;
+}
+
 void ThemeShopScreen::clearCommunityPreviewCache() {
     if (m_communityPreviewCache.empty())
         return;
@@ -1132,7 +1216,7 @@ void ThemeShopScreen::trimCommunityPreviewCache() {
         return;
 
     if (!isCommunityTab()) {
-        clearCommunityPreviewCache();
+        parkCommunityPreviews();
         return;
     }
 

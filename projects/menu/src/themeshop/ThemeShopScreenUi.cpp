@@ -1273,7 +1273,7 @@ void ThemeShopScreen::updateCustomContent(float dt) {
     if (isCommunityTab())
         syncFinishedCommunityPreviewLoads();
     else {
-        clearCommunityPreviewCache();
+        parkCommunityPreviews();
         m_lastPreviewPrimeKey.clear();
     }
 
@@ -1299,7 +1299,7 @@ void ThemeShopScreen::updateCustomContent(float dt) {
         if (const int now = catalogSlot(m_tabIndex); now >= 0) {
             m_communitySelectedId = m_catalogSelectedId[now];
             m_communityScrollRow = m_catalogScrollRow[now];
-            clearCommunityPreviewCache();
+            parkCommunityPreviews();
             m_lastPreviewPrimeKey.clear(); // request this tab's previews now
         }
         m_lastCustomTabIndex = m_tabIndex;
@@ -2644,13 +2644,10 @@ void ThemeShopScreen::drawCustomContent(nxui::Renderer& ren, const nxui::Rect&, 
         if (updateHere) {
             const std::string label = i18n.tr("iconstore.update_badge", "Update");
             float chipWidth = std::max(92.f, std::min(140.f, 32.f + measureTextCached(m_smallFont, label).x * 0.66f));
-            // Beside the Active chip when the pack is in use.
-            float x = preview.x + 10.f;
-            if (activeTheme) {
-                const std::string activeLabel = i18n.tr("themeshop.installed.status_active", "Active");
-                x += std::max(82.f, std::min(114.f, 32.f + measureTextCached(m_smallFont, activeLabel).x * 0.66f)) + 8.f;
-            }
-            nxui::Rect chip = {x, preview.y + 10.f, chipWidth, 26.f};
+            // Bottom-left of the preview: the top row already holds the
+            // Active / Installed chip and the version chip, and on a narrow
+            // card a third chip there ran into the version (screenshot 17:30:28).
+            nxui::Rect chip = {preview.x + 10.f, preview.bottom() - 36.f, chipWidth, 26.f};
             drawChip(ren, m_smallFont, chip, label,
                      nxui::Color(0.42f, 0.28f, 0.06f, 0.40f),
                      nxui::Color(1.f, 0.74f, 0.30f, 0.60f),
@@ -2799,6 +2796,9 @@ void ThemeShopScreen::drawCustomContent(nxui::Renderer& ren, const nxui::Rect&, 
             detailInfoB = i18n.tr("themeshop.community.manifest", "Manifest") + std::string(": ")
                 + (entry->manifest.empty() ? i18n.tr("themeshop.community.manifest_missing", "Not provided") : entry->manifest);
         }
+        // Its own line in place of the screenshot hint: appended to the
+        // version line it ran out of the dialog (screenshot 17:30:26).
+        std::string iconUpdateLine;
         if (isIconTab()) {
             // Icon packs: what is in the pack and what it costs, downloaded and
             // installed, instead of the theme manifest line.
@@ -2822,7 +2822,7 @@ void ThemeShopScreen::drawCustomContent(nxui::Renderer& ren, const nxui::Rect&, 
                     detailInfoBExtra = card + " " + i18n.tr("themeshop.catalog.on_card", "on the SD card")
                         + (pack ? " (" + i18n.tr("themeshop.community.installed", "Installed") + ")" : std::string());
                 if (pack && iconPackHasUpdate(*entry))
-                    detailInfoA += "  -  " + i18n.tr("iconstore.update_available", "Update available")
+                    iconUpdateLine = i18n.tr("iconstore.update_available", "Update available")
                         + (pack->version.empty() || pack->version == entry->version
                                ? std::string()
                                : " (" + pack->version + " > " + entry->version + ")");
@@ -2872,6 +2872,8 @@ void ThemeShopScreen::drawCustomContent(nxui::Renderer& ren, const nxui::Rect&, 
         } else {
             detailInfoC = i18n.tr("themeshop.community.cover_unavailable", "The screenshot could not be loaded. Placeholder shown instead.");
         }
+        if (!iconUpdateLine.empty())
+            detailInfoC = iconUpdateLine;
     } else {
         const auto* entry = selectedThemeShopEntry();
         if (!entry)
@@ -2985,7 +2987,7 @@ void ThemeShopScreen::drawCustomContent(nxui::Renderer& ren, const nxui::Rect&, 
                  m_theme->textSecondary.withAlpha(0.90f * detailOpacity),
                  0.84f);
 
-    ren.drawText(detailInfoA,
+    ren.drawText(ellipsize(m_smallFont, detailInfoA, info.width, 0.80f),
                  {info.x, info.y + 108.f},
                  m_smallFont,
                  m_theme->textPrimary.withAlpha(detailOpacity),

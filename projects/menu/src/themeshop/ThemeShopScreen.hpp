@@ -425,6 +425,7 @@ private:
     void activateDetailButton(int buttonIndex);
     int hitTestGridCard(const nxui::Rect& content, float x, float y) const;
     std::string resolveCommunityPreviewUrl(const std::string& previewPath) const;
+    std::string previewRevisionToken(const std::string& previewPath) const;
     std::string resolveCommunityPreviewUrl(const ThemeCatalogClient::Entry& entry) const;
     std::shared_ptr<PreviewImageState> communityPreviewState(const std::string& previewPath) const;
     std::shared_ptr<PreviewImageState> communityPreviewState(const ThemeCatalogClient::Entry& entry) const;
@@ -443,6 +444,9 @@ private:
     void primeVisibleCommunityPreviews();
     void syncFinishedCommunityPreviewLoads();
     void clearCommunityPreviewCache();
+    // Leaving the catalogue tabs: textures go, a bounded number of downloaded
+    // previews keep their bytes so coming back shows them at once.
+    void parkCommunityPreviews();
     std::unordered_set<std::string> wantedCommunityPreviewUrls() const;
     void trimCommunityPreviewCache();
 
