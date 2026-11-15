@@ -788,18 +788,21 @@ static void restoreNormalPerformance(const char* source) {
     // apm:sys SetCpuBoostMode (cmd 6)
     const u32 mode = ApmCpuBoostMode_Normal;
     const Result setRc = serviceDispatchIn(&apmSys.value, 6, mode);
-    // apm:sys RequestPerformanceMode (cmd 0, mode 0 = Normal)
-    const u32 perfMode = 0;
-    const Result reqRc = serviceDispatchIn(&apmSys.value, 0, perfMode);
+    // No RequestPerformanceMode (cmd 0) here. The performance mode belongs to
+    // the dock state: Normal in handheld, Boost on the dock, and the system
+    // only requests it again when the console is docked or undocked. Forcing
+    // Normal on every app exit and menu ready left a docked console on the
+    // handheld configuration (GPU 307.2 MHz instead of 768) until the next
+    // undock, games included.
     // apm:sys LoadAndApplySettings (cmd 5)
     const Result loadRc = serviceDispatch(&apmSys.value, 5);
     u32 after = 0;
     const Result afterRc = readPerformanceConfiguration(apmSys.value, after);
 
     switchu::FileLog::log(
-        "[perf-config] %s boost reset before=0x%08X(boost=%d rc=0x%X) set=0x%X req=0x%X load=0x%X after=0x%08X(boost=%d rc=0x%X)",
+        "[perf-config] %s boost reset before=0x%08X(boost=%d rc=0x%X) set=0x%X load=0x%X after=0x%08X(boost=%d rc=0x%X)",
         source, before, isBoostPerformanceConfiguration(before) ? 1 : 0, beforeRc,
-        setRc, reqRc, loadRc, after, isBoostPerformanceConfiguration(after) ? 1 : 0, afterRc);
+        setRc, loadRc, after, isBoostPerformanceConfiguration(after) ? 1 : 0, afterRc);
 
     // Query and restore actual hardware clocks via clkrst (Horizon 8.0.0+)
     if (R_SUCCEEDED(clkrstInitialize())) {
