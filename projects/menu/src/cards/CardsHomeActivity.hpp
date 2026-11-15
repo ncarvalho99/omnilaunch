@@ -193,6 +193,13 @@ private:
     nxui::Font m_fontTitle;
     CardsChrome m_chrome;
     CardsArt m_art;
+    // Page snapshot (issue #4 on Cards): icons and covers of the last shown
+    // cards of each page, read when the page opens, written once it settles.
+    CardsSnapshotCache m_snapCache;
+    std::vector<SnapItem> m_snapItems; // read, waiting for the catalogue
+    int m_snapPage = -1;               // page m_snapItems / the read belong to
+    void requestPageSnapshot(int page);
+    void pumpPageSnapshot(int first, int last);
     StatusSnapshot m_status;
     std::unique_ptr<nxui::Texture> m_avatar;
     float m_statusTimer = 0.f;

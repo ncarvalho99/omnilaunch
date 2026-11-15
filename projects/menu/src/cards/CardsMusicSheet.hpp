@@ -72,6 +72,10 @@ private:
     int m_row = 0;    // list row
     float m_listScroll = 0.f; // pixels, eased toward the chosen row
     float m_time = 0.f;
+    int m_rowKey = -1;        // chosen row (list + index), for its title scroll
+    float m_rowSince = 0.f;   // m_time when that row was chosen
+    mutable std::string m_titleShown; // title of the playing song, for its scroll
+    mutable float m_titleSince = 0.f;
     int m_repeatDir = 0;      // -1/+1 horizontal, -2/+2 vertical, 0 none
     float m_repeatTimer = 0.f;
     bool m_volDrag = false;

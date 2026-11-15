@@ -591,6 +591,7 @@ bool CardsHomeActivity::onCreate() {
     startWallpaper(m_core.config().cards.shuffleWall);
     m_catalog.setAssetsRoot(kAssets);
     m_catalog.setPage(m_page, m_core.config());
+    requestPageSnapshot(m_page); // queued ahead of the catalogue load
     m_catalog.startLoad(m_core.catalog(), m_core.threadPool());
 
 #ifdef SWITCHU_MENU
@@ -694,6 +695,8 @@ void CardsHomeActivity::onDestroy() {
     }
     m_catalog.releaseAll();
     m_art.releaseAll();
+    m_snapCache.wait(); // a page snapshot still being written finishes first
+    m_snapItems.clear();
     waitWallpaper();
     m_wallImage.reset();
     m_wallPending.reset();
@@ -1198,9 +1201,71 @@ void CardsHomeActivity::onUpdate(float dt) {
     ensureVisibleIcons();
 }
 
+void CardsHomeActivity::requestPageSnapshot(int page) {
+    m_snapPage = page;
+    m_snapItems.clear();
+    m_snapCache.load(m_core.threadPool(), page);
+}
+
+// Saved images of the page go on their cards as soon as both the read and the
+// catalogue are in, and the window shown is offered back for saving.
+void CardsHomeActivity::pumpPageSnapshot(int first, int last) {
+    const int page = m_catalog.page();
+    if (page != m_snapPage)
+        requestPageSnapshot(page); // every way of changing page lands here
+    std::vector<SnapItem> got;
+    if (m_snapCache.take(page, got))
+        m_snapItems = std::move(got);
+    // Kept until the catalogue is in: its first load drops every icon texture
+    // (CardsCatalog::poll -> releaseAll), and the saved icons go back on then.
+    if (!m_snapItems.empty()) {
+        int uploads = 0;
+        for (const auto& item : m_snapItems) {
+            if (uploads >= 8)
+                break; // the rest next frame
+            if (item.kind == 0) {
+                if (m_catalog.adoptSnapshotIcon(app().gpu(), app().renderer(), item) > 0)
+                    ++uploads;
+            } else if (const int idx = m_catalog.indexOf(item.titleId); idx >= 0) {
+                const auto& card = m_catalog.at(idx);
+                if (!card.system && !card.needsDownload &&
+                    m_art.adoptSnapshotCover(app().gpu(), app().renderer(), item, m_time))
+                    ++uploads;
+            }
+        }
+        if (uploads < 8 && !m_catalog.loading())
+            m_snapItems.clear(); // every image placed or not on this page
+    }
+
+    // Offer the shown window: complete only when every image in it is a fresh
+    // decode (a snapshot image is never saved back as if it were).
+    if (m_catalog.loading() || m_catalog.count() == 0)
+        return;
+    std::vector<SnapItem> items;
+    bool complete = true;
+    const int lo = std::max(0, first), hi = std::min(m_catalog.count() - 1, last);
+    for (int i = lo; i <= hi && complete; ++i) {
+        const auto& card = m_catalog.at(i);
+        if (card.icon && card.iconFresh && card.iconSnap)
+            items.push_back(*card.iconSnap);
+        else if (!card.iconFailed)
+            complete = false;
+        if (card.system || card.needsDownload)
+            continue;
+        std::shared_ptr<const SnapItem> cover;
+        const auto state = m_art.coverSnapshot(card.app.titleId, cover);
+        if (state == CardsArt::SnapState::Ready)
+            items.push_back(*cover);
+        else if (state == CardsArt::SnapState::Pending)
+            complete = false;
+    }
+    m_snapCache.offer(m_core.threadPool(), page, std::move(items), complete);
+}
+
 void CardsHomeActivity::ensureVisibleIcons() {
     const int first = static_cast<int>(std::floor(m_scroll)) - 1;
     const int last = static_cast<int>(std::ceil(m_scroll)) + 5;
+    pumpPageSnapshot(first, last); // before the decodes, so saved images show first
     m_catalog.pumpIcons(app().gpu(), app().renderer(), m_core.threadPool(), first, last, 4, 2);
     std::vector<std::uint64_t> wanted, keep;
     for (int i = std::max(0, first); i <= std::min(m_catalog.count() - 1, last); ++i)

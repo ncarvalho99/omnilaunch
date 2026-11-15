@@ -4,6 +4,7 @@
 // GPU icon textures of the cards near the focus. Those textures belong to the
 // frontend and are released in onDestroy (audit §6.1 rule 3).
 
+#include "cards/CardsSnapshot.hpp"
 #include "core/GridModel.hpp"
 #include "launcher/IconStreamer.hpp"
 #include <nxui/core/Texture.hpp>
@@ -24,6 +25,11 @@ struct CardEntry {
     std::unique_ptr<nxui::Texture> icon;
     bool iconRequested = false;
     bool iconFailed = false;
+    // false while `icon` comes from the page snapshot (CardsSnapshot) and the
+    // decode from its source is still pending. `iconSnap` holds the pixels of
+    // the fresh decode, for the next snapshot.
+    bool iconFresh = false;
+    std::shared_ptr<const SnapItem> iconSnap;
     // Nintendo page tile (cards::pages::SystemTile): icon from the assets,
     // opened through AppletLauncher, no play data (HomeNX E1).
     bool system = false;
@@ -79,6 +85,11 @@ public:
     void pumpIcons(nxui::GpuDevice& gpu, nxui::Renderer& ren, nxui::ThreadPool& pool,
                    int first, int last, int keep, int uploadBudget);
 
+    /// Shows a snapshot icon on its card until the fresh decode replaces it.
+    /// Returns -1 while the title is not on the current page, 1 when a texture
+    /// was uploaded, 0 when nothing was needed.
+    int adoptSnapshotIcon(nxui::GpuDevice& gpu, nxui::Renderer& ren, const SnapItem& item);
+
     /// Stops pending decodes and drops every texture (onDestroy).
     void releaseAll();
 
@@ -87,8 +98,11 @@ private:
         std::uint64_t titleId = 0;
         std::shared_ptr<IconStreamer::DecodedIcon> decoded;
         std::shared_ptr<std::atomic<bool>> cancelled;
+        std::shared_ptr<SnapItem> snap;
         std::future<void> future;
     };
+    static void decodeCardIcon(IconStreamer::DecodedIcon& out, std::uint64_t titleId, const std::string& iconFile,
+                               const std::string& hbPath);
 
     std::vector<AppEntry> m_all;        // every installed title, loader order
     std::vector<CardEntry> m_entries;   // the current page

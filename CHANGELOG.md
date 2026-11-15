@@ -1,3 +1,62 @@
+# OmniLaunch 1.3.1
+
+Update for OmniLaunch 1.3.0. One music player for Classic and Cards with a list of every theme's music, long song titles that scroll instead of being cut, faster and more reliable music downloads, text in Japanese, Chinese, Korean and emoji, and icons and covers that are already there when HOME opens.
+
+If you encounter any bugs, please report them directly to the developer on Telegram at https://t.me/ncarvalho99 with your console logs (`/config/OmniLaunch/menu.log`).
+
+## English
+
+### Music player
+- **One player for both styles**: Classic now opens the same player as Cards, so the song shown is always the one playing.
+- **Two lists**: Playlist (your downloaded songs and the current theme's music) and Themes (the music of every installed theme). Switch with L and R.
+- Theme songs are named after their theme instead of "theme".
+- **Long titles scroll**: the playing song and the selected song show their whole name in a moving line instead of being cut with "...". Works for theme names and downloaded songs.
+- X plays or pauses; on a downloaded song in Playlist, press X twice to delete it. Y changes the playlist order (SD songs first, theme music first, only one of them).
+- In Classic, L inside the player goes back to Playlist and no longer opens Discord.
+- Theme music stays in the playlist next to your SD songs.
+
+### Music downloads
+- Downloads from the YouTube tab are prepared on the OmniLaunch server and then sent to the console, which is faster and works again for videos that failed before.
+- A new search shows a loading panel instead of the previous results.
+
+### Text
+- Japanese, Chinese and Korean titles and emoji (monochrome) are drawn with the console's own fonts instead of boxes.
+
+### Icons on HOME (issue #4)
+- **Classic**: the icons of the last page you saw are saved and appear in the first frames after a game or a style switch, then are checked against their source.
+- **Cards**: every page (Games, Homebrew, Nintendo, Media) keeps its icons and covers the same way, so cards open with their cover instead of a small square icon that grows into it.
+
+### Known issues
+- Rarely (about 1 in 28 cold boots) the menu restarts once during start-up; it recovers by itself.
+- USB file transfer (MTP) may not be detected through some USB hubs; connect the console directly to the computer.
+- A music download that is being prepared cannot be cancelled yet.
+
+## Português
+
+### Player de música
+- **Um player para os dois estilos**: o Classic agora abre o mesmo player do Cards, então a música mostrada é sempre a que está tocando.
+- **Duas listas**: Playlist (suas músicas baixadas e a música do tema atual) e Temas (a música de todos os temas instalados). Troque com L e R.
+- As músicas de tema levam o nome do tema em vez de "theme".
+- **Títulos longos rolam**: a música tocando e a selecionada mostram o nome inteiro numa linha que se move, em vez de cortar com "...". Vale para nomes de temas e músicas baixadas.
+- X toca ou pausa; numa música baixada da Playlist, aperte X duas vezes para apagá-la. Y muda a ordem da playlist (SD primeiro, tema primeiro, só uma delas).
+- No Classic, o L dentro do player volta para a Playlist e não abre mais o Discord.
+- A música do tema continua na playlist junto das suas músicas do SD.
+
+### Download de músicas
+- Os downloads da aba YouTube são preparados no servidor do OmniLaunch e depois enviados ao console, o que é mais rápido e voltou a funcionar para vídeos que falhavam.
+- Uma nova busca mostra um painel de carregamento em vez dos resultados anteriores.
+
+### Texto
+- Títulos em japonês, chinês e coreano e emojis (monocromáticos) aparecem com as fontes do próprio console em vez de quadrados.
+
+### Ícones no HOME (issue #4)
+- **Classic**: os ícones da última página vista ficam salvos e aparecem nos primeiros quadros depois de um jogo ou de uma troca de estilo, e depois são conferidos com a origem.
+- **Cards**: todas as páginas (Jogos, Homebrew, Nintendo, Mídia) guardam ícones e capas do mesmo jeito, então os cartões abrem já com a capa em vez de um ícone pequeno que cresce até ela.
+
+### Problemas conhecidos
+- Raramente (cerca de 1 em 28 boots a frio) o menu reinicia uma vez durante a inicialização; ele se recupera sozinho.
+- A transferência USB (MTP) pode não ser detectada através de alguns hubs USB; conecte o console direto no computador.
+- Um download de música em preparação ainda não pode ser cancelado.
 # OmniLaunch 1.3.0
 
 Feature release for OmniLaunch. It adds a second HOME style, **Cards**, based on the CardsNX view of HomeNX by ad3333m. Hold Minus to switch between Classic and Cards at any time. It also adds homebrew launching from HOME, Discord, News, a homebrew updater, the BrowseNX browser, optional 1080p on the TV, new Classic icons and many settings shared by both styles. Classic stays the default.

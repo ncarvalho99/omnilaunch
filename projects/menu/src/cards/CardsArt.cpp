@@ -18,6 +18,8 @@ namespace {
 constexpr int kCoverMaxSide = 512;
 // The background is drawn full screen; decode at 1280 for sharp 720p presentation.
 constexpr int kBackgroundMaxSide = 1280;
+// Snapshot covers only bridge the first frames; 320 px keeps a page file small.
+constexpr int kSnapCoverMaxSide = 320;
 
 bool isFile(const std::string& path) {
     struct stat st{};
@@ -81,7 +83,8 @@ float CardsArt::backgroundAge(std::uint64_t titleId, float now) const {
 
 void CardsArt::request(nxui::ThreadPool& pool, std::uint64_t titleId, int kind) {
     auto& slot = (kind == 2 ? m_logos : kind == 1 ? m_backgrounds : m_covers)[titleId];
-    if (slot.tex || slot.requested || slot.missing)
+    // A snapshot cover is decoded again from its source, and replaced.
+    if ((slot.tex && slot.fresh) || slot.requested || slot.missing)
         return;
     slot.requested = true;
     Job job;
@@ -89,14 +92,17 @@ void CardsArt::request(nxui::ThreadPool& pool, std::uint64_t titleId, int kind) 
     job.kind = kind;
     job.image = std::make_shared<nxui::DecodedImage>();
     job.cancelled = std::make_shared<std::atomic<bool>>(false);
+    if (kind == 0)
+        job.snap = std::make_shared<SnapItem>();
     auto image = job.image;
+    auto snap = job.snap;
     auto cancelled = job.cancelled;
     const auto contains = [titleId](const std::vector<std::uint64_t>& list) {
         return std::find(list.begin(), list.end(), titleId) != list.end();
     };
     const bool coverBg = m_config && contains(m_config->cards.coverBackgroundTitles);
     try {
-        job.future = pool.submit([image, cancelled, titleId, kind, coverBg]() {
+        job.future = pool.submit([image, snap, cancelled, titleId, kind, coverBg]() {
             if (cancelled->load())
                 return;
             std::string path = kind == 2 ? SteamGridDbManager::logoPath(titleId)
@@ -105,6 +111,9 @@ void CardsArt::request(nxui::ThreadPool& pool, std::uint64_t titleId, int kind) 
             if (path.empty() || cancelled->load())
                 return;
             *image = nxui::Texture::decodeFile(path, kind == 1 ? kBackgroundMaxSide : kCoverMaxSide);
+            // Cover pixels for the page snapshot, reduced and made off the UI thread.
+            if (snap && image->valid() && !cancelled->load())
+                *snap = makeSnapItem(titleId, 1, image->rgba.data(), image->width, image->height, kSnapCoverMaxSide);
         });
     } catch (...) {
         slot.requested = false; // pool shutting down
@@ -131,13 +140,22 @@ void CardsArt::pump(nxui::GpuDevice& gpu, nxui::Renderer& ren, nxui::ThreadPool&
         if (it->image->valid()) {
             auto tex = std::make_unique<nxui::Texture>();
             if (tex->loadFromDecoded(gpu, ren, *it->image)) {
+                if (!slot.tex)
+                    slot.shownAt = now; // replacing a snapshot cover: no second fade
                 slot.tex = std::move(tex);
-                slot.shownAt = now;
+                slot.fresh = true;
+                if (it->snap && it->snap->rgba)
+                    slot.snap = it->snap;
             } else {
+                slot.tex.reset();
+                slot.snap.reset();
                 slot.missing = true;
             }
             --uploadBudget;
         } else {
+            // No cover any more: a snapshot cover must not stay.
+            slot.tex.reset();
+            slot.snap.reset();
             slot.missing = true;
         }
         it = m_jobs.erase(it);
@@ -181,6 +199,40 @@ void CardsArt::pump(nxui::GpuDevice& gpu, nxui::Renderer& ren, nxui::ThreadPool&
     for (auto it = m_logos.begin(); it != m_logos.end();)
         if (it->first != focused && !it->second.requested) it = m_logos.erase(it);
         else ++it;
+}
+
+bool CardsArt::adoptSnapshotCover(nxui::GpuDevice& gpu, nxui::Renderer& ren, const SnapItem& item, float now) {
+    if (item.kind != 1 || !item.rgba)
+        return false;
+    if (m_config && std::find(m_config->cards.iconTitles.begin(), m_config->cards.iconTitles.end(), item.titleId) !=
+                        m_config->cards.iconTitles.end())
+        return false; // this card shows its icon, not a cover
+    auto& slot = m_covers[item.titleId];
+    if (slot.tex || slot.missing)
+        return false;
+    auto tex = std::make_unique<nxui::Texture>();
+    if (!tex->loadFromPixels(gpu, ren, item.rgba->data(), item.w, item.h))
+        return false;
+    slot.tex = std::move(tex);
+    slot.fresh = false;
+    slot.shownAt = now - 10.f; // already "faded in": the card opens with its cover
+    return true;
+}
+
+CardsArt::SnapState CardsArt::coverSnapshot(std::uint64_t titleId, std::shared_ptr<const SnapItem>& out) const {
+    if (m_config && std::find(m_config->cards.iconTitles.begin(), m_config->cards.iconTitles.end(), titleId) !=
+                        m_config->cards.iconTitles.end())
+        return SnapState::None;
+    const auto it = m_covers.find(titleId);
+    if (it == m_covers.end())
+        return SnapState::Pending;
+    const Slot& slot = it->second;
+    if (slot.missing)
+        return SnapState::None;
+    if (!slot.tex || !slot.fresh || !slot.snap)
+        return SnapState::Pending;
+    out = slot.snap;
+    return SnapState::Ready;
 }
 
 const nxui::Texture* CardsArt::logo(std::uint64_t titleId) const {

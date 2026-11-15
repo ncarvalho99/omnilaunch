@@ -1,79 +1,51 @@
 
-Two HOME styles
-- Cards: card row with Games, Homebrew, Nintendo and Media pages (ZL/ZR), page dots, Move mode, sorting, per-page order and visibility, card options per software type, achievements and a welcome tour.
-- Live switch: hold Minus for about half a second to go from Classic to Cards and back, without restarting. Music, settings, users and the suspended game are shared.
+Music player
+- One player for both styles: Classic now opens the same player as Cards, so the song shown is always the one playing.
+- Two lists: Playlist (your downloaded songs and the current theme's music) and Themes (the music of every installed theme). Switch with L and R.
+- Theme songs are named after their theme instead of "theme".
+- Long titles scroll: the playing song and the selected song show their whole name in a moving line instead of being cut with "...". Works for theme names and downloaded songs.
+- X plays or pauses; on a downloaded song in Playlist, press X twice to delete it. Y changes the playlist order (SD songs first, theme music first, only one of them).
+- In Classic, L inside the player goes back to Playlist and no longer opens Discord.
+- Theme music stays in the playlist next to your SD songs.
 
-Cards
-- Music player (vinyl, playlist, 16-band spectrum, shuffle and repeat that are saved), News, notifications, users, quick settings with a mini player, Bluetooth and Hekate, and a power menu with restart to Hekate.
-- Settings with ten sections: background picture and shuffle, TV resolution, vibration, input test, date and time zone, Bluetooth audio devices, MTP, language, sounds, lock screen with password, updates and more. Long descriptions wrap, hints use button glyphs.
-- Panel button cycles None, News or a pinned app in both directions; Nextendo, title logos and Bluetooth are switches.
-- Glass styles, accent colours, haze, background motion; art from GameTDB and SteamGridDB with batch download.
+Music downloads
+- Downloads from the YouTube tab are prepared on the OmniLaunch server and then sent to the console, which is faster and works again for videos that failed before.
+- A new search shows a loading panel instead of the previous results.
 
-Classic
-- New "minimal neutral" icon pack, including a 3D battery with charge level and charging bolt, a new notification bell, Nextendo and browser icons.
-- ThemeShop > OmniLaunch: Ask who's playing, repeat song, USB file transfer (MTP), lock screen on/off (always on with a password), music on the lock screen, lock now, lock password, 1080p on the TV, in-game Discord messages, icon size and side button size (80-130 %), and a sidebar order list you can show or hide.
-- Homebrew and System launcher widgets (open, update, delete .nro; console applets), notification bell, users picker and Social screen with button glyphs.
-- One-row views fit the whole top bar; wide covers are cropped to the case in 3D views.
+Text
+- Japanese, Chinese and Korean titles and emoji (monochrome) are drawn with the console's own fonts instead of boxes.
 
-Homebrew, browser and updates
-- .nro apps open in full application mode from both styles; your hbmenu.nro is kept aside and restored. A running homebrew is marked on its tile.
-- Homebrew updater (Homebrew App Store and GitHub releases).
-- BrowseNX: downloaded on first use with progress and Cancel, then opened or resumed.
-
-Social and network
-- Discord: QR code or token sign-in, servers, channels, direct messages, calls, link previews, attachments and notifications.
-- In-game Discord messages (experimental): direct messages appear as Ultrahand notifications while you play, checked every 2 to 4 minutes. Off by default; uses your account token.
-- News with read tracking; HTTPS with bundled root certificates, connection and speed test, Nextendo player counts.
-
-Display and system
-- 1080p on the TV (optional, docked): sharper picture, uses more memory, applies on the next HOME start.
-- With Ask who's playing off, games start as the HOME user without a picker.
-- Smoother text and overlays, decoded icon cache for faster Classic icons, a text cache that never refuses new text, and a watchdog that gives the screen back to a suspended game when the menu fails to start.
-- Translations for every supported language.
+Icons on HOME (issue 4)
+- Classic: the icons of the last page you saw are saved and appear in the first frames after a game or a style switch, then are checked against their source.
+- Cards: every page (Games, Homebrew, Nintendo, Media) keeps its icons and covers the same way, so cards open with their cover instead of a small square icon that grows into it.
 
 Known issues
 - Rarely (about 1 in 28 cold boots) the menu restarts once during start-up; it recovers by itself.
 - USB file transfer (MTP) may not be detected through some USB hubs; connect the console directly to the computer.
-
-Credits
-- Cards is based on HomeNX / CardsNX by ad3333m, who also wrote BrowseNX. Credits are in Settings > About and in the README.
+- A music download that is being prepared cannot be cancelled yet.
 --pt-BR--
 
-Dois estilos de HOME
-- Cards: fileira de cartões com as páginas Jogos, Homebrew, Nintendo e Mídia (ZL/ZR), pontos de página, modo Mover, ordenação, ordem e visibilidade por página, opções por tipo de software, conquistas e tour de boas-vindas.
-- Troca ao vivo: segure Menos por cerca de meio segundo para ir do Classic ao Cards e voltar, sem reiniciar. Música, configurações, usuários e o jogo suspenso são compartilhados.
+Player de música
+- Um player para os dois estilos: o Classic agora abre o mesmo player do Cards, então a música mostrada é sempre a que está tocando.
+- Duas listas: Playlist (suas músicas baixadas e a música do tema atual) e Temas (a música de todos os temas instalados). Troque com L e R.
+- As músicas de tema levam o nome do tema em vez de "theme".
+- Títulos longos rolam: a música tocando e a selecionada mostram o nome inteiro numa linha que se move, em vez de cortar com "...". Vale para nomes de temas e músicas baixadas.
+- X toca ou pausa; numa música baixada da Playlist, aperte X duas vezes para apagá-la. Y muda a ordem da playlist (SD primeiro, tema primeiro, só uma delas).
+- No Classic, o L dentro do player volta para a Playlist e não abre mais o Discord.
+- A música do tema continua na playlist junto das suas músicas do SD.
 
-Cards
-- Player de música (vinil, playlist, espectro de 16 faixas, aleatório e repetir salvos), Notícias, notificações, usuários, ajustes rápidos com mini player, Bluetooth e Hekate, e menu de energia com reiniciar no Hekate.
-- Configurações com dez seções: imagem de fundo e fundo aleatório, resolução da TV, vibração, teste de controles, data e fuso horário, dispositivos de áudio Bluetooth, MTP, idioma, sons, tela de bloqueio com senha, atualizações e mais. Descrições longas quebram linha e as dicas usam símbolos dos botões.
-- Botão do painel alterna entre Nenhum, Notícias ou um app fixado nas duas direções; Nextendo, logos dos títulos e Bluetooth viraram chaves.
-- Estilos de vidro, cores de destaque, névoa e movimento do fundo; artes da GameTDB e do SteamGridDB com download em lote.
+Download de músicas
+- Os downloads da aba YouTube são preparados no servidor do OmniLaunch e depois enviados ao console, o que é mais rápido e voltou a funcionar para vídeos que falhavam.
+- Uma nova busca mostra um painel de carregamento em vez dos resultados anteriores.
 
-Classic
-- Novo pacote de ícones "minimal neutral", com bateria 3D com nível de carga e raio ao carregar, novo sino de notificações e ícones do Nextendo e do navegador.
-- ThemeShop > OmniLaunch: Perguntar quem está jogando, repetir música, transferência USB (MTP), tela de bloqueio liga/desliga (sempre ligada com senha), música na tela de bloqueio, bloquear agora, senha, 1080p na TV, mensagens do Discord durante jogos, tamanho dos ícones e dos botões laterais (80-130 %) e a lista de ordem da barra lateral, que pode ser mostrada ou escondida.
-- Widgets de Homebrew e Sistema (abrir, atualizar e apagar .nro; applets do console), sino de notificações, seletor de usuários e tela Social com símbolos dos botões.
-- As visualizações de uma linha encaixam toda a barra do topo; capas largas são recortadas no formato da caixa nas visualizações 3D.
+Texto
+- Títulos em japonês, chinês e coreano e emojis (monocromáticos) aparecem com as fontes do próprio console em vez de quadrados.
 
-Homebrew, navegador e atualizações
-- Apps .nro abrem em modo de aplicativo completo nos dois estilos; o seu hbmenu.nro fica guardado e é restaurado. O homebrew aberto fica marcado no seu bloco.
-- Atualizador de homebrew (Homebrew App Store e releases do GitHub).
-- BrowseNX: baixado no primeiro uso com progresso e Cancelar, depois aberto ou retomado.
-
-Social e rede
-- Discord: login por QR code ou token, servidores, canais, mensagens diretas, chamadas, prévias de links, anexos e notificações.
-- Mensagens do Discord durante jogos (experimental): mensagens diretas aparecem como notificações do Ultrahand enquanto você joga, verificadas a cada 2 a 4 minutos. Desligado por padrão; usa o token da sua conta.
-- Notícias com marcação de lidas; HTTPS com certificados raiz incluídos, teste de conexão e de velocidade, contagem de jogadores do Nextendo.
-
-Tela e sistema
-- 1080p na TV (opcional, no dock): imagem mais nítida, usa mais memória, vale a partir do próximo início do HOME.
-- Com Perguntar quem está jogando desligado, os jogos abrem com o usuário do HOME, sem seleção.
-- Texto e sobreposições mais suaves, cache de ícones decodificados para o Classic abrir mais rápido, cache de texto que não recusa textos novos e watchdog que devolve a tela ao jogo suspenso quando o menu não inicia.
-- Traduções para todos os idiomas suportados.
+Ícones no HOME (issue 4)
+- Classic: os ícones da última página vista ficam salvos e aparecem nos primeiros quadros depois de um jogo ou de uma troca de estilo, e depois são conferidos com a origem.
+- Cards: todas as páginas (Jogos, Homebrew, Nintendo, Mídia) guardam ícones e capas do mesmo jeito, então os cartões abrem já com a capa em vez de um ícone pequeno que cresce até ela.
 
 Problemas conhecidos
-- Raramente (cerca de 1 em 28 inicializações a frio) o menu reinicia uma vez durante a abertura; ele se recupera sozinho.
+- Raramente (cerca de 1 em 28 boots a frio) o menu reinicia uma vez durante a inicialização; ele se recupera sozinho.
 - A transferência USB (MTP) pode não ser detectada através de alguns hubs USB; conecte o console direto no computador.
-
-Créditos
-- O Cards é baseado no HomeNX / CardsNX de ad3333m, que também criou o BrowseNX. Os créditos estão em Configurações > Sobre e no README.
+- Um download de música em preparação ainda não pode ser cancelado.

@@ -60,6 +60,8 @@ void CardsCatalog::setPage(int page, const AppConfig& config) {
         for (auto& o : old)
             if (o.app.titleId == c.app.titleId) {
                 c.icon = std::move(o.icon);
+                c.iconFresh = o.iconFresh;
+                c.iconSnap = std::move(o.iconSnap);
                 c.iconRequested = o.iconRequested;
                 c.iconFailed = o.iconFailed;
                 return;
@@ -266,13 +268,18 @@ void CardsCatalog::pumpIcons(nxui::GpuDevice& gpu, nxui::Renderer& ren, nxui::Th
         if (index >= 0) {
             auto& card = m_entries[static_cast<std::size_t>(index)];
             const auto& d = *it->decoded;
-            if (!d.rgba.empty() && d.w > 0 && d.h > 0) {
-                auto tex = std::make_unique<nxui::Texture>();
-                if (tex->loadFromPixels(gpu, ren, d.rgba.data(), d.w, d.h))
-                    card.icon = std::move(tex);
-                else
-                    card.iconFailed = true;
+            auto tex = std::make_unique<nxui::Texture>();
+            if (!d.rgba.empty() && d.w > 0 && d.h > 0 && tex->loadFromPixels(gpu, ren, d.rgba.data(), d.w, d.h)) {
+                // Replaces a snapshot icon shown meanwhile.
+                card.icon = std::move(tex);
+                card.iconFresh = true;
+                if (it->snap && it->snap->rgba)
+                    card.iconSnap = it->snap;
             } else {
+                // No source any more: a snapshot icon must not stay.
+                card.icon.reset();
+                card.iconFresh = false;
+                card.iconSnap.reset();
                 card.iconFailed = true;
             }
             --uploadBudget;
@@ -292,49 +299,38 @@ void CardsCatalog::pumpIcons(nxui::GpuDevice& gpu, nxui::Renderer& ren, nxui::Th
         auto& card = m_entries[static_cast<std::size_t>(i)];
         if (card.icon) {
             card.icon.reset();
+            card.iconFresh = false;
+            card.iconSnap.reset();
             card.iconRequested = false;
         }
     }
 
-    // Queue decodes for the visible window.
+    // Queue decodes for the visible window. A snapshot icon is still decoded
+    // again from its source, and replaced.
     for (int i = first; i <= last; ++i) {
         auto& card = m_entries[static_cast<std::size_t>(i)];
-        if (card.icon || card.iconRequested || card.iconFailed)
+        if ((card.icon && card.iconFresh) || card.iconRequested || card.iconFailed)
             continue;
         card.iconRequested = true;
         PendingIcon p;
         p.titleId = card.app.titleId;
         p.decoded = std::make_shared<IconStreamer::DecodedIcon>();
         p.cancelled = std::make_shared<std::atomic<bool>>(false);
+        p.snap = std::make_shared<SnapItem>();
         auto decoded = p.decoded;
+        auto snap = p.snap;
         auto cancelled = p.cancelled;
         const std::uint64_t titleId = p.titleId;
         const std::string iconFile = !card.iconFile.empty() ? card.iconFile : std::string();
         const std::string hbPath = card.isHomebrew ? card.homebrewPath : std::string();
         try {
-            p.future = pool.submit([decoded, cancelled, titleId, iconFile, hbPath]() {
+            p.future = pool.submit([decoded, snap, cancelled, titleId, iconFile, hbPath]() {
                 if (cancelled->load())
                     return;
-                if (!iconFile.empty()) {
-                    // Nintendo page tile: a 256 px PNG from the assets.
-                    nxui::DecodedImage img = nxui::Texture::decodeFile(iconFile, 256);
-                    if (img.valid()) {
-                        decoded->rgba = std::move(img.rgba);
-                        decoded->w = img.width;
-                        decoded->h = img.height;
-                    }
-                    return;
-                }
-#ifdef SWITCHU_MENU
-                if (!hbPath.empty()) {
-                    std::vector<std::uint8_t> bytes = readHomebrewIcon(hbPath);
-                    if (!bytes.empty()) {
-                        *decoded = IconStreamer::decodeIconData(bytes);
-                        return;
-                    }
-                }
-#endif
-                *decoded = IconStreamer::decodeIconData(AppListLoader::loadIconData(titleId));
+                decodeCardIcon(*decoded, titleId, iconFile, hbPath);
+                // Pixels kept for the page snapshot, made here off the UI thread.
+                if (!decoded->rgba.empty() && decoded->w > 0 && decoded->h > 0 && !cancelled->load())
+                    *snap = makeSnapItem(titleId, 0, decoded->rgba.data(), decoded->w, decoded->h, 160); // drawn at most ~155 px
             });
         } catch (...) {
             card.iconRequested = false; // pool shutting down
@@ -342,6 +338,47 @@ void CardsCatalog::pumpIcons(nxui::GpuDevice& gpu, nxui::Renderer& ren, nxui::Th
         }
         m_pending.push_back(std::move(p));
     }
+}
+
+void CardsCatalog::decodeCardIcon(IconStreamer::DecodedIcon& out, std::uint64_t titleId, const std::string& iconFile,
+                                  const std::string& hbPath) {
+    if (!iconFile.empty()) {
+        // Nintendo page tile: a 256 px PNG from the assets.
+        nxui::DecodedImage img = nxui::Texture::decodeFile(iconFile, 256);
+        if (img.valid()) {
+            out.rgba = std::move(img.rgba);
+            out.w = img.width;
+            out.h = img.height;
+        }
+        return;
+    }
+#ifdef SWITCHU_MENU
+    if (!hbPath.empty()) {
+        std::vector<std::uint8_t> bytes = readHomebrewIcon(hbPath);
+        if (!bytes.empty()) {
+            out = IconStreamer::decodeIconData(bytes);
+            return;
+        }
+    }
+#else
+    (void)hbPath;
+#endif
+    out = IconStreamer::decodeIconData(AppListLoader::loadIconData(titleId));
+}
+
+int CardsCatalog::adoptSnapshotIcon(nxui::GpuDevice& gpu, nxui::Renderer& ren, const SnapItem& item) {
+    const int index = indexOf(item.titleId);
+    if (index < 0 || !item.rgba)
+        return -1;
+    auto& card = m_entries[static_cast<std::size_t>(index)];
+    if (card.icon || card.iconFailed)
+        return 0; // already shown, or a fresh decode got there first
+    auto tex = std::make_unique<nxui::Texture>();
+    if (!tex->loadFromPixels(gpu, ren, item.rgba->data(), item.w, item.h))
+        return 0;
+    card.icon = std::move(tex);
+    card.iconFresh = false;
+    return 1;
 }
 
 void CardsCatalog::releaseAll() {
@@ -354,6 +391,8 @@ void CardsCatalog::releaseAll() {
     m_pending.clear();
     for (auto& card : m_entries) {
         card.icon.reset();
+        card.iconFresh = false;
+        card.iconSnap.reset();
         card.iconRequested = false;
     }
 }

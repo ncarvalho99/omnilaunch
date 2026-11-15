@@ -55,6 +55,31 @@ nxui::Rect tabRect(int i, float dy) {
 }
 float easeOut(float t) { t = std::clamp(t, 0.f, 1.f); return 1.f - (1.f - t) * (1.f - t) * (1.f - t); }
 
+// A title wider than its space scrolls left in a loop (pause, scroll, pause)
+// instead of being cut with "...", clipped to [x, x + w]. `t` is the time the
+// text has been shown, so each title starts at its beginning.
+void drawMarquee(nxui::Renderer& ren, nxui::Font& f, const std::string& s, float x, float cy, float w,
+                 const nxui::Color& c, float t) {
+    if (s.empty())
+        return;
+    const nxui::Vec2 m = f.measure(s);
+    const float y = cy - m.y * 0.5f;
+    if (m.x <= w) {
+        ren.drawText(s, {x, y}, &f, c);
+        return;
+    }
+    constexpr float kPause = 1.6f, kSpeed = 42.f, kGap = 56.f;
+    const float span = m.x + kGap;
+    const float period = kPause + span / kSpeed;
+    const float phase = std::fmod(std::max(0.f, t), period);
+    const float off = phase < kPause ? 0.f : (phase - kPause) * kSpeed;
+    ren.pushClipRect({x, y - 4.f, w, m.y + 8.f});
+    ren.drawText(s, {x - off, y}, &f, c);
+    if (off > 0.f)
+        ren.drawText(s, {x - off + span, y}, &f, c);
+    ren.popClipRect();
+}
+
 const char* const kSourceModes[] = {"custom_first", "theme_first", "custom_only", "theme_only"};
 std::string sourceModeLabel(const std::string& mode) {
     auto& i18n = nxui::I18n::instance();
@@ -400,6 +425,12 @@ void CardsMusicSheet::update(float dt, home::HomeAudio& service) {
 
     const int songs = static_cast<int>(listTracks(service).size());
     if (m_row >= songs) m_row = std::max(0, songs - 1);
+    // A newly chosen row scrolls its title from the beginning.
+    const int rowKey = m_zone == 2 ? (m_list == List::Themes ? 100000 : 0) + m_row : -1;
+    if (rowKey != m_rowKey) {
+        m_rowKey = rowKey;
+        m_rowSince = m_time;
+    }
     const float span = kListBottom - kListTop;
     const float want = std::clamp(m_row * kRowH - span * 0.5f + kRowH * 0.5f, 0.f,
                                   std::max(0.f, songs * kRowH - span));
@@ -495,12 +526,11 @@ void CardsMusicSheet::render(nxui::Renderer& ren, CardsChrome& chrome, const hom
     const int now = audio.currentTrackIndex();
     const std::string song = audio.currentTrackTitle().empty()
         ? i18n.tr("cards.music_stopped", "No music playing") : audio.currentTrackTitle();
-    float ts = 1.f;
-    const float sw = tf.measure(song).x;
-    if (sw > kInfoW) ts = std::max(0.7f, kInfoW / sw);
-    std::string shown = song;
-    if (sw * ts > kInfoW) shown = chrome.fit(tf, song, kInfoW / ts);
-    ren.drawText(shown, {kInfoX, 150.f + dy - tf.measure(shown).y * ts * 0.5f}, &tf, white.withAlpha(a), ts);
+    if (song != m_titleShown) { // a new song scrolls from its beginning
+        m_titleShown = song;
+        m_titleSince = m_time;
+    }
+    drawMarquee(ren, tf, song, kInfoX, 150.f + dy, kInfoW, white.withAlpha(a), m_time - m_titleSince);
 
     std::string sub = service.queue == home::HomeAudio::Queue::Themes
         ? i18n.tr("cards.music_theme_source", "Theme music")
@@ -610,8 +640,15 @@ void CardsMusicSheet::render(nxui::Renderer& ren, CardsChrome& chrome, const hom
                                                                       : CardsChrome::accent(ring * a)), 14.f, 2.f);
         const float cy = row.y + row.height * 0.5f;
         chrome.textMid(ren, sf, std::to_string(i + 1), row.x + 12.f, cy, muted.withAlpha(0.7f * a));
-        chrome.textMid(ren, pf, chrome.fit(pf, tracks[static_cast<std::size_t>(i)].title, row.width - 80.f), row.x + 38.f, cy,
-                       isCurrent ? CardsChrome::accent(a) : white.withAlpha(a));
+        // The chosen and the playing row show their whole title (scrolling);
+        // the others are cut to fit.
+        const std::string& title = tracks[static_cast<std::size_t>(i)].title;
+        const nxui::Color titleColor = isCurrent ? CardsChrome::accent(a) : white.withAlpha(a);
+        if (chosen || isCurrent)
+            drawMarquee(ren, pf, title, row.x + 38.f, cy, row.width - 80.f, titleColor,
+                        m_time - (chosen ? m_rowSince : m_titleSince));
+        else
+            chrome.textMid(ren, pf, chrome.fit(pf, title, row.width - 80.f), row.x + 38.f, cy, titleColor);
         if (isCurrent) // little bars that move with the music
             for (int k = 0; k < 3; ++k) {
                 const float h = 6.f + 14.f * (playing ? m_viz[4 + k * 9] : 0.15f);

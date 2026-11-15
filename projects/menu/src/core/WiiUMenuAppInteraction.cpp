@@ -739,6 +739,10 @@ void WiiUMenuApp::wireGlobalActions() {
     root.addAction(static_cast<uint64_t>(nxui::Button::L), [this]() {
         if (m_navigator.route() == switchu::navigation::Route::ControllerTest)
             return;
+        // L belongs to the music player while it is open (its Playlist tab):
+        // the press bubbles up here and must not open Discord over it.
+        if (m_mediaCenterScreen && m_mediaCenterScreen->isActive())
+            return;
         if (m_navigator.route() == switchu::navigation::Route::Home &&
             focusRoot() == &rootBox() && m_grid && m_grid->isXmb()) {
             m_grid->stepXmb(-1, 0);

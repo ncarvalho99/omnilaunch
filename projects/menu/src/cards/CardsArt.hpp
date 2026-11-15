@@ -5,6 +5,7 @@
 // on the main thread. GPU textures belong to the frontend: releaseAll() runs
 // in onDestroy. Nothing here touches the network.
 
+#include "cards/CardsSnapshot.hpp"
 #include <nxui/core/Texture.hpp>
 #include <atomic>
 #include <cstdint>
@@ -37,6 +38,16 @@ public:
               const std::vector<std::uint64_t>& wanted, const std::vector<std::uint64_t>& keep,
               std::uint64_t focused, float now, int uploadBudget);
 
+    /// Page snapshot (CardsSnapshot): shows a saved cover at once, without
+    /// fade, until the fresh decode replaces it. Ignored when the title has a
+    /// cover already, has none, or is set to show its icon.
+    /// Returns true when a texture was uploaded.
+    bool adoptSnapshotCover(nxui::GpuDevice& gpu, nxui::Renderer& ren, const SnapItem& item, float now);
+    enum class SnapState { None, Pending, Ready };
+    /// Whether the title's cover can go into a snapshot: Ready (fresh decode,
+    /// `out` set), Pending (not decoded from its source yet) or None.
+    SnapState coverSnapshot(std::uint64_t titleId, std::shared_ptr<const SnapItem>& out) const;
+
     void setConfig(const AppConfig* config) { m_config = config; }
     const nxui::Texture* logo(std::uint64_t titleId) const;
     void releaseAll();
@@ -51,11 +62,14 @@ private:
         float shownAt = 0.f;
         bool requested = false;
         bool missing = false;
+        bool fresh = false; // tex decoded from its source (not the snapshot)
+        std::shared_ptr<const SnapItem> snap; // covers: pixels for the next snapshot
     };
     struct Job {
         std::uint64_t titleId = 0;
         int kind = 0; // 0 cover, 1 background, 2 logo
         std::shared_ptr<nxui::DecodedImage> image;
+        std::shared_ptr<SnapItem> snap;
         std::shared_ptr<std::atomic<bool>> cancelled;
         std::future<void> future;
     };
