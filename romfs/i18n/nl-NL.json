@@ -915,7 +915,13 @@
     "play": "Afspelen",
     "hint_play_pause": "Afspelen/Pauzeren",
     "hint_delete": "Nummer verwijderen",
-    "hint_rescan": "Opnieuw scannen"
+    "hint_rescan": "Opnieuw scannen",
+    "order": "Volgorde",
+    "hint_lists": "Playlist / Thema's",
+    "delete_confirm": "Druk nogmaals op X om dit nummer te verwijderen.",
+    "deleted": "Nummer verwijderd.",
+    "delete_failed": "Het nummer kon niet worden verwijderd.",
+    "delete_theme_song": "Themamuziek verdwijnt met het thema."
   },
   "button": {
     "close_hint": "(B) Sluiten",
@@ -1025,7 +1031,8 @@
       "video_id": "Video-ID: ",
       "status_downloaded": "Status: opgeslagen in sdmc:/config/OmniLaunch/music/",
       "status_ready": "Status: klaar om te downloaden (.mp3)",
-      "status_ready_play": "Status: klaar om af te spelen of te verwijderen"
+      "status_ready_play": "Status: klaar om af te spelen of te verwijderen",
+      "searching_for": "Zoeken naar \"{query}\". De resultaten verschijnen hier over enkele seconden."
     },
     "accessibility": {
       "fullscreen_preview": "Volledig scherm",
@@ -1806,7 +1813,12 @@
     "fetch_installing": "Installeren...",
     "fetch_cancelling": "Annuleren...",
     "fetch_cancelled": "Download geannuleerd.",
-    "hold_minus_classic": "Houd - ingedrukt voor Classic"
+    "hold_minus_classic": "Houd - ingedrukt voor Classic",
+    "music_theme_tab": "Thema's",
+    "music_theme_source": "Themamuziek",
+    "music_theme_loading": "Themamuziek zoeken...",
+    "music_theme_empty": "Geen geïnstalleerd thema heeft muziek.",
+    "music_empty": "Nog geen nummers. Download ze in de themawinkel."
   },
   "news": {
     "empty_title": "Geen nieuws",

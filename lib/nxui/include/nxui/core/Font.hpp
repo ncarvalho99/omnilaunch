@@ -37,10 +37,19 @@ public:
     // Measure text dimensions
     Vec2 measure(const std::string& text) const;
 
-    // True when the font has a real glyph for this codepoint (not the box).
-    bool hasGlyph(std::uint32_t cp) const {
-        return m_font && TTF_GlyphIsProvided32(m_font, static_cast<Uint32>(cp)) != 0;
-    }
+    // True when the font, or one of the fallback faces, has a real glyph for
+    // this codepoint (not the box).
+    bool hasGlyph(std::uint32_t cp) const { return m_font && faceFor(cp) >= 0; }
+
+    // Fallback faces for letters the theme font does not have (Japanese,
+    // Chinese, Korean, emoji, ...). Process-wide, registered once at start-up
+    // before any text is drawn; the bytes must stay valid for the whole
+    // process (system shared fonts, or a file read into memory). Each Font
+    // opens a fallback at its own size only when a string needs it.
+    static void addFallbackFace(const void* data, std::size_t size, const char* name);
+    // Same, from a file: read into memory once and kept for the process.
+    static bool addFallbackFile(const std::string& path);
+    static std::size_t fallbackFaceCount() { return fallbackFaces().size(); }
 
     // True when draw() of this exact string needs no rasterization or upload.
     bool cached(const std::string& text) const { return m_lruMap.count(text) != 0; }
@@ -63,7 +72,31 @@ private:
     Texture* getOrRender(GpuDevice& gpu, Renderer& ren, const std::string& text);
     void adopt(GpuDevice& gpu, Renderer& ren, TTF_Font* newFont, int ptSize);
 
+    struct FallbackFace {
+        const void* data = nullptr; // null until a file face is first needed
+        std::size_t size = 0;
+        std::string name;           // file path for file faces
+        bool failed = false;
+    };
+    static std::vector<FallbackFace>& fallbackFaces();
+    static bool ensureFallbackLoaded(std::size_t index);
+    struct Run {
+        int face = 0; // 0 primary, n = fallback n-1
+        std::string text;
+    };
+    // -1: no face has it; 0: primary; n: fallback n-1.
+    int faceFor(std::uint32_t cp) const;
+    TTF_Font* face(int index) const;
+    // Splits text into runs per face; false when the primary face covers it
+    // all (the common case, drawn exactly as before).
+    bool splitRuns(const std::string& text, std::vector<Run>& runs) const;
+    SDL_Surface* renderRuns(const std::vector<Run>& runs) const;
+    void closeFallbacks();
+
     TTF_Font* m_font = nullptr;
+    mutable std::vector<TTF_Font*> m_fallbackFonts; // per fallback face, opened on demand
+    mutable std::vector<bool> m_fallbackTried;
+    mutable std::unordered_map<std::uint32_t, std::int8_t> m_faceCache;
     std::vector<std::uint8_t> m_fontData; // face bytes the TTF_Font reads from
     static constexpr std::size_t kMeasureCacheMax = 4096;
     mutable std::unordered_map<std::string, Vec2> m_measureCache;

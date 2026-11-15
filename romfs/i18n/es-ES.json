@@ -916,7 +916,13 @@
     "play": "Reproducir",
     "hint_play_pause": "Reproducir/Pausar",
     "hint_delete": "Borrar pista",
-    "hint_rescan": "Reescanear"
+    "hint_rescan": "Reescanear",
+    "order": "Orden",
+    "hint_lists": "Lista / Temas",
+    "delete_confirm": "Pulsa X otra vez para borrar esta canción.",
+    "deleted": "Canción borrada.",
+    "delete_failed": "No se pudo borrar la canción.",
+    "delete_theme_song": "La música de un tema se borra con el tema."
   },
   "button": {
     "close_hint": "(B) Cerrar",
@@ -1026,7 +1032,8 @@
       "video_id": "ID del vídeo: ",
       "status_downloaded": "Estado: guardado en sdmc:/config/OmniLaunch/music/",
       "status_ready": "Estado: listo para descargar (.mp3)",
-      "status_ready_play": "Estado: listo para reproducir o borrar"
+      "status_ready_play": "Estado: listo para reproducir o borrar",
+      "searching_for": "Buscando \"{query}\". Los resultados aparecerán aquí en unos segundos."
     },
     "accessibility": {
       "fullscreen_preview": "Vista previa a pantalla completa",
@@ -1808,7 +1815,12 @@
     "fetch_installing": "Instalando...",
     "fetch_cancelling": "Cancelando...",
     "fetch_cancelled": "Descarga cancelada.",
-    "hold_minus_classic": "Mantén - para cambiar a Classic"
+    "hold_minus_classic": "Mantén - para cambiar a Classic",
+    "music_theme_tab": "Temas",
+    "music_theme_source": "Música de temas",
+    "music_theme_loading": "Buscando música de los temas...",
+    "music_theme_empty": "Ningún tema instalado tiene música.",
+    "music_empty": "Aún no hay canciones. Descarga algunas en la Tienda de temas."
   },
   "news": {
     "empty_title": "Sin noticias",

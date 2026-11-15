@@ -288,6 +288,11 @@ bool HomeAudio::reloadMusicTracks(const AppConfig& config, const std::vector<The
     const std::string& pref = config.audioSourcePreference;
     customBgmTracks = scanCustomBgmTracks(config);
     bool loaded = false;
+    // Theme songs show the theme's name, not the file name ("theme").
+    auto themeTrack = [this](std::size_t t) -> TrackInfo {
+        return {themeMusicTracks[t],
+                themeTrackTitle(themeMusicName, themeMusicTracks[t], t, themeMusicTracks.size())};
+    };
 
     const bool themeMusicAllowed = config.themeMusicEnabled;
 
@@ -303,8 +308,8 @@ bool HomeAudio::reloadMusicTracks(const AppConfig& config, const std::vector<The
         // Downloading one song used to drop the theme music from both players.
         const size_t themeCount = themeMusicAllowed ? themeMusicTracks.size() : 0;
         if (themeMusicAllowed) {
-            for (const auto& track : themeMusicTracks)
-                desired.push_back({track, std::filesystem::path(track).stem().string()});
+            for (std::size_t t = 0; t < themeMusicTracks.size(); ++t)
+                desired.push_back(themeTrack(t));
         }
         for (const auto& track : customBgmTracks)
             desired.push_back(track);
@@ -314,8 +319,8 @@ bool HomeAudio::reloadMusicTracks(const AppConfig& config, const std::vector<The
                           themeCount, customBgmTracks.size());
     } else if (pref == "theme_only") {
         if (themeMusicAllowed && !themeMusicTracks.empty()) {
-            for (const auto& track : themeMusicTracks)
-                desired.push_back({track, std::filesystem::path(track).stem().string()});
+            for (std::size_t t = 0; t < themeMusicTracks.size(); ++t)
+                desired.push_back(themeTrack(t));
             loaded = true;
             DebugLog::log("[audio] Theme Only: Loaded %zu theme track(s)", themeMusicTracks.size());
         }
@@ -326,8 +331,8 @@ bool HomeAudio::reloadMusicTracks(const AppConfig& config, const std::vector<The
             desired.push_back(track);
         const size_t themeCount = themeMusicAllowed ? themeMusicTracks.size() : 0;
         if (themeMusicAllowed) {
-            for (const auto& track : themeMusicTracks)
-                desired.push_back({track, std::filesystem::path(track).stem().string()});
+            for (std::size_t t = 0; t < themeMusicTracks.size(); ++t)
+                desired.push_back(themeTrack(t));
         }
         loaded = !desired.empty();
         if (loaded)
@@ -367,6 +372,16 @@ bool HomeAudio::reloadMusicTracks(const AppConfig& config, const std::vector<The
         }
     }
 
+    homeTracks = desired;
+    // While the theme-music list is the queue, the HOME playlist is only
+    // rebuilt for the player to show; the songs playing are left alone --
+    // unless the queue was emptied meanwhile (a sound preset change clears it).
+    if (queue == Queue::Themes) {
+        if (audio.trackCount() > 0)
+            return false;
+        queue = Queue::Home;
+    }
+
     const auto current = audio.tracks();
     const bool unchanged = current.size() == desired.size() &&
         std::equal(current.begin(), current.end(), desired.begin(),
@@ -393,6 +408,79 @@ bool HomeAudio::reloadMusicTracks(const AppConfig& config, const std::vector<The
             audio.play();
     }
     return true;
+}
+
+std::string HomeAudio::themeTrackTitle(const std::string& themeName, const std::string& path,
+                                       std::size_t index, std::size_t count) {
+    std::string base = themeName;
+    if (base.empty()) {
+        // No theme name known: the folder of a package theme, then the file.
+        const std::filesystem::path p(path);
+        base = p.stem().string();
+        const std::filesystem::path parent = p.parent_path();
+        if ((base == "theme" || base == "music" || base == "bgm") && parent.has_parent_path()) {
+            std::filesystem::path dir = parent;
+            while (dir.has_parent_path() && (dir.filename() == "music" || dir.filename() == "media"))
+                dir = dir.parent_path();
+            if (!dir.filename().empty())
+                base = dir.filename().string();
+        }
+    }
+    if (count > 1)
+        base += " (" + std::to_string(index + 1) + ")";
+    return base;
+}
+
+bool HomeAudio::isCustomTrack(const std::string& path) {
+    const std::string prefix = std::string(kCustomMusicDir) + "/";
+    return path.size() > prefix.size() && path.rfind(prefix, 0) == 0
+        && path.find("..") == std::string::npos && path.find('\\') == std::string::npos
+        && path.find('/', prefix.size()) == std::string::npos;
+}
+
+bool HomeAudio::deleteCustomTrack(const std::string& path) {
+    if (!isCustomTrack(path))
+        return false;
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(path, ec))
+        return false;
+    const bool removed = std::filesystem::remove(path, ec);
+    const std::size_t dot = path.find_last_of('.');
+    if (dot != std::string::npos)
+        std::filesystem::remove(path.substr(0, dot) + ".jpg", ec);
+    DebugLog::log("[media] deleted track %s (%d)", path.c_str(), removed ? 1 : 0);
+    return removed;
+}
+
+void HomeAudio::playHomeTrack(int index, const AppConfig& config) {
+    if (queue != Queue::Home) {
+        // Back to the HOME playlist: load it as the queue again.
+        queue = Queue::Home;
+        audio.stop();
+        audio.clearTracks();
+        for (const auto& t : homeTracks)
+            audio.loadTrack(t.path, t.title);
+        audio.setShuffle(config.customBgmShuffle);
+        audio.setRepeat(config.bgmRepeat);
+    }
+    audio.playTrack(index);
+}
+
+void HomeAudio::playThemeTrack(const std::vector<TrackInfo>& themes, int index) {
+    if (index < 0 || index >= static_cast<int>(themes.size()))
+        return;
+    const auto current = audio.tracks();
+    const bool same = queue == Queue::Themes && current.size() == themes.size() &&
+        std::equal(current.begin(), current.end(), themes.begin(),
+                   [](const TrackInfo& a, const TrackInfo& b) { return a.path == b.path; });
+    if (!same) {
+        queue = Queue::Themes;
+        audio.stop();
+        audio.clearTracks();
+        for (const auto& t : themes)
+            audio.loadTrack(t.path, t.title);
+    }
+    audio.playTrack(index);
 }
 
 std::vector<std::string> HomeAudio::scanAvailablePresets() {

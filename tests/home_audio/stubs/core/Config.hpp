@@ -5,7 +5,7 @@
 struct AppConfig {
  bool accessibilityEnabled=false, accessibilitySpeakHints=true,
  accessibilitySpeakContextEveryFocus=true, customBgmShuffle=false,
- themeMusicEnabled=true, musicEnabled=true;
+ themeMusicEnabled=true, musicEnabled=true, bgmRepeat=false;
  int accessibilitySpeechRate=175;
  std::string soundPreset="wiiu", audioSourcePreference="theme_only";
  std::string nextendoPath="sdmc:/switch/prelude.nro";

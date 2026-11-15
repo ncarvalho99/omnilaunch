@@ -9,6 +9,7 @@
 #include "services/NtpClient.hpp"
 #include "usb/Mtp.hpp"
 #include <nxui/Application.hpp>
+#include <nxui/core/Font.hpp>
 #include <fmt/format.h>
 #include <switchu/file_log.hpp>
 #ifdef SWITCHU_MENU
@@ -355,6 +356,35 @@ int main(int argc, char* argv[]) {
     DebugLog::log("[main] TTF_Init");
     if (TTF_Init() < 0)
         DebugLog::log("[main] TTF_Init FAILED: %s", TTF_GetError());
+
+    // Letters the theme font has no glyph for (song and video titles, Discord
+    // names, homebrew titles) fall back to the console's own fonts: Japanese,
+    // Chinese, Korean and the Nintendo symbols, mapped in shared memory by
+    // pl:u (nothing is copied), then the bundled monochrome emoji font.
+    {
+        int faces = 0;
+        if (R_SUCCEEDED(plInitialize(PlServiceType_User))) {
+            static const PlSharedFontType kTypes[] = {
+                PlSharedFontType_Standard, PlSharedFontType_ChineseSimplified,
+                PlSharedFontType_ExtChineseSimplified, PlSharedFontType_ChineseTraditional,
+                PlSharedFontType_KO, PlSharedFontType_NintendoExt,
+            };
+            for (PlSharedFontType type : kTypes) {
+                PlFontData data{};
+                if (R_SUCCEEDED(plGetSharedFontByType(&data, type)) && data.address && data.size) {
+                    nxui::Font::addFallbackFace(data.address, data.size, "shared");
+                    ++faces;
+                }
+            }
+            // pl:u stays open: the faces read that shared memory for the
+            // whole process.
+        } else {
+            DebugLog::log("[main] pl:u unavailable; no system font fallback");
+        }
+        if (nxui::Font::addFallbackFile(std::string(SD_ASSETS) + "/fonts/NotoEmoji.ttf"))
+            ++faces;
+        DebugLog::log("[main] font fallback faces: %d", faces);
+    }
 
     DebugLog::log("[main] creating app...");
     {

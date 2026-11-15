@@ -1,30 +1,9 @@
 name: Switch build
 
-# Nothing below is compiled into the build, so a push that only touches these
-# has nothing to verify. The '[ci skip]' guard on the job still exists for the
-# cases a path filter cannot see, but relying on it meant remembering it, and a
-# changelog-only commit burned a full matrix because nobody did.
+# Manual only. Builds are made and checked locally before every push, so a
+# push or pull request no longer starts the matrix by itself. Run it from the
+# Actions tab (or `gh workflow run switch.yml`) when a CI build is wanted.
 on:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
-      - 'LICENSE'
-      - '.gitignore'
-      - '.logs/**'
-  pull_request:
-    types:
-      - opened
-      - reopened
-      - synchronize
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
-      - 'LICENSE'
-      - '.gitignore'
-      - '.logs/**'
   workflow_dispatch:
 
 permissions:
@@ -32,7 +11,6 @@ permissions:
 
 jobs:
   build-switch:
-    if: github.event_name != 'push' || !contains(github.event.head_commit.message, 'ci skip')
     runs-on: ubuntu-latest
     container: devkitpro/devkita64
 

@@ -197,8 +197,13 @@ std::string ellipsize(nxui::Font* font, const std::string& text, float maxWidth,
         return text;
 
     std::string out = text;
-    while (!out.empty() && measureTextCached(font, out + "...").x * scale > maxWidth)
-        out.pop_back();
+    while (!out.empty() && measureTextCached(font, out + "...").x * scale > maxWidth) {
+        // One whole character at a time: half a Japanese letter draws as a box.
+        while (!out.empty() && (static_cast<unsigned char>(out.back()) & 0xC0) == 0x80)
+            out.pop_back();
+        if (!out.empty())
+            out.pop_back();
+    }
 
     std::string result = out.empty() ? text : out + "...";
     if (g_ellipsizeCache.size() >= kEllipsizeCacheLimit)
@@ -2219,7 +2224,11 @@ void ThemeShopScreen::drawCustomContent(nxui::Renderer& ren, const nxui::Rect&, 
         return;
     }
 
-    if (count == 0) {
+    // A new YouTube search replaces the previous results with the loading
+    // panel at once: the old cards stayed up with only "Searching" beside the
+    // search box, and it looked frozen.
+    const bool musicSearching = isMusicTab() && m_youTubeClient.isSearching();
+    if (count == 0 || musicSearching) {
         nxui::Rect emptyBox = {
             layout.grid.x + layout.grid.width * 0.14f,
             layout.grid.y + layout.grid.height * 0.22f,
@@ -2230,9 +2239,18 @@ void ThemeShopScreen::drawCustomContent(nxui::Renderer& ren, const nxui::Rect&, 
         ren.drawRoundedRectOutline(emptyBox, m_theme->panelBorder.withAlpha(0.24f * contentOpacity), 20.f, 1.2f);
         std::string emptyTitle, emptySubtitle;
         if (isMusicTab()) {
-            if (m_youTubeClient.isSearching()) {
+            if (musicSearching) {
                 emptyTitle = i18n.tr("themeshop.music.searching_title", "Searching YouTube...");
-                emptySubtitle = i18n.tr("themeshop.music.searching_hint", "Connecting to YouTube and fetching soundtracks...");
+                if (!m_youtubeSearchQuery.empty()) {
+                    emptySubtitle = i18n.tr("themeshop.music.searching_for", "Looking for \"{query}\". Results appear here in a few seconds.");
+                    const std::string key = "{query}";
+                    const std::size_t at = emptySubtitle.find(key);
+                    if (at != std::string::npos)
+                        emptySubtitle.replace(at, key.size(), m_youtubeSearchQuery);
+                    emptySubtitle = ellipsize(m_smallFont, emptySubtitle, emptyBox.width - 40.f, 0.76f);
+                } else {
+                    emptySubtitle = i18n.tr("themeshop.music.searching_hint", "Connecting to YouTube and fetching soundtracks...");
+                }
             } else if (!m_youtubeSearchQuery.empty()) {
                 emptyTitle = i18n.tr("themeshop.music.no_results", "No songs found for this search.");
                 emptySubtitle = i18n.tr("themeshop.music.no_results_hint", "Press Search (or X) to try different keywords.");
@@ -2266,10 +2284,10 @@ void ThemeShopScreen::drawCustomContent(nxui::Renderer& ren, const nxui::Rect&, 
                      m_smallFont,
                      m_theme->textSecondary.withAlpha(0.90f * contentOpacity),
                      0.76f);
-        if (isMusicTab() && m_youTubeClient.isSearching()) {
+        if (musicSearching) {
             drawSpinner(ren,
-                        {emptyBox.x + emptyBox.width * 0.5f, emptyBox.y + 135.f},
-                        10.f,
+                        {emptyBox.x + emptyBox.width * 0.5f, emptyBox.y + 138.f},
+                        14.f,
                         m_uiTime,
                         m_theme->cursorNormal,
                         contentOpacity);

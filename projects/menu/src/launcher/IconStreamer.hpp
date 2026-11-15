@@ -10,6 +10,7 @@
 #include <functional>
 #include <future>
 #include <atomic>
+#include <unordered_map>
 
 class GlossyIcon;
 
@@ -69,6 +70,17 @@ public:
     // or two per frame. Reverts to the normal limits by itself.
     void startBurst(float seconds);
 
+    // Visible-page snapshot (issue #4). The menu process is new on every HOME
+    // return and frontend switch, so the icons it showed last time are gone
+    // with it. The decoded icons of the last fully shown page are kept in one
+    // file; the next start reads it on a worker and puts those icons on screen
+    // in the first frames, then still decodes each one normally and replaces
+    // any that changed. Call once, before the first page is pumped.
+    void beginSnapshotLoad();
+    // True while a complete page waits a moment before it is saved; the owner
+    // keeps pumping onPageChanged until this clears.
+    bool snapshotPending() const { return m_snapSettling; }
+
     // Release everything (textures + compressed data).
     void clear();
     void cancelPending();
@@ -92,8 +104,53 @@ private:
         DecodedIcon decoded;
         bool failed = false;
         bool customArtwork = false;
+        // Hash of the source bytes (with the artwork flag). When it equals
+        // expectKey the icon on screen, put there from the snapshot, is already
+        // this one and the decode is skipped.
+        std::uint64_t key = 0;
+        std::uint64_t expectKey = 0;
+        bool sameAsShown = false;
         std::atomic<bool> cancelled{false};
     };
+
+public:
+    struct SnapshotEntry {
+        uint64_t titleId = 0;
+        uint64_t key = 0;       // source-bytes hash mixed with the artwork flag
+        bool customArtwork = false;
+        std::shared_ptr<const DecodedIcon> icon;
+    };
+    using SnapshotList = std::vector<std::pair<uint64_t, uint64_t>>; // titleId, key
+
+private:
+    bool uploadIcon(int appIndex, const DecodedIcon& icon, bool customArtwork,
+                    nxui::GpuDevice& gpu, nxui::Renderer& ren,
+                    const std::vector<std::shared_ptr<GlossyIcon>>& allIcons);
+    void consumeSnapshotLoad();
+    void rememberDecoded(uint64_t titleId, uint64_t key, bool customArtwork,
+                         std::shared_ptr<const DecodedIcon> icon);
+    bool snapshotLoadInFlight() const;
+    void maybeWriteSnapshot(const std::vector<int>& window);
+    void forgetSnapshotTitle(uint64_t titleId);
+
+    std::shared_ptr<std::vector<SnapshotEntry>> m_snapLoadResult;
+    std::future<void> m_snapLoadFuture;
+    std::chrono::steady_clock::time_point m_snapLoadDeadline{};
+    std::unordered_map<uint64_t, SnapshotEntry> m_snapMap;      // read from SD, not on screen yet
+    SnapshotList m_snapStored;                                  // what the file on SD holds
+    std::unordered_map<uint64_t, SnapshotEntry> m_snapVerify;   // shown from SD, fresh decode pending
+    std::unordered_map<uint64_t, uint64_t> m_shownKey;          // titleId -> key of its texture
+    std::unordered_map<uint64_t, SnapshotEntry> m_snapCollect;  // pixels of shown icons, bounded
+    std::vector<uint64_t> m_snapCollectOrder;                   // oldest first
+    std::vector<uint64_t> m_snapWindowIds;                      // titles of the last window seen
+    uint64_t m_snapPendingHash = 0;                             // window waiting to settle
+    std::chrono::steady_clock::time_point m_snapSettleSince{};
+    bool m_snapSettling = false;
+    std::future<void> m_snapWriteFuture;
+    static constexpr int kSnapshotUploadsPerFrame = 8;
+    // A page of the 5x4 grid at most; 256x256 RGBA is 256 KiB each.
+    static constexpr std::size_t kSnapshotMaxEntries = 20;
+    static constexpr std::size_t kSnapshotCollectMax = 24;
 
     struct PendingDecode {
         uint64_t titleId = 0;

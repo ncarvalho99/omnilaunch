@@ -915,7 +915,13 @@
     "play": "Play",
     "hint_play_pause": "Play/Pause",
     "hint_delete": "Delete Track",
-    "hint_rescan": "Rescan"
+    "hint_rescan": "Rescan",
+    "order": "Order",
+    "hint_lists": "Playlist / Themes",
+    "delete_confirm": "Press X again to delete this song.",
+    "deleted": "Song deleted.",
+    "delete_failed": "The song could not be deleted.",
+    "delete_theme_song": "Theme songs are removed with their theme."
   },
   "button": {
     "close_hint": "(B) Close",
@@ -1025,7 +1031,8 @@
       "video_id": "Video ID: ",
       "status_downloaded": "Status: Saved in sdmc:/config/OmniLaunch/music/",
       "status_ready": "Status: Ready to download (.mp3)",
-      "status_ready_play": "Status: Ready to play or delete"
+      "status_ready_play": "Status: Ready to play or delete",
+      "searching_for": "Looking for \"{query}\". Results appear here in a few seconds."
     },
     "accessibility": {
       "fullscreen_preview": "Fullscreen preview",
@@ -1806,7 +1813,12 @@
     "fetch_installing": "Installing...",
     "fetch_cancelling": "Cancelling...",
     "fetch_cancelled": "Download cancelled.",
-    "hold_minus_classic": "Hold - to switch to Classic"
+    "hold_minus_classic": "Hold - to switch to Classic",
+    "music_theme_tab": "Themes",
+    "music_theme_source": "Theme music",
+    "music_theme_loading": "Looking for theme music...",
+    "music_theme_empty": "No installed theme has music.",
+    "music_empty": "No songs yet. Download some in the Theme Shop."
   },
   "news": {
     "empty_title": "No news",

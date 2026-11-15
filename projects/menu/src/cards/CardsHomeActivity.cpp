@@ -798,6 +798,7 @@ void CardsHomeActivity::resolveThemeMusic() {
     }
     if (!tracks.empty()) {
         audio.themeMusicTracks = std::move(tracks);
+        audio.themeMusicName = theme->name;
         DebugLog::log("[cards] theme music: %zu track(s) from %s", audio.themeMusicTracks.size(),
                       config.themePreset.c_str());
     }
@@ -992,7 +993,7 @@ void CardsHomeActivity::onUpdate(float dt) {
     }
     updateLock(dt);
     m_sheet.update(dt);
-    m_musicSheet.update(dt, m_audio);
+    m_musicSheet.update(dt, m_core.audioServices());
     m_newsSheet.update(dt, app().gpu(), app().renderer(), m_core.threadPool(), m_chrome, m_time);
     if (m_quick)
         m_quick->update(dt);
@@ -1094,7 +1095,7 @@ void CardsHomeActivity::onUpdate(float dt) {
             } else if (m_sheet.isOpen()) {
                 m_sheet.handleInput(app().input(), dt);
             } else if (m_musicSheet.isOpen()) {
-                m_musicSheet.handleInput(app().input(), m_audio, m_core.config());
+                m_musicSheet.handleInput(app().input(), m_core.audioServices(), m_core.config());
             } else if (m_newsSheet.isOpen()) {
                 m_newsSheet.handleInput(app().input(), dt, m_chrome, m_audio);
             } else if (m_moving) {
@@ -2355,7 +2356,7 @@ void CardsHomeActivity::onRender(nxui::Renderer& ren) {
     drawPower(ren);
     drawCardOptions(ren);
     m_sheet.render(ren, m_chrome);
-    m_musicSheet.render(ren, m_chrome, m_audio);
+    m_musicSheet.render(ren, m_chrome, m_core.audioServices());
     m_newsSheet.render(ren, m_chrome, m_time);
     if (m_discordPanel && m_discordPanel->isVisible())
         m_discordPanel->render(ren);

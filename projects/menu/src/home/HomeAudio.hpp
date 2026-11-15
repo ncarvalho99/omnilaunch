@@ -32,6 +32,22 @@ public:
     bool reloadMusicTracks(const AppConfig& config, const std::vector<ThemePreset>& themes);
     std::vector<std::string> scanAvailablePresets();
 
+    // The music player (Classic and Cards share one) has two lists: the HOME
+    // playlist (downloaded songs plus the active theme's music) and the music
+    // of every installed theme. Playing from the second one makes it the
+    // queue until a song of the first is chosen again.
+    enum class Queue { Home, Themes };
+    void playHomeTrack(int index, const AppConfig& config);
+    void playThemeTrack(const std::vector<TrackInfo>& themes, int index);
+    // Removes a downloaded song (and its cover) from the SD music folder;
+    // refuses anything outside it. The caller reloads the playlist.
+    static bool deleteCustomTrack(const std::string& path);
+    static bool isCustomTrack(const std::string& path);
+    // Display title of a theme song: the theme's name, numbered when it has
+    // more than one ("theme" for every theme file read as nothing useful).
+    static std::string themeTrackTitle(const std::string& themeName, const std::string& path,
+                                       std::size_t index, std::size_t count);
+
     AudioManager audio;
     AccessibilityManager accessibility;
     std::future<void> loadFuture;
@@ -41,7 +57,10 @@ public:
     std::string pendingSoundPreset;
     std::vector<std::string> availablePresets;
     std::vector<std::string> themeMusicTracks;
+    std::string themeMusicName;       // name of the theme themeMusicTracks belong to
     std::vector<TrackInfo> customBgmTracks;
+    std::vector<TrackInfo> homeTracks; // the HOME playlist as last built
+    Queue queue = Queue::Home;
 
 private:
     std::string m_assets;

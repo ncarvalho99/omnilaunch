@@ -371,7 +371,15 @@ void CardsHomeActivity::openMusicSheet() {
         if (c.customBgmShuffle != shuffleAtOpen || c.bgmRepeat != repeatAtOpen)
             saveConfig("cards music sheet");
     });
-    m_musicSheet.open(m_audio, m_core.config());
+    m_musicSheet.onDeleted([this]() {
+        m_core.audioServices().reloadMusicTracks(m_core.config(), {});
+    });
+    m_musicSheet.onSourceModeChanged([this]() {
+        m_core.audioServices().reloadMusicTracks(m_core.config(), {});
+        saveConfig("cards music order");
+    });
+    m_musicSheet.onSfx([this](Sfx s) { m_audio.playSfx(s); });
+    m_musicSheet.open(m_core.audioServices(), m_core.config(), &m_core.threadPool());
 }
 
 void CardsHomeActivity::openNewsSheet() {

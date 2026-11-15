@@ -661,6 +661,9 @@ bool WiiUMenuApp::onCreate() {
     };
     DebugLog::log("[init] onCreate enter");
     m_iconStreamer.setThreadPool(&m_threadPool);
+    // Issue #4: the icons of the page shown last time, read while the catalogue
+    // loads, so the grid is not a page of spinners after HOME or Cards.
+    m_iconStreamer.beginSnapshotLoad();
     if (!m_startupConfigProvided)
         m_config.load();
 #ifdef SWITCHU_MENU
@@ -6884,64 +6887,23 @@ void WiiUMenuApp::buildGrid() {
         });
     m_overlayLayer->addChild(m_steamGridDbPicker);
 
-    m_mediaCenterScreen = std::make_shared<media::MediaCenterScreen>();
-    m_mediaCenterScreen->setFont(&m_fontNormal);
-    m_mediaCenterScreen->setSmallFont(&m_fontSmall);
-    m_mediaCenterScreen->setTheme(&m_theme);
-    m_mediaCenterScreen->onPlayPause([this]() {
-        m_audio.togglePlayPause();
-        syncMediaCenterState();
-    });
-    m_mediaCenterScreen->onNextTrack([this]() {
-        m_audio.nextTrack();
-        syncMediaCenterState();
-    });
-    m_mediaCenterScreen->onPrevTrack([this]() {
-        m_audio.previousTrack();
-        syncMediaCenterState();
-    });
-    m_mediaCenterScreen->onShuffleToggle([this]() {
-        m_config.customBgmShuffle = !m_audio.isShuffle();
-        m_config.save();
-        m_audio.setShuffle(m_config.customBgmShuffle);
-        syncMediaCenterState();
-    });
-    m_mediaCenterScreen->onPlayTrack([this](int trackIdx) {
-        m_audio.playTrack(trackIdx);
-        syncMediaCenterState();
-    });
-    m_mediaCenterScreen->onAudioModeChange([this](const std::string& mode) {
-        m_config.audioSourcePreference = mode;
-        m_config.save();
+    // One music player for both frontends: the Cards music sheet, hosted here.
+    m_mediaCenterScreen = std::make_shared<media::MusicPlayerOverlay>(
+        app().gpu(), app().renderer(), m_homeCore.audioServices(), m_config, m_threadPool,
+        std::string(SD_ASSETS));
+    m_mediaCenterScreen->sheet().onDeleted([this]() {
         reloadMusicTracks();
-        syncMediaCenterState();
     });
-    m_mediaCenterScreen->onVolumeChange([this](float vol) {
-        m_config.musicVolume = vol;
-        m_config.save();
-        m_audio.setVolume(vol);
-        syncMediaCenterState();
-    });
-    m_mediaCenterScreen->onRescan([this]() {
-        m_customBgmTracks = scanCustomBgmTracks();
+    m_mediaCenterScreen->sheet().onSourceModeChanged([this]() {
         reloadMusicTracks();
-        syncMediaCenterState();
     });
-    m_mediaCenterScreen->onDeleteTrack([this](int trackIdx) {
-        if (trackIdx < 0 || trackIdx >= static_cast<int>(m_customBgmTracks.size()))
-            return;
-        std::string pathToDelete = m_customBgmTracks[trackIdx].path;
-        std::string titleToDelete = m_customBgmTracks[trackIdx].title;
-        std::error_code ec;
-        std::filesystem::remove(pathToDelete, ec);
-        std::string thumbPath = pathToDelete.substr(0, pathToDelete.find_last_of('.')) + ".jpg";
-        std::filesystem::remove(thumbPath, ec);
-        DebugLog::log("[media] Deleted track: %s (%s)", titleToDelete.c_str(), pathToDelete.c_str());
-
-        reloadMusicTracks();
-        syncMediaCenterState();
-    });
+    m_mediaCenterScreen->sheet().onSfx([this](Sfx s) { m_audio.playSfx(s); });
     m_mediaCenterScreen->onClose([this]() {
+        // Shuffle, repeat, volume and order change only the config in memory
+        // while the player is open; write it once here, in submission order.
+        if (m_configSaveFuture.valid())
+            m_configSaveFuture.wait();
+        m_configSaveFuture = m_threadPool.submit([cfg = m_config]() { cfg.save(); });
         if (m_mediaCenterReturnFocus) {
             focusManager().setFocus(m_mediaCenterReturnFocus);
             m_mediaCenterReturnFocus = nullptr;
@@ -7140,8 +7102,10 @@ void WiiUMenuApp::toggleMediaCenter() {
         m_mediaCenterScreen->hide();
     } else {
         m_mediaCenterReturnFocus = focusManager().current();
-        m_customBgmTracks = scanCustomBgmTracks();
-        syncMediaCenterState();
+        // Songs downloaded or deleted since the list was built appear; the
+        // playing song keeps playing.
+        reloadMusicTracks();
+        m_audio.playSfx(Sfx::ModalShow);
         m_mediaCenterScreen->show();
         focusManager().setFocus(m_mediaCenterScreen.get());
     }
@@ -7149,15 +7113,9 @@ void WiiUMenuApp::toggleMediaCenter() {
 
 void WiiUMenuApp::syncMediaCenterState() {
     if (m_audioFuture.valid()) return; // Worker owns list publication until completion.
-    if (!m_mediaCenterScreen) return;
+    // The player reads the audio service itself every frame.
     const bool isPl = m_audio.isPlaying();
     const bool isPa = m_audio.isPaused();
-    m_mediaCenterScreen->setPlaybackState(isPl && !isPa, isPa, m_audio.isShuffle(),
-                                         m_audio.currentTrackIndex(),
-                                         m_audio.currentTrackTitle(),
-                                         m_customBgmTracks,
-                                         m_config.musicVolume,
-                                         m_config.audioSourcePreference);
     if (m_mediaCenterButton) {
         m_mediaCenterButton->setPlaying(isPl && !isPa);
     }
@@ -9192,12 +9150,8 @@ std::vector<WiiUMenuApp::ActionHint> WiiUMenuApp::buildActionHints() {
     if (m_mediaCenterScreen && m_mediaCenterScreen->isActive()) {
         add(dpadGlyph(), i18n.tr("hint.navigate", "Navigate"));
         add(buttonGlyph(nxui::Button::A), i18n.tr("hint.select", "Select"));
-        if (m_mediaCenterScreen->isFocusedOnPlaylist()) {
-            add(buttonGlyph(nxui::Button::X), i18n.tr("media.hint_delete", "Delete Track"));
-        } else {
-            add(buttonGlyph(nxui::Button::X), i18n.tr("media.hint_play_pause", "Play/Pause"));
-        }
-        add(buttonGlyph(nxui::Button::Y), i18n.tr("media.hint_rescan", "Rescan"));
+        add(buttonGlyph(nxui::Button::L) + buttonGlyph(nxui::Button::R),
+            i18n.tr("media.hint_lists", "Playlist / Themes"));
         add(buttonGlyph(nxui::Button::B), i18n.tr("hint.back", "Back"));
         addVoiceControls();
         return hints;

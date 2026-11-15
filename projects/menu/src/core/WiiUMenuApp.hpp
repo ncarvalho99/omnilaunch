@@ -62,7 +62,7 @@
 #include "widgets/BrowserButton.hpp"
 #include "home/AppFetch.hpp"
 #include "widgets/PowerButton.hpp"
-#include "media/MediaCenterScreen.hpp"
+#include "media/MusicPlayerOverlay.hpp"
 #include "gallery/GameArtworkStore.hpp"
 #include "core/Config.hpp"
 #include "core/FolderStore.hpp"
@@ -724,7 +724,7 @@ private:
     std::shared_ptr<widgets::BrowserButton>          m_browserButton;
     std::shared_ptr<widgets::PowerButton>            m_powerButton;
     std::function<void()>                            m_showPowerDialog;
-    std::shared_ptr<media::MediaCenterScreen>        m_mediaCenterScreen;
+    std::shared_ptr<media::MusicPlayerOverlay>       m_mediaCenterScreen; // the shared music player
     int m_plazaIconPumpIndex = 0;
     nxui::Widget* m_activityLogReturnFocus = nullptr;
     nxui::Widget* m_plazaReturnFocus = nullptr;

@@ -915,7 +915,13 @@
     "play": "Играть",
     "hint_play_pause": "Играть/Пауза",
     "hint_delete": "Удалить трек",
-    "hint_rescan": "Пересканировать"
+    "hint_rescan": "Пересканировать",
+    "order": "Порядок",
+    "hint_lists": "Плейлист / Темы",
+    "delete_confirm": "Нажмите X ещё раз, чтобы удалить песню.",
+    "deleted": "Песня удалена.",
+    "delete_failed": "Не удалось удалить песню.",
+    "delete_theme_song": "Музыка темы удаляется вместе с темой."
   },
   "button": {
     "close_hint": "(B) Закрыть",
@@ -1025,7 +1031,8 @@
       "video_id": "ID видео: ",
       "status_downloaded": "Статус: сохранено в sdmc:/config/OmniLaunch/music/",
       "status_ready": "Статус: готово к загрузке (.mp3)",
-      "status_ready_play": "Статус: можно воспроизвести или удалить"
+      "status_ready_play": "Статус: можно воспроизвести или удалить",
+      "searching_for": "Ищем «{query}». Результаты появятся здесь через несколько секунд."
     },
     "accessibility": {
       "fullscreen_preview": "Полноэкранный просмотр",
@@ -1806,7 +1813,12 @@
     "fetch_installing": "Установка...",
     "fetch_cancelling": "Отмена...",
     "fetch_cancelled": "Загрузка отменена.",
-    "hold_minus_classic": "Удерживайте -, чтобы перейти в Classic"
+    "hold_minus_classic": "Удерживайте -, чтобы перейти в Classic",
+    "music_theme_tab": "Темы",
+    "music_theme_source": "Музыка тем",
+    "music_theme_loading": "Поиск музыки тем...",
+    "music_theme_empty": "Ни у одной установленной темы нет музыки.",
+    "music_empty": "Песен пока нет. Скачайте их в магазине тем."
   },
   "news": {
     "empty_title": "Новостей нет",

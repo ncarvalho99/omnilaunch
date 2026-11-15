@@ -8,6 +8,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <system_error>
 #include <unordered_map>
 
@@ -104,6 +105,108 @@ void saveDecoded(const std::string& path, const std::vector<uint8_t>& source, st
         std::filesystem::remove(tmp, ec);
 }
 
+// Visible-page snapshot (issue #4): the decoded icons of the last page that
+// was fully shown, in one file, read once at start-up. Next to the decoded
+// cache, so it is excluded from the configuration backup as well.
+constexpr const char* kSnapshotPath = "sdmc:/config/OmniLaunch/control_cache/decoded/visible.snap";
+constexpr std::uint32_t kSnapshotMagic = 0x4E535553; // "SUSN"
+constexpr std::uint32_t kSnapshotVersion = 1;
+constexpr std::uint32_t kSnapshotMaxFileEntries = 32;
+constexpr std::uint64_t kArtworkKeySalt = 0x9E3779B97F4A7C15ULL;
+
+struct SnapshotHeader {
+    std::uint32_t magic = kSnapshotMagic;
+    std::uint32_t version = kSnapshotVersion;
+    std::uint32_t count = 0;
+    std::uint32_t reserved = 0;
+};
+static_assert(sizeof(SnapshotHeader) == 16);
+
+struct SnapshotEntryHeader {
+    std::uint64_t titleId = 0;
+    std::uint64_t key = 0;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::uint32_t flags = 0; // bit 0: custom artwork
+    std::uint32_t reserved = 0;
+};
+static_assert(sizeof(SnapshotEntryHeader) == 32);
+
+std::uint64_t sourceKey(const std::vector<uint8_t>& compressed, bool customArtwork) {
+    return fnv1a(compressed) ^ (customArtwork ? kArtworkKeySalt : 0ULL);
+}
+
+std::vector<IconStreamer::SnapshotEntry> readSnapshot() {
+    std::vector<IconStreamer::SnapshotEntry> out;
+    std::ifstream in(kSnapshotPath, std::ios::binary);
+    if (!in)
+        return out;
+    SnapshotHeader h{};
+    in.read(reinterpret_cast<char*>(&h), sizeof(h));
+    if (!in || h.magic != kSnapshotMagic || h.version != kSnapshotVersion || h.count > kSnapshotMaxFileEntries)
+        return out;
+    out.reserve(h.count);
+    for (std::uint32_t i = 0; i < h.count; ++i) {
+        SnapshotEntryHeader e{};
+        in.read(reinterpret_cast<char*>(&e), sizeof(e));
+        if (!in || e.titleId == 0 || e.width == 0 || e.height == 0 || e.width > 1024 || e.height > 1024)
+            return {};
+        auto icon = std::make_shared<IconStreamer::DecodedIcon>();
+        icon->w = static_cast<int>(e.width);
+        icon->h = static_cast<int>(e.height);
+        icon->rgba.resize(static_cast<std::size_t>(e.width) * e.height * 4);
+        in.read(reinterpret_cast<char*>(icon->rgba.data()), static_cast<std::streamsize>(icon->rgba.size()));
+        if (!in)
+            return {};
+        IconStreamer::SnapshotEntry entry;
+        entry.titleId = e.titleId;
+        entry.key = e.key;
+        entry.customArtwork = (e.flags & 1u) != 0;
+        entry.icon = std::move(icon);
+        out.push_back(std::move(entry));
+    }
+    return out;
+}
+
+void writeSnapshot(const std::vector<IconStreamer::SnapshotEntry>& entries) {
+    // A catalogue refresh replaces the streamer; a write of the old one may
+    // still be running on the other worker. One writer at a time.
+    static std::mutex writeMutex;
+    std::lock_guard<std::mutex> lock(writeMutex);
+    std::error_code ec;
+    std::filesystem::create_directories(kDecodedDir, ec);
+    const std::string tmp = std::string(kSnapshotPath) + ".tmp";
+    {
+        std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+        if (!out)
+            return;
+        SnapshotHeader h{};
+        h.count = static_cast<std::uint32_t>(entries.size());
+        out.write(reinterpret_cast<const char*>(&h), sizeof(h));
+        for (const auto& entry : entries) {
+            SnapshotEntryHeader e{};
+            e.titleId = entry.titleId;
+            e.key = entry.key;
+            e.width = static_cast<std::uint32_t>(entry.icon->w);
+            e.height = static_cast<std::uint32_t>(entry.icon->h);
+            e.flags = entry.customArtwork ? 1u : 0u;
+            out.write(reinterpret_cast<const char*>(&e), sizeof(e));
+            out.write(reinterpret_cast<const char*>(entry.icon->rgba.data()),
+                      static_cast<std::streamsize>(entry.icon->rgba.size()));
+        }
+        if (!out) {
+            out.close();
+            std::filesystem::remove(tmp, ec);
+            return;
+        }
+    }
+    std::filesystem::remove(kSnapshotPath, ec);
+    ec.clear();
+    std::filesystem::rename(tmp, kSnapshotPath, ec);
+    if (ec)
+        std::filesystem::remove(tmp, ec);
+}
+
 } // namespace
 
 
@@ -162,6 +265,12 @@ void IconStreamer::clearPinnedIndex() {
 
 void IconStreamer::clear() {
     cancelPending();
+    // Snapshot data read from the SD (m_snapMap, the load in flight, what the
+    // file holds) survives: init() runs this after beginSnapshotLoad(). What
+    // describes textures in the pool goes with the pool.
+    m_snapVerify.clear();
+    m_shownKey.clear();
+    m_snapSettling = false;
     m_pool.clear();
     m_compressed.clear();
     m_titleIds.clear();
@@ -288,6 +397,14 @@ void IconStreamer::reconcileTitleIds(const std::vector<uint64_t>& titleIds) {
     }
 
     m_failedTitleIds.clear();
+    for (auto it = m_snapVerify.begin(); it != m_snapVerify.end();) {
+        if (!newIndexByTitle.count(it->first)) {
+            m_shownKey.erase(it->first);
+            it = m_snapVerify.erase(it);
+        } else {
+            ++it;
+        }
+    }
     m_lastPage = -1;
     m_lastIconsPerPage = -1;
 }
@@ -313,6 +430,9 @@ bool IconStreamer::hasData(int index) const {
 bool IconStreamer::needsVisibleLoads(int currentPage, int iconsPerPage) const {
     if (iconsPerPage <= 0 || m_appToSlot.empty())
         return false;
+    // The snapshot is still being read, checked or saved: keep pumping.
+    if (m_snapLoadFuture.valid() || !m_snapVerify.empty() || m_snapSettling)
+        return true;
     const int totalApps = static_cast<int>(m_appToSlot.size());
     const int totalPages = (totalApps + iconsPerPage - 1) / iconsPerPage;
     currentPage = std::clamp(currentPage, 0, std::max(0, totalPages - 1));
@@ -426,10 +546,204 @@ void IconStreamer::startBurst(float seconds) {
         std::chrono::milliseconds(static_cast<int>(seconds * 1000.f));
 }
 
+void IconStreamer::beginSnapshotLoad() {
+    if (!m_threadPool || m_snapLoadFuture.valid())
+        return;
+    auto result = std::make_shared<std::vector<SnapshotEntry>>();
+    m_snapLoadResult = result;
+    // Normal decodes wait for it at most this long; it is one sequential read
+    // of a few MiB queued ahead of the catalogue load.
+    m_snapLoadDeadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(600);
+    try {
+        m_snapLoadFuture = m_threadPool->submit([result]() {
+            const auto start = std::chrono::steady_clock::now();
+            *result = readSnapshot();
+            DebugLog::log("[streamer] snapshot read: %zu icon(s) in %lldms", result->size(),
+                          static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                              std::chrono::steady_clock::now() - start).count()));
+        });
+    } catch (...) {
+        m_snapLoadResult.reset();
+    }
+}
+
+bool IconStreamer::snapshotLoadInFlight() const {
+    return m_snapLoadFuture.valid()
+        && m_snapLoadFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready
+        && std::chrono::steady_clock::now() < m_snapLoadDeadline;
+}
+
+void IconStreamer::consumeSnapshotLoad() {
+    if (!m_snapLoadFuture.valid()
+        || m_snapLoadFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+        return;
+    try {
+        m_snapLoadFuture.get();
+    } catch (...) {
+    }
+    if (m_snapLoadResult) {
+        m_snapStored.clear();
+        for (auto& entry : *m_snapLoadResult) {
+            m_snapStored.emplace_back(entry.titleId, entry.key);
+            m_snapMap[entry.titleId] = std::move(entry);
+        }
+    }
+    m_snapLoadResult.reset();
+}
+
+void IconStreamer::forgetSnapshotTitle(uint64_t titleId) {
+    m_snapVerify.erase(titleId);
+    m_shownKey.erase(titleId);
+}
+
+void IconStreamer::rememberDecoded(uint64_t titleId, uint64_t key, bool customArtwork,
+                                   std::shared_ptr<const DecodedIcon> icon) {
+    if (titleId == 0 || !icon || icon->rgba.empty())
+        return;
+    SnapshotEntry entry;
+    entry.titleId = titleId;
+    entry.key = key;
+    entry.customArtwork = customArtwork;
+    entry.icon = std::move(icon);
+    m_snapCollect[titleId] = std::move(entry);
+    m_snapCollectOrder.erase(std::remove(m_snapCollectOrder.begin(), m_snapCollectOrder.end(), titleId),
+                             m_snapCollectOrder.end());
+    m_snapCollectOrder.push_back(titleId);
+    // Bounded: drop the oldest pixels that are not part of the page last seen.
+    for (std::size_t i = 0; m_snapCollect.size() > kSnapshotCollectMax && i < m_snapCollectOrder.size();) {
+        const uint64_t old = m_snapCollectOrder[i];
+        if (std::find(m_snapWindowIds.begin(), m_snapWindowIds.end(), old) != m_snapWindowIds.end()) {
+            ++i;
+            continue;
+        }
+        m_snapCollect.erase(old);
+        m_snapCollectOrder.erase(m_snapCollectOrder.begin() + static_cast<std::ptrdiff_t>(i));
+    }
+}
+
+bool IconStreamer::uploadIcon(int appIndex, const DecodedIcon& icon, bool customArtwork,
+                              nxui::GpuDevice& gpu, nxui::Renderer& ren,
+                              const std::vector<std::shared_ptr<GlossyIcon>>& allIcons) {
+    int poolIdx = appIndex >= 0 && appIndex < (int)m_appToSlot.size() ? m_appToSlot[(size_t)appIndex] : -1;
+    const bool reuse = poolIdx >= 0 && poolIdx < (int)m_pool.size() && m_pool[(size_t)poolIdx];
+    if (!reuse) {
+        if (!m_freeSlots.empty()) {
+            poolIdx = m_freeSlots.back();
+            m_freeSlots.pop_back();
+        } else {
+            poolIdx = static_cast<int>(m_pool.size());
+            m_pool.emplace_back(std::make_unique<TexSlot>());
+        }
+    }
+
+    auto& slot = *m_pool[(size_t)poolIdx];
+    // A recycled pool texture keeps the same descriptor and address.
+    // Detach every stale consumer before overwriting it, including icons
+    // that moved to another index during a reflow.
+    for (const auto& w : allIcons) {
+        if (w && w->texture() == &slot.texture)
+            w->setTexture(nullptr);
+    }
+    if (!slot.texture.loadFromPixels(gpu, ren, icon.rgba.data(), icon.w, icon.h)) {
+        slot.appIndex = -1;
+        m_appToSlot[(size_t)appIndex] = -1;
+        m_freeSlots.push_back(poolIdx);
+        return false;
+    }
+    slot.appIndex = appIndex;
+    m_appToSlot[(size_t)appIndex] = poolIdx;
+    if (appIndex < (int)allIcons.size())
+        allIcons[(size_t)appIndex]->setTexture(&slot.texture);
+    if (appIndex < (int)m_customArtwork.size())
+        m_customArtwork[(size_t)appIndex] = customArtwork;
+    if (appIndex < (int)allIcons.size())
+        allIcons[(size_t)appIndex]->setCustomArtwork(customArtwork);
+    return true;
+}
+
+// Saves the page once every icon on it is on screen from a fresh (or
+// verified) decode and the page has stayed the same for a moment, and only
+// when it differs from what the file already holds.
+void IconStreamer::maybeWriteSnapshot(const std::vector<int>& window) {
+    std::vector<uint64_t> ids;
+    ids.reserve(window.size());
+    for (int appIndex : window) {
+        if (appIndex < 0 || appIndex >= (int)m_titleIds.size())
+            continue;
+        const uint64_t titleId = m_titleIds[(size_t)appIndex];
+        if (titleId == 0 || !hasData(appIndex))
+            continue;
+        if (std::find(m_failedTitleIds.begin(), m_failedTitleIds.end(), titleId) != m_failedTitleIds.end())
+            continue;
+        if (std::find(ids.begin(), ids.end(), titleId) != ids.end())
+            continue;
+        ids.push_back(titleId);
+        if (ids.size() >= kSnapshotMaxEntries)
+            break;
+    }
+    m_snapWindowIds = ids;
+
+    SnapshotList list;
+    list.reserve(ids.size());
+    for (uint64_t titleId : ids) {
+        const auto shown = m_shownKey.find(titleId);
+        const auto it = std::find(m_titleIds.begin(), m_titleIds.end(), titleId);
+        const int appIndex = it == m_titleIds.end() ? -1 : static_cast<int>(it - m_titleIds.begin());
+        if (shown == m_shownKey.end() || appIndex < 0 || m_appToSlot[(size_t)appIndex] < 0
+            || m_snapVerify.count(titleId) || !m_snapCollect.count(titleId)) {
+            m_snapSettling = false; // page not complete yet
+            return;
+        }
+        list.emplace_back(titleId, shown->second);
+    }
+    // Not while the file is still being read, and never the same page twice.
+    if (list.empty() || list == m_snapStored || m_snapLoadFuture.valid()) {
+        m_snapSettling = false;
+        return;
+    }
+
+    std::uint64_t hash = 1469598103934665603ULL;
+    for (const auto& [titleId, key] : list) {
+        hash = (hash ^ titleId) * 1099511628211ULL;
+        hash = (hash ^ key) * 1099511628211ULL;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    if (!m_snapSettling || hash != m_snapPendingHash) {
+        m_snapPendingHash = hash;
+        m_snapSettleSince = now;
+        m_snapSettling = true;
+        return;
+    }
+    if (now - m_snapSettleSince < std::chrono::milliseconds(1500))
+        return;
+    if (m_snapWriteFuture.valid()
+        && m_snapWriteFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+        return;
+    if (!m_threadPool) {
+        m_snapSettling = false;
+        return;
+    }
+
+    std::vector<SnapshotEntry> entries;
+    entries.reserve(list.size());
+    for (const auto& item : list)
+        entries.push_back(m_snapCollect[item.first]);
+    try {
+        m_snapWriteFuture = m_threadPool->submit([entries = std::move(entries)]() {
+            writeSnapshot(entries);
+        });
+        DebugLog::log("[streamer] snapshot saved: %zu icon(s)", list.size());
+        m_snapStored = std::move(list);
+    } catch (...) {
+    }
+    m_snapSettling = false;
+}
+
 void IconStreamer::onPageChanged(int currentPage, int iconsPerPage,
                                  nxui::GpuDevice& gpu, nxui::Renderer& ren,
                                  const std::vector<std::shared_ptr<GlossyIcon>>& allIcons)
 {
+    consumeSnapshotLoad();
     int totalApps  = (int)m_appToSlot.size();
     if (totalApps == 0 || iconsPerPage <= 0) {
         m_lastPage = currentPage;
@@ -476,6 +790,8 @@ void IconStreamer::onPageChanged(int currentPage, int iconsPerPage,
             continue;
 
         if (!wanted(app)) {
+            if (app < (int)m_titleIds.size())
+                forgetSnapshotTitle(m_titleIds[(size_t)app]);
             if (app < (int)allIcons.size())
                 allIcons[app]->setTexture(nullptr);
             if (app < (int)allIcons.size())
@@ -523,6 +839,34 @@ void IconStreamer::onPageChanged(int currentPage, int iconsPerPage,
         }
     }
 
+    // 2b. Icons of the last session's visible page, from the snapshot file:
+    //     already decoded, so they cost an upload each. Shown at once; the
+    //     normal decode below still runs and replaces any that changed.
+    if (!m_snapMap.empty()) {
+        int snapUploads = 0;
+        for (auto snap = m_snapMap.begin();
+             snap != m_snapMap.end() && snapUploads < kSnapshotUploadsPerFrame;) {
+            const uint64_t titleId = snap->first;
+            auto it = std::find(m_titleIds.begin(), m_titleIds.end(), titleId);
+            const int appIndex = it == m_titleIds.end() ? -1 : static_cast<int>(it - m_titleIds.begin());
+            if (appIndex < 0 || !wanted(appIndex) || m_appToSlot[(size_t)appIndex] >= 0) {
+                ++snap; // not on this page (yet): kept until the page settles
+                continue;
+            }
+            SnapshotEntry entry = std::move(snap->second);
+            snap = m_snapMap.erase(snap);
+            if (!entry.icon || !uploadIcon(appIndex, *entry.icon, entry.customArtwork, gpu, ren, allIcons))
+                continue;
+            m_shownKey[titleId] = entry.key;
+            m_snapVerify[titleId] = std::move(entry);
+            ++snapUploads;
+        }
+        // Whatever the file had for this window is on screen: the rest is a
+        // page not shown now and is not worth keeping in memory.
+        if (snapUploads < kSnapshotUploadsPerFrame)
+            m_snapMap.clear();
+    }
+
     // 3. Consume completed background decodes without ever waiting for them.
     // GPU uploads remain on this thread, but are capped to one per frame so a
     // page cannot monopolise rendering or starve audio updates. Keep the
@@ -556,6 +900,46 @@ void IconStreamer::onPageChanged(int currentPage, int iconsPerPage,
 
         if (state->cancelled.load())
             continue;
+
+        // The check of an icon that came from the snapshot.
+        auto verify = m_snapVerify.find(titleId);
+        if (verify != m_snapVerify.end()) {
+            SnapshotEntry shown = std::move(verify->second);
+            m_snapVerify.erase(verify);
+            // A decode scheduled before the snapshot arrived still carries the
+            // source key, so the comparison holds for it too.
+            if (state->sameAsShown || (state->key != 0 && state->key == shown.key)) {
+                // Unchanged: the snapshot pixels are this icon's pixels.
+                rememberDecoded(titleId, shown.key, shown.customArtwork, shown.icon);
+                continue;
+            }
+            if (state->failed || state->decoded.rgba.empty()) {
+                // The source is gone: do not keep showing the old picture.
+                if (stillWanted && m_appToSlot[(size_t)appIndex] >= 0) {
+                    const int slotIdx = m_appToSlot[(size_t)appIndex];
+                    if (appIndex < (int)allIcons.size())
+                        allIcons[(size_t)appIndex]->setTexture(nullptr);
+                    m_pool[(size_t)slotIdx]->appIndex = -1;
+                    m_appToSlot[(size_t)appIndex] = -1;
+                    m_freeSlots.push_back(slotIdx);
+                }
+                m_shownKey.erase(titleId);
+                m_failedTitleIds.push_back(titleId);
+                continue;
+            }
+            if (!stillWanted || m_appToSlot[(size_t)appIndex] < 0)
+                continue;
+            // Changed since the snapshot (new cover, new icon): replace it in
+            // its own slot.
+            auto fresh = std::make_shared<DecodedIcon>(std::move(state->decoded));
+            if (uploadIcon(appIndex, *fresh, state->customArtwork, gpu, ren, allIcons)) {
+                m_shownKey[titleId] = state->key;
+                rememberDecoded(titleId, state->key, state->customArtwork, std::move(fresh));
+            }
+            ++uploads;
+            continue;
+        }
+
         if (state->failed || state->decoded.rgba.empty()) {
             m_failedTitleIds.push_back(titleId);
             DebugLog::log("[streamer] decode failed title=0x%016lX",
@@ -565,39 +949,11 @@ void IconStreamer::onPageChanged(int currentPage, int iconsPerPage,
         if (!stillWanted || m_appToSlot[(size_t)appIndex] >= 0)
             continue;
 
-        int poolIdx = -1;
-        if (!m_freeSlots.empty()) {
-            poolIdx = m_freeSlots.back();
-            m_freeSlots.pop_back();
+        auto fresh = std::make_shared<DecodedIcon>(std::move(state->decoded));
+        if (uploadIcon(appIndex, *fresh, state->customArtwork, gpu, ren, allIcons)) {
+            m_shownKey[titleId] = state->key;
+            rememberDecoded(titleId, state->key, state->customArtwork, std::move(fresh));
         } else {
-            poolIdx = static_cast<int>(m_pool.size());
-            m_pool.emplace_back(std::make_unique<TexSlot>());
-        }
-
-        auto& slot = *m_pool[(size_t)poolIdx];
-        auto& decoded = state->decoded;
-        // A recycled pool texture keeps the same descriptor and address.
-        // Detach every stale consumer before overwriting it, including icons
-        // that moved to another index during a reflow.
-        for (const auto& icon : allIcons) {
-            if (icon && icon->texture() == &slot.texture)
-                icon->setTexture(nullptr);
-        }
-        if (slot.texture.loadFromPixels(gpu, ren, decoded.rgba.data(), decoded.w, decoded.h)) {
-            slot.appIndex = appIndex;
-            m_appToSlot[(size_t)appIndex] = poolIdx;
-            if (appIndex < (int)allIcons.size())
-                allIcons[(size_t)appIndex]->setTexture(&slot.texture);
-            if (appIndex < (int)m_customArtwork.size())
-                m_customArtwork[(size_t)appIndex] = state->customArtwork;
-            if (appIndex < (int)allIcons.size())
-                allIcons[(size_t)appIndex]->setCustomArtwork(state->customArtwork);
-            // DebugLog::log("[streamer] uploaded title=0x%016lX app=%d pending=%d",
-            //               static_cast<unsigned long>(titleId), appIndex,
-            //               static_cast<int>(m_pendingDecodes.size()));
-        } else {
-            slot.appIndex = -1;
-            m_freeSlots.push_back(poolIdx);
             m_failedTitleIds.push_back(titleId);
             DebugLog::log("[streamer] upload failed title=0x%016lX app=%d",
                           static_cast<unsigned long>(titleId), appIndex);
@@ -628,10 +984,44 @@ void IconStreamer::onPageChanged(int currentPage, int iconsPerPage,
         for (int appIndex = visibleStartApp; appIndex < visibleEndApp; ++appIndex)
             loadOrder.push_back(appIndex);
     }
+
+    // Snapshot bookkeeping: the window it would save is the visible page (in
+    // the line, the focused icon and the ones drawn beside it).
+    {
+        std::vector<int> snapWindow;
+        if (iconsPerPage == 1) {
+            for (std::size_t k = 0; k < loadOrder.size() && k < 9; ++k)
+                snapWindow.push_back(loadOrder[k]);
+        } else {
+            snapWindow.assign(loadOrder.begin(), loadOrder.end());
+        }
+        maybeWriteSnapshot(snapWindow);
+    }
+
+    // Icons shown from the snapshot whose page was left before their check
+    // ran: still check them while they stay in the cache window.
+    for (const auto& item : m_snapVerify) {
+        auto it = std::find(m_titleIds.begin(), m_titleIds.end(), item.first);
+        if (it == m_titleIds.end())
+            continue;
+        const int appIndex = static_cast<int>(it - m_titleIds.begin());
+        if (wanted(appIndex) && std::find(loadOrder.begin(), loadOrder.end(), appIndex) == loadOrder.end())
+            loadOrder.push_back(appIndex);
+    }
+
+    // The snapshot is read in parallel with the first frames. Decoding the
+    // same icons meanwhile would only compete with it for the SD card and the
+    // two workers; wait for it a short, bounded moment.
+    if (snapshotLoadInFlight())
+        return;
+
     for (int appIndex : loadOrder) {
         if ((int)m_pendingDecodes.size() >= (inBurst() ? kBurstMaxPendingDecodes : kMaxPendingDecodes))
             break;
-        if (m_appToSlot[(size_t)appIndex] >= 0 || !hasData(appIndex))
+        const uint64_t loadTitle = appIndex < (int)m_titleIds.size() ? m_titleIds[(size_t)appIndex] : 0;
+        auto verifyIt = m_snapVerify.find(loadTitle);
+        const bool verifying = verifyIt != m_snapVerify.end();
+        if ((m_appToSlot[(size_t)appIndex] >= 0 && !verifying) || !hasData(appIndex))
             continue;
 
         const uint64_t titleId = m_titleIds[(size_t)appIndex];
@@ -640,6 +1030,10 @@ void IconStreamer::onPageChanged(int currentPage, int iconsPerPage,
         const bool pending = std::any_of(
             m_pendingDecodes.begin(), m_pendingDecodes.end(),
             [titleId](const PendingDecode& decode) { return decode.titleId == titleId; });
+        if (verifying && (titleId == 0 || failed)) {
+            m_snapVerify.erase(titleId);
+            continue;
+        }
         if (titleId == 0 || failed || pending)
             continue;
 
@@ -648,6 +1042,7 @@ void IconStreamer::onPageChanged(int currentPage, int iconsPerPage,
             compressed = std::move(m_compressed[(size_t)appIndex]);
 
         auto state = std::make_shared<DecodeState>();
+        state->expectKey = verifying ? verifyIt->second.key : 0;
         IconDataLoader loader = m_iconLoader;
         IconDataLoader artworkLoader = m_artworkLoader;
         auto work = [state, titleId, loader, artworkLoader,
@@ -663,6 +1058,11 @@ void IconStreamer::onPageChanged(int currentPage, int iconsPerPage,
                 return;
             if (compressed.empty()) {
                 state->failed = true;
+                return;
+            }
+            state->key = sourceKey(compressed, state->customArtwork);
+            if (state->expectKey != 0 && state->key == state->expectKey) {
+                state->sameAsShown = true; // the snapshot already shows this icon
                 return;
             }
             if (compressed.size() >= kCacheSourcesFrom) {
@@ -731,6 +1131,9 @@ void IconStreamer::forceReload(int currentPage, int iconsPerPage,
     cancelPending();
     m_pendingDecodes.clear();
     m_failedTitleIds.clear();
+    m_snapVerify.clear();
+    m_shownKey.clear();
+    m_snapMap.clear();
 
     m_lastPage = -1;
     m_lastIconsPerPage = -1;
@@ -752,6 +1155,9 @@ void IconStreamer::reloadTitle(
     m_failedTitleIds.erase(
         std::remove(m_failedTitleIds.begin(), m_failedTitleIds.end(), titleId),
         m_failedTitleIds.end());
+    forgetSnapshotTitle(titleId);
+    m_snapMap.erase(titleId);
+    m_snapCollect.erase(titleId);
     if (appIndex < static_cast<int>(m_compressed.size()))
         m_compressed[(size_t)appIndex].clear();
 

@@ -5,12 +5,225 @@
 #include <cstdio>
 #include <cstring>
 #include <chrono>
+#include <algorithm>
 #include <fstream>
 #include <iterator>
 
 namespace nxui {
 
+namespace {
+
+// Next UTF-8 code point; malformed bytes come back as U+FFFD, one at a time.
+std::uint32_t nextCodepoint(const std::string& s, std::size_t& i) {
+    const unsigned char c = static_cast<unsigned char>(s[i]);
+    int extra = 0;
+    std::uint32_t cp = 0;
+    if (c < 0x80) { ++i; return c; }
+    if ((c & 0xE0) == 0xC0) { extra = 1; cp = c & 0x1F; }
+    else if ((c & 0xF0) == 0xE0) { extra = 2; cp = c & 0x0F; }
+    else if ((c & 0xF8) == 0xF0) { extra = 3; cp = c & 0x07; }
+    else { ++i; return 0xFFFD; }
+    for (int k = 1; k <= extra; ++k) {
+        if (i + k >= s.size()) { ++i; return 0xFFFD; }
+        const unsigned char cc = static_cast<unsigned char>(s[i + k]);
+        if ((cc & 0xC0) != 0x80) { ++i; return 0xFFFD; }
+        cp = (cp << 6) | (cc & 0x3F);
+    }
+    i += static_cast<std::size_t>(extra) + 1;
+    return cp;
+}
+
+// Marks with nothing to draw on their own: zero-width joiners and spaces,
+// variation selectors (the emoji/text style switch after a symbol), skin-tone
+// modifiers and tag characters. A face without them would draw a box.
+bool invisibleMark(std::uint32_t cp) {
+    return (cp >= 0x200B && cp <= 0x200F) || (cp >= 0x2060 && cp <= 0x2064) ||
+           (cp >= 0xFE00 && cp <= 0xFE0F) || (cp >= 0x1F3FB && cp <= 0x1F3FF) ||
+           (cp >= 0xE0020 && cp <= 0xE007F) || cp == 0xFEFF;
+}
+
+} // namespace
+
+std::vector<Font::FallbackFace>& Font::fallbackFaces() {
+    static std::vector<FallbackFace> faces;
+    return faces;
+}
+
+void Font::addFallbackFace(const void* data, std::size_t size, const char* name) {
+    if (!data || size == 0)
+        return;
+    fallbackFaces().push_back({data, size, name ? name : "", false});
+}
+
+bool Font::addFallbackFile(const std::string& path) {
+    std::ifstream probe(path, std::ios::binary);
+    if (!probe)
+        return false;
+    // Read on first use, not here: most sessions never draw an emoji.
+    fallbackFaces().push_back({nullptr, 0, path, false});
+    return true;
+}
+
+bool Font::ensureFallbackLoaded(std::size_t index) {
+    auto& faces = fallbackFaces();
+    if (index >= faces.size())
+        return false;
+    FallbackFace& f = faces[index];
+    if (f.data)
+        return true;
+    if (f.failed)
+        return false;
+    f.failed = true;
+    std::ifstream in(f.name, std::ios::binary | std::ios::ate);
+    if (!in)
+        return false;
+    const std::streamoff size = in.tellg();
+    if (size <= 0)
+        return false;
+    // Kept for the life of the process: faces opened from it read it lazily.
+    auto* bytes = new std::vector<std::uint8_t>(static_cast<std::size_t>(size));
+    in.seekg(0);
+    in.read(reinterpret_cast<char*>(bytes->data()), size);
+    if (!in) {
+        delete bytes;
+        return false;
+    }
+    f.data = bytes->data();
+    f.size = bytes->size();
+    f.failed = false;
+    return true;
+}
+
+void Font::closeFallbacks() {
+    for (TTF_Font* f : m_fallbackFonts)
+        if (f) TTF_CloseFont(f);
+    m_fallbackFonts.clear();
+    m_fallbackTried.clear();
+    m_faceCache.clear();
+}
+
+TTF_Font* Font::face(int index) const {
+    if (index == 0)
+        return m_font;
+    const std::size_t fb = static_cast<std::size_t>(index - 1);
+    const auto& faces = fallbackFaces();
+    if (fb >= faces.size() || !m_font)
+        return nullptr;
+    if (m_fallbackFonts.size() < faces.size()) {
+        m_fallbackFonts.resize(faces.size(), nullptr);
+        m_fallbackTried.resize(faces.size(), false);
+    }
+    if (!m_fallbackTried[fb]) {
+        m_fallbackTried[fb] = true;
+        if (!ensureFallbackLoaded(fb))
+            return nullptr;
+        const int rasterPt = static_cast<int>(m_ptSize * m_rasterScale + 0.5f);
+        SDL_RWops* rw = SDL_RWFromConstMem(faces[fb].data, static_cast<int>(faces[fb].size));
+        TTF_Font* f = rw ? TTF_OpenFontRW(rw, 1, rasterPt) : nullptr;
+        if (f)
+            TTF_SetFontHinting(f, TTF_HINTING_NONE);
+        else
+            std::fprintf(stderr, "[Font] fallback %s failed: %s\n", faces[fb].name.c_str(), TTF_GetError());
+        m_fallbackFonts[fb] = f;
+    }
+    return m_fallbackFonts[fb];
+}
+
+int Font::faceFor(std::uint32_t cp) const {
+    if (!m_font)
+        return -1;
+    if (cp < 0x80)
+        return 0;
+    const auto known = m_faceCache.find(cp);
+    if (known != m_faceCache.end())
+        return known->second;
+    int found = -1;
+    if (TTF_GlyphIsProvided32(m_font, static_cast<Uint32>(cp)))
+        found = 0;
+    for (std::size_t i = 0; found < 0 && i < fallbackFaces().size(); ++i) {
+        TTF_Font* f = face(static_cast<int>(i + 1));
+        if (f && TTF_GlyphIsProvided32(f, static_cast<Uint32>(cp)))
+            found = static_cast<int>(i + 1);
+    }
+    if (m_faceCache.size() > 8192)
+        m_faceCache.clear();
+    m_faceCache.emplace(cp, static_cast<std::int8_t>(found));
+    return found;
+}
+
+bool Font::splitRuns(const std::string& text, std::vector<Run>& runs) const {
+    // Fast path: plain ASCII, or nothing registered to fall back on.
+    bool ascii = true;
+    for (unsigned char c : text)
+        if (c >= 0x80) { ascii = false; break; }
+    if (ascii || fallbackFaces().empty())
+        return false;
+
+    bool needed = false;
+    runs.clear();
+    std::size_t i = 0;
+    while (i < text.size()) {
+        const std::size_t start = i;
+        const std::uint32_t cp = nextCodepoint(text, i);
+        if (invisibleMark(cp)) {
+            needed = true; // dropped
+            continue;
+        }
+        int f = faceFor(cp);
+        if (f < 0) {
+            // No face has it: leave it to the primary (its box), but in its
+            // own run so its neighbours still use their faces.
+            f = 0;
+        }
+        if (f != 0)
+            needed = true;
+        if (runs.empty() || runs.back().face != f)
+            runs.push_back({f, {}});
+        runs.back().text.append(text, start, i - start);
+    }
+    return needed;
+}
+
+SDL_Surface* Font::renderRuns(const std::vector<Run>& runs) const {
+    SDL_Color white = {255, 255, 255, 255};
+    struct Piece { SDL_Surface* s; int ascent; };
+    std::vector<Piece> pieces;
+    int width = 0, maxAscent = 0, maxBelow = 0;
+    for (const auto& run : runs) {
+        TTF_Font* f = face(run.face);
+        if (!f || run.text.empty())
+            continue;
+        SDL_Surface* s = TTF_RenderUTF8_Blended(f, run.text.c_str(), white);
+        if (!s)
+            continue;
+        const int ascent = TTF_FontAscent(f);
+        pieces.push_back({s, ascent});
+        width += s->w;
+        maxAscent = std::max(maxAscent, ascent);
+        maxBelow = std::max(maxBelow, s->h - ascent);
+    }
+    SDL_Surface* out = nullptr;
+    if (width > 0 && maxAscent + maxBelow > 0)
+        out = SDL_CreateRGBSurfaceWithFormat(0, width, maxAscent + maxBelow, 32, SDL_PIXELFORMAT_ARGB8888);
+    if (out) {
+        SDL_FillRect(out, nullptr, 0);
+        int x = 0;
+        for (const auto& p : pieces) {
+            // Runs do not overlap: copy, do not blend onto the transparent
+            // canvas (blending would darken the antialiased edges).
+            SDL_SetSurfaceBlendMode(p.s, SDL_BLENDMODE_NONE);
+            SDL_Rect dst{x, maxAscent - p.ascent, p.s->w, p.s->h};
+            SDL_BlitSurface(p.s, nullptr, out, &dst);
+            x += p.s->w;
+        }
+    }
+    for (auto& p : pieces)
+        SDL_FreeSurface(p.s);
+    return out;
+}
+
 Font::~Font() {
+    closeFallbacks();
     if (m_font) TTF_CloseFont(m_font);
 }
 
@@ -62,6 +275,7 @@ bool Font::loadFromMemory(GpuDevice& gpu, Renderer& ren,
 }
 
 void Font::adopt(GpuDevice& gpu, Renderer& ren, TTF_Font* newFont, int ptSize) {
+    closeFallbacks(); // reopened at the new size when needed
     if (m_font)
         TTF_CloseFont(m_font);
     m_fontData.clear(); // the closed face no longer reads it
@@ -92,7 +306,23 @@ Vec2 Font::measure(const std::string& text) const {
     if (known != m_measureCache.end())
         return known->second;
     int w = 0, h = 0;
-    TTF_SizeUTF8(m_font, text.c_str(), &w, &h);
+    std::vector<Run> runs;
+    if (splitRuns(text, runs)) {
+        int maxAscent = 0, maxBelow = 0;
+        for (const auto& run : runs) {
+            TTF_Font* f = face(run.face);
+            int rw = 0, rh = 0;
+            if (!f || run.text.empty() || TTF_SizeUTF8(f, run.text.c_str(), &rw, &rh) != 0)
+                continue;
+            const int ascent = TTF_FontAscent(f);
+            w += rw;
+            maxAscent = std::max(maxAscent, ascent);
+            maxBelow = std::max(maxBelow, rh - ascent);
+        }
+        h = maxAscent + maxBelow;
+    } else {
+        TTF_SizeUTF8(m_font, text.c_str(), &w, &h);
+    }
     const Vec2 size{(float)w / m_rasterScale, (float)h / m_rasterScale};
     // Wrapped-text layout measures every growing prefix of a line, every
     // frame; keep the answers. Bounded: cleared when it grows past the cap.
@@ -160,7 +390,10 @@ Texture* Font::getOrRender(GpuDevice& gpu, Renderer& ren, const std::string& tex
 
     // Render the string via SDL_ttf.
     SDL_Color white = {255, 255, 255, 255};
-    SDL_Surface* surface = TTF_RenderUTF8_Blended(m_font, text.c_str(), white);
+    std::vector<Run> runs;
+    SDL_Surface* surface = splitRuns(text, runs)
+        ? renderRuns(runs)
+        : TTF_RenderUTF8_Blended(m_font, text.c_str(), white);
     if (!surface) return nullptr;
 
     SDL_Surface* rgba = SDL_ConvertSurfaceFormat(surface, SDL_PIXELFORMAT_ABGR8888, 0);

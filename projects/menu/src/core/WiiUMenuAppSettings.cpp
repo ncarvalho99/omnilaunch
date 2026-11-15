@@ -1907,14 +1907,16 @@ void WiiUMenuApp::createThemeShop() {
     m_themeShop->onPlayMusic([this](const std::string& path, const std::string& title) {
         DebugLog::log("[themeshop] Playing track: %s (%s)", title.c_str(), path.c_str());
         reloadMusicTracks();
-        const auto tracks = m_audio.tracks();
+        auto& service = m_homeCore.audioServices();
+        const auto& tracks = service.homeTracks;
         int index = -1;
         for (std::size_t i = 0; i < tracks.size(); ++i)
             if (tracks[i].path == path)
                 index = static_cast<int>(i);
         if (index >= 0) {
-            m_audio.playTrack(index);
+            service.playHomeTrack(index, m_config);
         } else {
+            service.queue = home::HomeAudio::Queue::Home;
             // Not part of the current source (e.g. theme music only).
             m_audio.stop();
             m_audio.clearTracks();
@@ -2878,6 +2880,7 @@ void WiiUMenuApp::applyThemeResources(const ThemePreset& preset) {
     // musica ao preset, e isso tem de estar resolvido antes de changeSoundPreset
     // ser disparado, porque ele carrega em outra thread e le este valor.
     m_themeMusicTracks.clear();
+    m_homeCore.audioServices().themeMusicName = preset.name;
     if (!preset.music.empty() && !m_config.safeMode()) {
         for (const auto& track : preset.music) {
             std::string path = resolveThemeAssetPath(preset, track);
