@@ -1407,6 +1407,10 @@ static void handleAppletMessages() {
                                   (unsigned)opMode, (unsigned)perfMode,
                                   daemon::menu_la::isActive() ? 1 : 0,
                                   daemon::app::isRunning() ? 1 : 0);
+            // The apm configuration the dock change produced (docked units
+            // have reset to RCM while idle on the dock; this says which
+            // profile was live).
+            logPerformanceConfiguration(msg == 30 ? "operation-mode" : "performance-mode");
             // Flush immediately: if the console wedges right after this, the
             // buffered tail would never reach the SD card.
             switchu::FileLog::flush();

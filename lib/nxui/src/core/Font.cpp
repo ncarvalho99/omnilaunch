@@ -42,6 +42,24 @@ bool invisibleMark(std::uint32_t cp) {
            (cp >= 0xE0020 && cp <= 0xE007F) || cp == 0xFEFF;
 }
 
+// Styled letters that are plain ASCII underneath, for when no face has them:
+// the Mathematical Alphanumeric Symbols block (bold, sans, script... letters
+// and digits, popular in video titles) and fullwidth ASCII. Returns 0 when
+// the code point has no ASCII form.
+char asciiFold(std::uint32_t cp) {
+    if (cp >= 0x1D400 && cp <= 0x1D6A3) {
+        const unsigned idx = (cp - 0x1D400) % 52;
+        return static_cast<char>(idx < 26 ? 'A' + idx : 'a' + (idx - 26));
+    }
+    if (cp == 0x1D6A4) return 'i';
+    if (cp == 0x1D6A5) return 'j';
+    if (cp >= 0x1D7CE && cp <= 0x1D7FF)
+        return static_cast<char>('0' + (cp - 0x1D7CE) % 10);
+    if (cp >= 0xFF01 && cp <= 0xFF5E)
+        return static_cast<char>(cp - 0xFF01 + 0x21);
+    return 0;
+}
+
 } // namespace
 
 std::vector<Font::FallbackFace>& Font::fallbackFaces() {
@@ -171,6 +189,14 @@ bool Font::splitRuns(const std::string& text, std::vector<Run>& runs) const {
         }
         int f = faceFor(cp);
         if (f < 0) {
+            if (const char folded = asciiFold(cp)) {
+                // A styled letter no face draws: show the plain letter.
+                needed = true;
+                if (runs.empty() || runs.back().face != 0)
+                    runs.push_back({0, {}});
+                runs.back().text.push_back(folded);
+                continue;
+            }
             // No face has it: leave it to the primary (its box), but in its
             // own run so its neighbours still use their faces.
             f = 0;

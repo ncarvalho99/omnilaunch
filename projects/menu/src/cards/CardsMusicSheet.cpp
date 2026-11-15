@@ -4,6 +4,8 @@
 #include "core/Config.hpp"
 #include "home/HomeAudio.hpp"
 #include "home/ThemeMusicLibrary.hpp"
+#include "settings/SettingsGlassTuning.hpp"
+#include <nxui/Theme.hpp>
 #include <nxui/core/GpuDevice.hpp>
 #include <nxui/core/I18n.hpp>
 #include <nxui/core/ThreadPool.hpp>
@@ -457,7 +459,40 @@ void CardsMusicSheet::render(nxui::Renderer& ren, CardsChrome& chrome, const hom
 
     bool drawnGlass = false;
 #ifdef SWITCHU_MENU
-    if (ren.gpu().offscreenReady()) {
+    if (m_classicTheme && ren.gpu().offscreenReady()) {
+        // Classic: the same clear frosted glass as its settings and shop
+        // panels, with no dark scrim over the HOME scene and no dark slab.
+        const nxui::Theme& theme = *m_classicTheme;
+        const auto& tuning = settings::debug::settingsGlassTuning();
+        if (!m_backdropCacheValid) {
+            ren.captureToOffscreenSharp();
+            ren.applyBlur(std::max(1.f, tuning.preBlurRadius), std::max(1, tuning.maxOpenPasses / 2));
+            ren.copyOffscreen(nxui::GpuDevice::OFF_SHARP_A, nxui::GpuDevice::OFF_DIALOG);
+            m_backdropCacheValid = true;
+        }
+        ren.drawRect({0.f, 0.f, 1280.f, 720.f}, {0.f, 0.f, 0.f, 0.12f * a});
+        nxui::LiquidGlassSettings savedGlass = ren.liquidGlassSettings();
+        auto& glass = ren.liquidGlassSettings();
+        glass.refractionIntensity = std::clamp(tuning.refractionIntensity, 0.0f, 1.5f);
+        glass.blurIntensity = std::max(0.0f, tuning.shaderBlurIntensity);
+        glass.noiseIntensity = 0.0f;
+        glass.glowIntensity = std::max(0.0f, tuning.glowIntensity);
+        glass.saturation = std::max(0.0f, tuning.saturation);
+        glass.opacityMultiplier = 1.0f;
+        glass.roughness = std::max(0.0f, tuning.roughness);
+        glass.powerFactor = std::max(1.001f, tuning.powerFactor);
+        const bool dark = theme.mode == nxui::ThemeMode::Dark;
+        const nxui::Color tint = theme.panelBase.withAlpha(
+            std::clamp(dark ? tuning.tintAlphaDark : tuning.tintAlphaLight, 0.0f, 1.0f));
+        ren.drawLiquidGlass(nxui::GpuDevice::OFF_DIALOG, card, 34.f, tint, a,
+                            std::clamp(tuning.shade, 0.0f, 1.0f));
+        ren.liquidGlassSettings() = savedGlass;
+        // A light veil keeps the white text readable on bright wallpapers.
+        ren.drawRoundedRect(card, {0.f, 0.f, 0.f, (dark ? 0.18f : 0.24f) * a}, 34.f);
+        ren.drawRoundedRectOutline(card, theme.panelBorder.withAlpha(0.24f * a), 34.f, 1.2f);
+        ren.drawRoundedRectOutline(card.shrunk(1.5f), theme.panelHighlight.withAlpha(0.08f * a), 32.5f, 1.0f);
+        drawnGlass = true;
+    } else if (ren.gpu().offscreenReady()) {
         if (!m_backdropCacheValid) {
             ren.captureToOffscreenSharp();
             ren.applyBlur(2.5f, 2);
@@ -471,8 +506,10 @@ void CardsMusicSheet::render(nxui::Renderer& ren, CardsChrome& chrome, const hom
 #endif
     if (!drawnGlass)
         ren.drawRect({0.f, 0.f, 1280.f, 720.f}, {0.f, 0.f, 0.f, 0.5f * a});
-    ren.drawRoundedRect(card, {0.08f, 0.09f, 0.13f, (drawnGlass ? 0.72f : 0.94f) * a}, 34.f);
-    ren.drawRoundedRectOutline(card, {1.f, 1.f, 1.f, 0.16f * a}, 34.f, 1.5f);
+    if (!(drawnGlass && m_classicTheme)) {
+        ren.drawRoundedRect(card, {0.08f, 0.09f, 0.13f, (drawnGlass ? 0.72f : 0.94f) * a}, 34.f);
+        ren.drawRoundedRectOutline(card, {1.f, 1.f, 1.f, 0.16f * a}, 34.f, 1.5f);
+    }
     ren.drawGradientRect({card.x + 2.f, card.y + 2.f, card.width - 4.f, 90.f}, {1.f, 1.f, 1.f, 0.05f * a},
                          {1.f, 1.f, 1.f, 0.f});
 

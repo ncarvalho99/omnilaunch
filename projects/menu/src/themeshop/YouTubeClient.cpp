@@ -81,8 +81,38 @@ std::string YouTubeClient::musicDirectory() {
 std::string YouTubeClient::sanitizeFilename(const std::string& name) {
     std::string clean;
     clean.reserve(name.size());
-    for (char c : name) {
+    for (std::size_t i = 0; i < name.size(); ++i) {
+        const char c = name[i];
         unsigned char uc = static_cast<unsigned char>(c);
+        if (uc >= 0x80) {
+            // Keep accented, CJK and other non-ASCII letters (FAT32/exFAT store
+            // UTF-8 names; "MÖBIUS" used to be saved as "MBIUS"). Copy one
+            // whole, well-formed sequence; drop stray bytes and emoji/symbol
+            // planes, which the SD file browser and the player font may not draw.
+            int len = (uc & 0xE0) == 0xC0 ? 2 : (uc & 0xF0) == 0xE0 ? 3 : (uc & 0xF8) == 0xF0 ? 4 : 0;
+            bool wellFormed = len > 0 && i + len <= name.size();
+            for (int k = 1; wellFormed && k < len; ++k)
+                wellFormed = (static_cast<unsigned char>(name[i + k]) & 0xC0) == 0x80;
+            if (!wellFormed)
+                continue; // drop this one stray byte only
+            bool ok = true;
+            if (len == 4)
+                ok = false; // U+10000 and above: emoji and styled math letters
+            if (ok && len == 3) {
+                const unsigned cp = ((uc & 0x0Fu) << 12) |
+                                    ((static_cast<unsigned char>(name[i + 1]) & 0x3Fu) << 6) |
+                                    (static_cast<unsigned char>(name[i + 2]) & 0x3Fu);
+                // Invisible marks, symbols/dingbats and private use.
+                if ((cp >= 0x2000 && cp <= 0x206F) || (cp >= 0x2190 && cp <= 0x2BFF) ||
+                    (cp >= 0xE000 && cp <= 0xF8FF) || (cp >= 0xFE00 && cp <= 0xFE0F) || cp == 0xFEFF ||
+                    cp >= 0xFFF0)
+                    ok = false;
+            }
+            if (ok)
+                clean.append(name, i, static_cast<std::size_t>(len));
+            i += static_cast<std::size_t>(len) - 1;
+            continue;
+        }
         if ((uc >= 'a' && uc <= 'z') ||
             (uc >= 'A' && uc <= 'Z') ||
             (uc >= '0' && uc <= '9') ||
@@ -111,8 +141,17 @@ std::string YouTubeClient::sanitizeFilename(const std::string& name) {
         result.erase(result.begin());
     if (result.empty())
         result = "track";
-    if (result.size() > 80)
-        result.resize(80);
+    if (result.size() > 80) {
+        // Cut on a character boundary, never inside a UTF-8 sequence.
+        std::size_t cut = 80;
+        while (cut > 0 && (static_cast<unsigned char>(result[cut]) & 0xC0) == 0x80)
+            --cut;
+        result.resize(cut);
+        while (!result.empty() && (result.back() == ' ' || result.back() == '.'))
+            result.pop_back();
+        if (result.empty())
+            result = "track";
+    }
     return result;
 }
 

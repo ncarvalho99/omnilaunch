@@ -25,7 +25,7 @@
 #include "core/AudioManager.hpp"
 struct AppConfig;
 namespace home { class HomeAudio; }
-namespace nxui { class ThreadPool; }
+namespace nxui { class ThreadPool; struct Theme; }
 
 namespace cards {
 
@@ -48,6 +48,9 @@ public:
     // Y changed the playlist order (config.audioSourcePreference): the owner
     // saves the config and rebuilds the HOME playlist.
     void onSourceModeChanged(std::function<void()> cb) { m_onSourceMode = std::move(cb); }
+    // Classic draws the card as its own clear glass panels (theme panel tint,
+    // settings glass tuning) instead of the darker Cards sheet. Null = Cards.
+    void setClassicTheme(const nxui::Theme* theme) { m_classicTheme = theme; }
 
 private:
     enum class List { Home, Themes };
@@ -88,6 +91,7 @@ private:
     std::future<void> m_themeScan;
     nxui::ThreadPool* m_pool = nullptr;
     mutable bool m_backdropCacheValid = false;
+    const nxui::Theme* m_classicTheme = nullptr;
     std::function<void()> m_onClosed;
     std::function<void()> m_onDeleted;
     std::function<void(Sfx)> m_onSfx;

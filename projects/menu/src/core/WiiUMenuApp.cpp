@@ -6898,6 +6898,7 @@ void WiiUMenuApp::buildGrid() {
         reloadMusicTracks();
     });
     m_mediaCenterScreen->sheet().onSfx([this](Sfx s) { m_audio.playSfx(s); });
+    m_mediaCenterScreen->sheet().setClassicTheme(&m_theme);
     m_mediaCenterScreen->onClose([this]() {
         // Shuffle, repeat, volume and order change only the config in memory
         // while the player is open; write it once here, in submission order.
@@ -8646,7 +8647,10 @@ void WiiUMenuApp::onUpdate(float dt) {
         && !(m_controllerTest && m_controllerTest->isActive())
         && !(m_textEntry && m_textEntry->isActive())
         && !(m_userSelect && m_userSelect->isActive())
-        && !(m_quickSettings && m_quickSettings->isActive()))
+        && !(m_quickSettings && m_quickSettings->isActive())
+        // The music player covers the HOME grid: a held touch on it must not
+        // start an icon drag (or tap a shortcut) on the page underneath.
+        && !(m_mediaCenterScreen && m_mediaCenterScreen->isActive()))
     {
         handleTouch();
     }
