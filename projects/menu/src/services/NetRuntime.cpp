@@ -36,7 +36,13 @@ bool acquire() {
     }
     g_nifmUp = true;
 
-    const Result sockRc = socketInitializeDefault();
+    // 6 BSD sessions instead of the default 3 (HomeNX cd9328e): each blocking
+    // socket call, a poll() included, holds one for its duration, and the
+    // Discord gateway waits in one most of the time, which left two sessions
+    // for curl transfers.
+    SocketInitConfig sockCfg = *socketGetDefaultInitConfig();
+    sockCfg.num_bsd_sessions = 6;
+    const Result sockRc = socketInitialize(&sockCfg);
     if (R_SUCCEEDED(sockRc)) {
         g_ownsSocket = true;
     } else if (sockRc == MAKERESULT(Module_Libnx, LibnxError_AlreadyInitialized)) {
