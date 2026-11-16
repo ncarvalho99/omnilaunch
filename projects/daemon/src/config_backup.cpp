@@ -27,9 +27,10 @@ constexpr const char* kLegacyBackupRoot   = "sdmc:/backup/SwitchU";
 constexpr const char* kConfigFile         = "config.json";
 constexpr const char* kPartSuffix         = ".omnilaunch-part";
 
-// Files up to this size are compared byte for byte, which catches an edit that
-// kept the size. Larger ones -- artwork, theme media -- are compared by size.
-constexpr off_t kCompareContentsBelow = 256 * 1024;
+// Only config.json is compared byte for byte. Everything else is compared by
+// size and modification time: reading both copies of every small file cost
+// about 9 ms per file before the menu could start, 4.5 s at boot on a card
+// with 485 files, and a size-only check on large files kept stale copies.
 
 struct Stats {
     unsigned copied = 0;
@@ -57,6 +58,8 @@ bool excludedDirectory(const std::string& relative, const char* name) {
         && (std::strcmp(name, "update") == 0
             || std::strcmp(name, "uninstall") == 0
             || std::strcmp(name, "control_cache") == 0
+            // Theme Shop preview downloads, fetched again on demand.
+            || std::strcmp(name, "cache") == 0
             // Scratch space of the homebrew updater (downloads in flight).
             || std::strcmp(name, "tmp") == 0);
 }
@@ -69,17 +72,21 @@ bool excludedFile(const char* name) {
     // Discord sign-in tokens are credentials: they stay in the one file the
     // player can delete by signing out, never in a second copy on the card.
     if (std::strcmp(name, "discord_accounts.json") == 0) return true;
+    // Decoded artwork (3.6 MB each), rebuilt by the menu from the picture
+    // beside it. A restored copy older than its picture is rebuilt anyway.
+    if (endsWith(name, ".rgba-cache")) return true;
     return endsWith(name, ".log") || std::strncmp(name, "log.txt", 7) == 0
         || endsWith(name, ".tmp") || endsWith(name, ".part")
         || endsWith(name, ".switchu-part") || endsWith(name, kPartSuffix)
         || std::strcmp(name, "leave_frame.bin") == 0;
 }
 
-bool fileSize(const std::string& path, off_t& size) {
+bool fileStat(const std::string& path, off_t& size, time_t& modified) {
     struct stat info {};
     if (stat(path.c_str(), &info) != 0 || !S_ISREG(info.st_mode))
         return false;
     size = info.st_size;
+    modified = info.st_mtime;
     return true;
 }
 
@@ -107,11 +114,19 @@ bool sameContents(const std::string& a, const std::string& b) {
     return same;
 }
 
-bool upToDate(const std::string& source, off_t sourceSize, const std::string& destination) {
+// A copy is written after its source was last changed, so its time is the same
+// or later; an edit made since then moves the source past it. Without a time
+// on either side, the contents decide.
+bool upToDate(const std::string& source, off_t sourceSize, time_t sourceModified,
+              const std::string& destination, bool compareContents) {
     off_t destinationSize = 0;
-    if (!fileSize(destination, destinationSize) || destinationSize != sourceSize)
+    time_t destinationModified = 0;
+    if (!fileStat(destination, destinationSize, destinationModified)
+        || destinationSize != sourceSize)
         return false;
-    return sourceSize > kCompareContentsBelow || sameContents(source, destination);
+    if (!compareContents && sourceModified > 0 && destinationModified > 0)
+        return destinationModified >= sourceModified;
+    return sameContents(source, destination);
 }
 
 // Written beside the target and renamed over it, so a copy cut short by a
@@ -187,7 +202,7 @@ void mirror(const std::string& sourceDir, const std::string& destinationDir,
             continue;
         if (relative.empty() && std::strcmp(name, kConfigFile) == 0)
             continue;   // the caller copies it last
-        if (upToDate(source, info.st_size, destination))
+        if (upToDate(source, info.st_size, info.st_mtime, destination, false))
             ++stats.unchanged;
         else
             copyFile(source, destination, stats);
@@ -200,9 +215,10 @@ void copyConfigFileLast(const std::string& sourceRoot, const std::string& destin
     const std::string source = sourceRoot + "/" + kConfigFile;
     const std::string destination = destinationRoot + "/" + kConfigFile;
     off_t size = 0;
-    if (!fileSize(source, size))
+    time_t modified = 0;
+    if (!fileStat(source, size, modified))
         return;
-    if (upToDate(source, size, destination))
+    if (upToDate(source, size, modified, destination, true))
         ++stats.unchanged;
     else
         copyFile(source, destination, stats);

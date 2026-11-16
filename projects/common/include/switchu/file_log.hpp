@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdio>
 #include <cstdarg>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
@@ -29,6 +30,7 @@ public:
 
     static void open(const char* tag, std::uintmax_t rotateAboveBytes = ROTATE_ON_EVERY_OPEN) {
         auto& self = inst();
+        std::lock_guard<std::mutex> fileLock(self.m_fileMutex);
         std::lock_guard<std::mutex> lock(self.m_mutex);
 
         log_detail::ensure_log_dir(LOG_DIR);
@@ -63,6 +65,7 @@ public:
 
     static void close() {
         auto& self = inst();
+        std::lock_guard<std::mutex> fileLock(self.m_fileMutex);
         std::lock_guard<std::mutex> lock(self.m_mutex);
         close_current_file(self);
         fsdevCommitDevice("sdmc");
@@ -72,6 +75,7 @@ public:
     // terminate the process without unwinding.
     static void flush() {
         auto& self = inst();
+        std::lock_guard<std::mutex> fileLock(self.m_fileMutex);
         std::lock_guard<std::mutex> lock(self.m_mutex);
         self.m_sink.flush();
         fsdevCommitDevice("sdmc");
@@ -81,6 +85,7 @@ public:
     // that run indefinitely and never reach close().
     static void flushIfStale(int maxAgeSeconds = 2) {
         auto& self = inst();
+        std::lock_guard<std::mutex> fileLock(self.m_fileMutex);
         std::lock_guard<std::mutex> lock(self.m_mutex);
         self.m_sink.flush_if_stale(maxAgeSeconds);
     }
@@ -94,8 +99,9 @@ public:
     // and the main loop turns buffering back on.
     static void setImmediate(bool immediate) {
         auto& self = inst();
+        std::lock_guard<std::mutex> fileLock(self.m_fileMutex);
         std::lock_guard<std::mutex> lock(self.m_mutex);
-        self.m_immediate = immediate;
+        self.m_immediate.store(immediate);
         if (immediate) {
             self.m_sink.flush();
             fsdevCommitDevice("sdmc");
@@ -114,8 +120,10 @@ public:
             return;
         self.m_writerStop = false;
         {
+            std::lock_guard<std::mutex> fileLock(self.m_fileMutex);
             std::lock_guard<std::mutex> sinkLock(self.m_mutex);
             self.m_sink.set_deferred(true);
+            self.m_deferred.store(true);
         }
         self.m_writer = std::thread([&self, periodMs]() {
             std::unique_lock<std::mutex> lock(self.m_writerMutex);
@@ -125,8 +133,16 @@ public:
                     break;
                 lock.unlock();
                 {
-                    std::lock_guard<std::mutex> sinkLock(self.m_mutex);
-                    self.m_sink.flush_if_stale(1);
+                    // The card is written holding only the file lock, so a
+                    // thread that logs meanwhile appends to the buffer and
+                    // carries on instead of waiting for the write.
+                    std::lock_guard<std::mutex> fileLock(self.m_fileMutex);
+                    std::string chunk;
+                    {
+                        std::lock_guard<std::mutex> sinkLock(self.m_mutex);
+                        chunk = self.m_sink.take_due(1);
+                    }
+                    self.m_sink.write_chunk(chunk);
                 }
                 lock.lock();
             }
@@ -142,7 +158,9 @@ public:
         self.m_writerCv.notify_all();
         if (self.m_writer.joinable())
             self.m_writer.join();
+        std::lock_guard<std::mutex> fileLock(self.m_fileMutex);
         std::lock_guard<std::mutex> sinkLock(self.m_mutex);
+        self.m_deferred.store(false);
         self.m_sink.set_deferred(false);
         self.m_sink.flush();
     }
@@ -164,11 +182,24 @@ public:
         log_detail::format_line_timestamp(timestamp, sizeof(timestamp));
 
         auto& self = inst();
+        // A line that may reach the card here needs the file lock. A buffered
+        // one (background writer running) must not wait for it: the writer
+        // holds it for as long as the card takes.
+        std::unique_lock<std::mutex> fileLock(self.m_fileMutex, std::defer_lock);
+        if (self.m_immediate.load() || !self.m_deferred.load())
+            fileLock.lock();
         std::lock_guard<std::mutex> lock(self.m_mutex);
 
         std::fprintf(stderr, "[%s] %s\n", timestamp, buf);
+        if (!fileLock.owns_lock() && !self.m_sink.deferred()) {
+            // The writer stopped between the check and here; stay buffered.
+            self.m_sink.set_deferred(true);
+            self.m_sink.append(std::string("[") + timestamp + "] " + buf);
+            self.m_sink.set_deferred(false);
+            return;
+        }
         self.m_sink.append(std::string("[") + timestamp + "] " + buf);
-        if (self.m_immediate) {
+        if (self.m_immediate.load() && fileLock.owns_lock()) {
             self.m_sink.flush();
             fsdevCommitDevice("sdmc");
         }
@@ -196,14 +227,18 @@ private:
         self.m_sink.close();
     }
 
+    // Lock order: m_fileMutex, then m_mutex. m_mutex guards the buffer;
+    // m_fileMutex guards every write to the file.
+    std::mutex m_fileMutex;
     std::mutex m_mutex;
     log_detail::buffered_sink m_sink;
+    std::atomic<bool> m_deferred{false};
     std::mutex m_writerMutex;
     std::condition_variable m_writerCv;
     std::thread m_writer;
     bool m_writerStop = false;
     // Startup is unbuffered; the main loop relaxes this once it is running.
-    bool m_immediate = true;
+    std::atomic<bool> m_immediate{true};
 };
 
 }

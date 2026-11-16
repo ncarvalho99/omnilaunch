@@ -47,14 +47,30 @@ void SteamGridDbBackdrop::invalidateArtworkCaches() {
         set.titleId = 0;
     m_decodedCache.clear();
     m_missingArtworkTitleIds.clear();
+    m_artworkPresence.clear();
 }
 
+// Answered from the card once per title, then from memory. It runs on the
+// render thread at every focus change, and each answer is several file checks
+// plus a metadata parse; while a worker was writing a 3.6 MB artwork cache the
+// card held them for hundreds of ms, which was a visible stop on every move.
+// invalidateArtworkCaches() and a forced reload ask the card again. A "no" is
+// trusted only for a few seconds, so artwork that arrives without either of
+// those (a download finishing in the background) still shows up.
 bool SteamGridDbBackdrop::hasArtwork(std::uint64_t titleId) const {
     if (titleId == 0) return false;
+    const auto now = std::chrono::steady_clock::now();
+    const auto known = m_artworkPresence.find(titleId);
+    if (known != m_artworkPresence.end()
+        && (known->second.present || now - known->second.checked < std::chrono::seconds(5)))
+        return known->second.present;
     const std::string manualPath = gallery::GameArtworkStore::pathFor(
         titleId, gallery::ArtworkKind::Background);
-    if (!manualPath.empty()) return true;
-    return SteamGridDbManager::hasArtwork(titleId);
+    const bool present = !manualPath.empty() || SteamGridDbManager::hasArtwork(titleId);
+    if (m_artworkPresence.size() >= kPresenceCacheLimit)
+        m_artworkPresence.clear();
+    m_artworkPresence[titleId] = {present, now};
+    return present;
 }
 
 bool SteamGridDbBackdrop::hasGpuArtwork(std::uint64_t titleId) const {
@@ -113,6 +129,7 @@ void SteamGridDbBackdrop::showTitle(std::uint64_t titleId, bool forceReload) {
         m_missingArtworkTitleIds.erase(
             std::remove(m_missingArtworkTitleIds.begin(), m_missingArtworkTitleIds.end(), titleId),
             m_missingArtworkTitleIds.end());
+        m_artworkPresence.erase(titleId);
     }
 
     auto missingArtwork = std::find(m_missingArtworkTitleIds.begin(),

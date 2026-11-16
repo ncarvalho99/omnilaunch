@@ -155,14 +155,45 @@ public:
             m_pending_since = std::time(nullptr);
         m_pending.append(line);
         m_pending.push_back('\n');
-        if (m_pending.size() >= (m_deferred ? deferred_cap_bytes : flush_threshold_bytes))
+        if (!m_deferred && m_pending.size() >= flush_threshold_bytes)
             flush();
     }
 
-    // With a background flusher draining the buffer, the logging thread only
-    // writes itself when the buffer grows past a much larger cap.
+    // With a background writer, the logging thread never writes the card: the
+    // writer takes the buffer (take_due) and writes it (write_chunk) without
+    // holding the lock loggers wait on. A logger used to block behind the
+    // writer for as long as the card took -- hundreds of ms while artwork
+    // caches were being written -- and on the render thread that was a frame.
     static constexpr size_t deferred_cap_bytes = 64 * 1024;
     void set_deferred(bool deferred) { m_deferred = deferred; }
+    bool deferred() const { return m_deferred; }
+
+    // The buffered lines, once the oldest is max_age_seconds old or the buffer
+    // is past deferred_cap_bytes; otherwise nothing.
+    std::string take_due(std::time_t max_age_seconds) {
+        std::string out;
+        if (m_pending.empty())
+            return out;
+        if (m_pending.size() < deferred_cap_bytes
+            && std::time(nullptr) - m_pending_since < max_age_seconds)
+            return out;
+        out.swap(m_pending);
+        return out;
+    }
+
+    std::string take_all() {
+        std::string out;
+        out.swap(m_pending);
+        return out;
+    }
+
+    // Caller serializes this against every other write to the file.
+    void write_chunk(const std::string& chunk) {
+        if (!m_file.is_open() || chunk.empty())
+            return;
+        m_file.write(chunk.data(), static_cast<std::streamsize>(chunk.size()));
+        m_file.flush();
+    }
 
     // For long-lived processes that never close the sink (the daemon), so a
     // handful of buffered lines don't sit unwritten indefinitely.

@@ -9,10 +9,12 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <future>
 #include <memory>
 #include <optional>
+#include <unordered_map>
 #include <vector>
 
 class SteamGridDbBackdrop final : public nxui::Widget {
@@ -102,4 +104,10 @@ private:
     float m_artworkOpacityScale = 0.50f;
     static constexpr std::size_t kDecodedCacheLimit = 2;
     static constexpr std::size_t kMissingCacheLimit = 64;
+    static constexpr std::size_t kPresenceCacheLimit = 512;
+    struct Presence {
+        bool present = false;
+        std::chrono::steady_clock::time_point checked;
+    };
+    mutable std::unordered_map<std::uint64_t, Presence> m_artworkPresence;
 };
