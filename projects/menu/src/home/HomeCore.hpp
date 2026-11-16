@@ -79,6 +79,8 @@ public:
     void setRequestExit(std::function<void()> cb);
     void setFrontendQuiesce(std::function<void()> quiesce) { m_frontendQuiesce = std::move(quiesce); }
     void quiesceWriters();
+    /// Sleep retains Discord session; launcher still drains writers and commits.
+    void enterSleep();
 
     /// Frontend network scope (C4). frontendStarted() lets the new frontend
     /// issue HTTP requests; frontendStopping() aborts the leaving frontend's
@@ -154,6 +156,7 @@ private:
     discord::DiscordService m_discord;
     std::function<void()> m_requestExit;
     std::function<void()> m_frontendQuiesce;
+    bool m_preparingSleep = false;
     bool m_frontendSwitch = false;
 
 #ifdef SWITCHU_MENU

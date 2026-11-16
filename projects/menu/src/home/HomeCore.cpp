@@ -115,8 +115,22 @@ void HomeCore::setRequestExit(std::function<void()> cb) {
     });
 }
 
+void HomeCore::enterSleep() {
+    m_discord.sleep();
+    // Preserve the verified launcher/daemon sequence. Its writer-quiescence
+    // callback now sees the already-paused service, not a terminal shutdown.
+    m_preparingSleep = true;
+    try { m_launcher.enterSleep(); }
+    catch (...) {
+        m_preparingSleep = false;
+        m_discord.wake();
+        throw;
+    }
+    m_preparingSleep = false;
+}
+
 void HomeCore::quiesceWriters() {
-    m_discord.beginShutdown();
+    if (!m_preparingSleep) m_discord.beginShutdown();
     if (m_frontendQuiesce) {
         m_frontendQuiesce();
     }

@@ -7,7 +7,11 @@ namespace discord {
 class DiscordService {
 public:
     void update(home::HomeCore&) {}
-    void beginShutdown() {}
+    bool asleep = false;
+    int terminalStops = 0;
+    void sleep() { asleep = true; }
+    void wake() { asleep = false; }
+    void beginShutdown() { ++terminalStops; }
     void shutdown() {}
 };
 

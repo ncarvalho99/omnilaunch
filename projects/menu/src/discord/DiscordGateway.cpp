@@ -40,14 +40,48 @@ void DiscordGateway::start(net::NetService& net, const std::string& token) {
     }
     m_token = token;
     m_stop.store(false);
+    m_keepSession.store(false);
+    m_paused = false;
     m_state.store(State::Connecting);
+    m_done.store(false);
     m_thread = std::thread([this, &net]() {
-        run(net);
-        m_state.store(State::Disconnected);
+        try { run(net); }
+        catch (...) { setState(State::Failed, "Gateway worker failed"); }
+        m_done.store(true);
     });
 }
 
+void DiscordGateway::pause() {
+    if (m_paused || !m_thread.joinable())
+        return;
+    m_paused = true;
+    m_keepSession.store(true);
+    m_stop.store(true);
+    // Never join here: DNS/TLS may still be in flight when sleep arrives.
+    DebugLog::log("[discord-gw] pause requested for sleep");
+}
+
+bool DiscordGateway::resume(net::NetService& net) {
+    if (!m_paused || !m_done.load() || m_token.empty())
+        return false;
+    if (m_thread.joinable()) m_thread.join(); // done, never waits for network
+    m_paused = false;
+    m_keepSession.store(false);
+    m_stop.store(false);
+    m_state.store(State::Reconnecting);
+    m_done.store(false);
+    m_thread = std::thread([this, &net]() {
+        try { run(net); }
+        catch (...) { setState(State::Failed, "Gateway worker failed"); }
+        m_done.store(true);
+    });
+    DebugLog::log("[discord-gw] resuming after sleep");
+    return true;
+}
+
 void DiscordGateway::stop() {
+    m_paused = false;
+    m_keepSession.store(false);
     m_stop.store(true);
     if (m_thread.joinable()) {
         m_thread.join();
@@ -119,7 +153,7 @@ void DiscordGateway::run(net::NetService& net) {
 
         while (!m_stop.load() && ws.isOpen()) {
             std::vector<net::ws::Message> msgs;
-            if (ws.wait(msgs, 400, &m_stop)) {
+            if (ws.wait(msgs, 200, &m_stop)) {
                 // An exception escaping this thread terminates the HOME Menu,
                 // so a payload the parser rejects only drops that batch.
                 try {
@@ -146,7 +180,7 @@ void DiscordGateway::run(net::NetService& net) {
                             resume["d"]["token"] = m_token;
                             resume["d"]["session_id"] = m_sessionId;
                             resume["d"]["seq"] = m_lastSeq;
-                            ws.sendText(resume.dump());
+                            ws.sendText(resume.dump(), &m_stop);
                             DebugLog::log("[discord-gw] sent Resume for session %s seq %lld", m_sessionId.c_str(),
                                           static_cast<long long>(m_lastSeq));
                         } else {
@@ -156,7 +190,7 @@ void DiscordGateway::run(net::NetService& net) {
                             ident["d"]["properties"]["os"] = "Nintendo Switch";
                             ident["d"]["properties"]["browser"] = "OmniLaunch";
                             ident["d"]["properties"]["device"] = "Nintendo Switch";
-                            ws.sendText(ident.dump());
+                            ws.sendText(ident.dump(), &m_stop);
                             DebugLog::log("[discord-gw] sent Identify");
                         }
                         identified = true;
@@ -165,7 +199,7 @@ void DiscordGateway::run(net::NetService& net) {
                         hb["op"] = 1;
                         if (m_lastSeq < 0) hb["d"] = nullptr;
                         else hb["d"] = m_lastSeq;
-                        ws.sendText(hb.dump());
+                        ws.sendText(hb.dump(), &m_stop);
                     } else if (op == 0) { // Dispatch
                         const std::string t = (j.contains("t") && j["t"].is_string()) ? j["t"].get<std::string>() : std::string();
                         if (t == "READY") {
@@ -211,14 +245,19 @@ void DiscordGateway::run(net::NetService& net) {
                 hb["op"] = 1;
                 if (m_lastSeq < 0) hb["d"] = nullptr;
                 else hb["d"] = m_lastSeq;
-                ws.sendText(hb.dump());
+                ws.sendText(hb.dump(), &m_stop);
                 nextHeartbeat = nowMs() + heartbeatInterval;
             }
         }
 
+        // A sleep pause closes with 4000: 1000/1001 would end the session and
+        // the wake would have to IDENTIFY again (HomeNX bbbd282).
+        if (m_keepSession.load() && ws.isOpen())
+            ws.close(4000);
         if (m_stop.load()) break;
-        // Pause briefly before reconnect
-        std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+        // Short slices let a sleep pause cancel the reconnect delay.
+        for (int i = 0; i < 15 && !m_stop.load(); ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 }
 

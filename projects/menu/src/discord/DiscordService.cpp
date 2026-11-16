@@ -92,6 +92,8 @@ void DiscordService::connectAccount(home::HomeCore& core, const Account& acc) {
 // dropped), every job in flight is invalidated, and everything that belonged
 // to the previous account is cleared. Main thread only.
 void DiscordService::endSession() {
+    m_asleep = false;
+    m_resumeAfterSleep = false;
     m_gateway.stop();
     m_remoteAuth.stop();
     ++m_session;
@@ -109,7 +111,29 @@ void DiscordService::endSession() {
     m_pendingAlert = Alert{};
 }
 
+void DiscordService::sleep() {
+    if (m_asleep) return;
+    m_asleep = true;
+    m_gateway.pause();
+    DebugLog::log("[discord] gateway paused; account and messages retained");
+}
+
+void DiscordService::wake() {
+    if (!m_asleep) return;
+    m_asleep = false;
+    m_resumeAfterSleep = true;
+}
+
 void DiscordService::update(home::HomeCore& core) {
+    if (m_asleep) return;
+    if (m_resumeAfterSleep && m_gateway.done()) {
+        m_resumeAfterSleep = false;
+        if (m_gateway.resume(core.net())) {
+            if (m_state != State::QrLogin) m_state = State::Connecting;
+            bump();
+        }
+    }
+
     // 0. A token validated on a worker is adopted here, on the main thread,
     //    and only for the session that asked for it.
     PendingSignIn signIn;
@@ -633,11 +657,15 @@ bool DiscordService::takeAlert(Alert& out) {
 }
 
 void DiscordService::beginShutdown() {
+    m_resumeAfterSleep = false;
+    m_asleep = false;
     m_gateway.stop();
     m_remoteAuth.stop();
 }
 
 void DiscordService::shutdown() {
+    m_resumeAfterSleep = false;
+    m_asleep = false;
     m_gateway.stop();
     m_remoteAuth.stop();
 }

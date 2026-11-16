@@ -483,7 +483,7 @@ bool CardsHomeActivity::onCreate() {
         if (m_userSelect)
             m_userSelect->hide();
 #ifdef SWITCHU_MENU
-        m_core.launcher().enterSleep();
+        m_core.enterSleep();
 #endif
     });
     m_lock.onLocked([this]() {
@@ -1934,6 +1934,7 @@ void CardsHomeActivity::pollDaemonNotifications() {
             m_refreshDelayFrames = 3;
             break;
         case switchu::smi::MenuMessage::SleepSequence:
+            m_core.discord().sleep();
             // Lock on the way under; WakeUp locks too in case Horizon
             // suspended the applet first (as Classic). Settings > Lock screen
             // can turn this off, unless a password is set (it always locks).
@@ -1943,6 +1944,7 @@ void CardsHomeActivity::pollDaemonNotifications() {
             }
             break;
         case switchu::smi::MenuMessage::WakeUp:
+            m_core.discord().wake();
             if (m_core.config().cards.lockScreen || m_lock.passwordActive()) {
                 ensureClockFont();
                 m_lock.lockNow();

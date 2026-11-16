@@ -2788,7 +2788,7 @@ void WiiUMenuApp::updateGridXmbContext() {
                 {i18n.tr("button.cancel", "Cancel"), [this]() { }, true},
                 {i18n.tr("power.sleep", "Sleep"), [this]() {
 #ifdef SWITCHU_MENU
-                    m_launcher.enterSleep();
+                    m_homeCore.enterSleep();
 #endif
                 }},
                 {i18n.tr("power.reboot", "Restart"), [this]() {
@@ -6620,7 +6620,7 @@ void WiiUMenuApp::buildGrid() {
                 {i18n.tr("power.sleep", "Sleep"), [this]() {
 #ifdef SWITCHU_MENU
                     m_audio.playSfx(Sfx::ConfirmPositive);
-                    m_launcher.enterSleep();
+                    m_homeCore.enterSleep();
 #else
                     m_audio.playSfx(Sfx::ConfirmPositive);
                     app().requestExit();
@@ -7610,7 +7610,7 @@ void WiiUMenuApp::setupLockScreen() {
 #else
         closeActiveOverlays();
 #endif
-        m_launcher.enterSleep();
+        m_homeCore.enterSleep();
     });
 
     m_lockScreen.onLocked([this, &i18n]() {
@@ -8375,6 +8375,7 @@ void WiiUMenuApp::onUpdate(float dt) {
                 m_deferredRefreshFrames = std::max(m_deferredRefreshFrames, 3);
                 break;
             case switchu::smi::MenuMessage::SleepSequence:
+                m_homeCore.discord().sleep();
                 // Lock on the way under, so the console is already in the state
                 // the owner will come back to. Best effort: Horizon may suspend
                 // the applet before this runs, which is why WakeUp locks too.
@@ -8386,6 +8387,7 @@ void WiiUMenuApp::onUpdate(float dt) {
                 }
                 break;
             case switchu::smi::MenuMessage::WakeUp:
+                m_homeCore.discord().wake();
                 // Waking raises the lock screen unless the owner turned it off
                 // (shared setting, as in Cards); a password always locks.
                 if (m_config.cards.lockScreen || m_lockScreen.passwordActive()) {

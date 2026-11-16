@@ -9,9 +9,11 @@
 #include <curl/curl.h>
 #include <switch.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <thread>
+#include <poll.h>
 
 namespace net {
 
@@ -137,6 +139,15 @@ bool WebSocket::connect(const std::string& url, const std::vector<std::string>& 
     curl_easy_setopt(c, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(c, CURLOPT_CONNECTTIMEOUT_MS, 10000L);
     curl_easy_setopt(c, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+    struct ConnectCancel { const std::atomic<bool>* flag; themeshop::http::CancelScope::Token token; };
+    ConnectCancel progress{cancel, m_token};
+    curl_easy_setopt(c, CURLOPT_NOPROGRESS, 0L);
+    curl_easy_setopt(c, CURLOPT_XFERINFODATA, &progress);
+    curl_easy_setopt(c, CURLOPT_XFERINFOFUNCTION,
+        +[](void* ptr, curl_off_t, curl_off_t, curl_off_t, curl_off_t) -> int {
+            const auto& state = *static_cast<ConnectCancel*>(ptr);
+            return flagSet(state.flag) || themeshop::http::cancelScope().cancelled(state.token);
+        });
     // WebSocket needs HTTP/1.1; never let ALPN negotiate HTTP/2.
     curl_easy_setopt(c, CURLOPT_HTTP_VERSION, static_cast<long>(CURL_HTTP_VERSION_1_1));
     curl_easy_setopt(c, CURLOPT_SSL_ENABLE_ALPN, 0L);
@@ -176,6 +187,9 @@ bool WebSocket::connect(const std::string& url, const std::vector<std::string>& 
         release();
         return false;
     }
+    // The progress pointer is stack-owned and only used by perform().
+    curl_easy_setopt(c, CURLOPT_XFERINFODATA, nullptr);
+    curl_easy_setopt(c, CURLOPT_XFERINFOFUNCTION, nullptr);
     m_open = true;
 
     std::uint8_t keyBytes[16];
@@ -292,10 +306,10 @@ bool WebSocket::flush(bool blocking, const std::atomic<bool>* cancel) {
     return true;
 }
 
-bool WebSocket::sendText(const std::string& text) {
+bool WebSocket::sendText(const std::string& text, const std::atomic<bool>* cancel) {
     if (themeshop::http::cancelScope().cancelled(m_token))
         return false;
-    return queueFrame(ws::Text, text) && flush(true);
+    return !flagSet(cancel) && queueFrame(ws::Text, text) && flush(true, cancel);
 }
 
 void WebSocket::queueCloseEcho() {
@@ -378,7 +392,20 @@ bool WebSocket::wait(std::vector<ws::Message>& out, int timeoutMs, const std::at
             return false;
         if (out.size() > before || Clock::now() >= deadline || flagSet(cancel))
             return true;
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - Clock::now()).count();
+        const int budget = static_cast<int>(std::min<std::int64_t>(200, std::max<std::int64_t>(1, left)));
+        curl_socket_t fd = CURL_SOCKET_BAD;
+        if (curl_easy_getinfo(static_cast<CURL*>(m_curl), CURLINFO_ACTIVESOCKET, &fd) == CURLE_OK &&
+            fd != CURL_SOCKET_BAD) {
+            pollfd socket{fd, POLLIN, 0};
+            const auto beforeWait = Clock::now();
+            const int rc = ::poll(&socket, 1, budget);
+            // A broken/always-ready socket must not turn into a tight loop.
+            if (rc < 0 || (rc > 0 && Clock::now() - beforeWait < std::chrono::milliseconds(1)))
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
     }
 }
 

@@ -40,6 +40,15 @@ public:
     void start(net::NetService& net, const std::string& token);
     void stop();
 
+    /// Console sleep (HomeNX bbbd282): requests thread stop, keeps the session.
+    /// The socket is closed with 4000, which Discord lets resume; resume()
+    /// starts the thread again and sends RESUME, so what arrived meanwhile is
+    /// replayed instead of a fresh IDENTIFY. Main thread only.
+    void pause();
+    bool done() const { return m_done.load(); }
+    /// Restarts only after done(); never waits for DNS/TLS on the UI thread.
+    bool resume(net::NetService& net);
+
     State state() const;
     bool isConnected() const;
 
@@ -57,6 +66,9 @@ private:
 
     std::thread m_thread;
     std::atomic<bool> m_stop{false};
+    std::atomic<bool> m_keepSession{false};
+    bool m_paused = false;
+    std::atomic<bool> m_done{true};
     std::atomic<State> m_state{State::Disconnected};
     std::string m_token;
 

@@ -27,7 +27,7 @@ public:
     /// about 12 s); `cancel` aborts the wait.
     bool connect(const std::string& url, const std::vector<std::string>& headers, std::string& error,
                  const std::atomic<bool>* cancel = nullptr);
-    bool sendText(const std::string& text);
+    bool sendText(const std::string& text, const std::atomic<bool>* cancel = nullptr);
     /// Non-blocking: appends complete messages, answers pings. False once the
     /// connection is closed or the frontend/terminal network scope ended.
     bool poll(std::vector<ws::Message>& out);

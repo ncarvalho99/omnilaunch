@@ -10,6 +10,8 @@ public:
         std::function<void()> quiesceWriters;
     };
 
-    void init(Callbacks) {}
+    Callbacks callbacks;
+    void init(Callbacks cb) { callbacks = std::move(cb); }
+    void enterSleep() { if (callbacks.quiesceWriters) callbacks.quiesceWriters(); }
     void setStartupStatus(uint64_t, bool) {}
 };

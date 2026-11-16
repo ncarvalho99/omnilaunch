@@ -132,7 +132,7 @@ bool CardsHomeActivity::handlePowerInput(nxui::Input& in) {
                     m_audio.playSfx(Sfx::ConfirmPositive);
                     if (i == 0) {
 #ifdef SWITCHU_MENU
-                        m_core.launcher().enterSleep();
+                        m_core.enterSleep();
 #endif
                     } else if (i == 1) {
 #ifdef SWITCHU_MENU
@@ -173,7 +173,7 @@ bool CardsHomeActivity::handlePowerInput(nxui::Input& in) {
         m_audio.playSfx(Sfx::ConfirmPositive);
         if (sel == 0) {
 #ifdef SWITCHU_MENU
-            m_core.launcher().enterSleep();
+            m_core.enterSleep();
 #endif
         } else if (sel == 1) {
 #ifdef SWITCHU_MENU
@@ -1886,7 +1886,7 @@ void CardsHomeActivity::openQuickSettings() {
         cbs.onSleepRequested = [this]() {
             closeQuickSettings();
 #ifdef SWITCHU_MENU
-            m_core.launcher().enterSleep();
+            m_core.enterSleep();
 #endif
         };
         // Restart / turn off go through the confirmation dialog.

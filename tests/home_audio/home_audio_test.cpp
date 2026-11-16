@@ -121,8 +121,13 @@ int main() {
  } // C3 HomeCore launcher, pool, config, and quiesce routing contracts
  bool quiesceCalled = false;
  core.setFrontendQuiesce([&quiesceCalled] { quiesceCalled = true; });
+ core.setRequestExit([] {});
+ core.enterSleep(); // real Core -> launcher callback -> writer drain
+ assert(core.discord().asleep && core.discord().terminalStops == 0);
+ core.discord().wake();
  core.quiesceWriters();
  assert(quiesceCalled);
+ assert(core.discord().terminalStops == 1);
  core.setFrontendQuiesce(nullptr);
 
  assert(core.config().soundPreset == "wiiu");

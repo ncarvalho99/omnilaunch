@@ -1000,7 +1000,7 @@ void WiiUMenuApp::wireGlobalActions() {
                     }, true},
                     {"Sleep test", [this, markCloseRequested]() {
                         m_launcher.terminateApplicationHold();
-                        m_launcher.enterSleep();
+                        m_homeCore.enterSleep();
                         markCloseRequested();
                     }, true},
                     {"Force 15s", [this, markCloseRequested]() {

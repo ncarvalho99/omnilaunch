@@ -611,7 +611,7 @@ void WiiUMenuApp::createSettings() {
     });
     m_settings->onSleepRequest([this]() {
         if (m_settings) m_settings->hide();
-        m_launcher.enterSleep();
+        m_homeCore.enterSleep();
     });
     m_settings->onShutdownRequest([this]() {
         if (m_settings) m_settings->hide();
@@ -791,7 +791,7 @@ void WiiUMenuApp::createQuickSettings() {
                 {i18n.tr("power.sleep", "Sleep"), [this]() {
 #ifdef SWITCHU_MENU
                     m_audio.playSfx(Sfx::ConfirmPositive);
-                    m_launcher.enterSleep();
+                    m_homeCore.enterSleep();
 #else
                     m_audio.playSfx(Sfx::ConfirmPositive);
                     app().requestExit();

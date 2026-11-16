@@ -61,6 +61,10 @@ public:
     /// Begins graceful background teardown when launching a game.
     void beginShutdown();
 
+    /// Main-thread console sleep/wake: preserve the account and message store.
+    void sleep();
+    void wake();
+
     /// Full synchronous shutdown before process exit.
     void shutdown();
 
@@ -138,6 +142,8 @@ private:
 
     std::atomic<State> m_state{State::SignedOut};
     bool m_activated = false;
+    bool m_asleep = false;
+    bool m_resumeAfterSleep = false;
     std::atomic<std::uint64_t> m_version{0};
     std::atomic<std::uint64_t> m_session{1};
 
