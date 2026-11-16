@@ -986,6 +986,8 @@ private:
     bool m_newGamePromptChecked = false;
     bool m_autoNtpSynced = false;
     float m_ntpCheckTimer = 0.f;
+    std::future<void> m_ntpConnFuture;                     // nifm status read on a worker
+    std::shared_ptr<std::atomic<bool>> m_ntpConnResult;
     bool m_startupConfigProvided = false;
     bool m_settingsNeedRefresh        = false;
     std::string m_loadedRegularFontPath;

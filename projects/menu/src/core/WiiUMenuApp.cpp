@@ -1009,9 +1009,12 @@ void WiiUMenuApp::loadResources() {
     // it from the retained fork loadResources(), so those textures stayed
     // invalid: renderPageArrows() bails on !texture.valid(), which is why the
     // ZL/ZR page arrows never appeared on hardware.
+    DebugLog::log("[init-diag] fonts loaded");
     loadStaticTextures();
+    DebugLog::log("[init-diag] static textures loaded");
 
     m_appLoader.finalize(m_model, m_iconStreamer);
+    DebugLog::log("[init-diag] catalogue finalized");
     // AppListLoader owns the initial native-icon setup.  Install the optional
     // Gallery lookup immediately afterwards so custom covers work after a
     // cold start too, not only after a sort or refresh rebuild.
@@ -6260,7 +6263,11 @@ std::shared_ptr<GlossyIcon> WiiUMenuApp::makeIcon(const AppEntry& entry) {
 }
 
 void WiiUMenuApp::buildGrid() {
+    // Diagnostic: where the 1.0-1.5 s of a frontend switch to Classic goes.
+    const uint64_t bgStart = armGetSystemTick();
+    auto bgMs = [bgStart]() { return static_cast<unsigned long>(armTicksToNs(armGetSystemTick() - bgStart) / 1000000ULL); };
     reloadThemePresets();
+    DebugLog::log("[init-diag] presets %lums", bgMs());
     applyAutoThemeConfig();
 
     m_activePresetName = m_config.themePreset;
@@ -6305,6 +6312,7 @@ void WiiUMenuApp::buildGrid() {
     m_gameArtworkBackdrop->setRect({0, 0, 1280, 720});
     m_gameArtworkBackdrop->setArtworkOpacityScale(m_config.steamGridDbOpacity);
     applyThemeResources(m_effectivePreset);
+    DebugLog::log("[init-diag] theme resources %lums", bgMs());
 
     // Compose the model the same way every later rebuild does. buildGrid() used
     // m_model straight from the loader, which is the raw slot arrangement: real
@@ -6403,7 +6411,9 @@ void WiiUMenuApp::buildGrid() {
     m_battery->setForceLiquidGlass(true);
     m_battery->setBlurEnabled(false);
 
+    DebugLog::log("[init-diag] grid + icons %lums", bgMs());
     buildUserAvatarBar(!m_fastReturnRequested);
+    DebugLog::log("[init-diag] avatar bar %lums", bgMs());
 
     m_titlePill = std::make_shared<TitlePillWidget>();
     const float initPillY = (m_appLayoutMode == AppLayoutMode::Deck) ? 275.f
@@ -6702,6 +6712,7 @@ void WiiUMenuApp::buildGrid() {
     };
 
     m_sidebarActions = sidebarActions;
+    DebugLog::log("[init-diag] widgets/focus/leave session %lums", bgMs());
     m_sidebar.setColumnScale(static_cast<float>(std::clamp(m_config.sidebarScalePercent, 80, 130)) / 100.f);
     m_sidebar.build(app().gpu(), app().renderer(), SD_ASSETS, m_sidebarActions, m_config.sidebarOrder);
     if (!returningFromSuspendedApp) {
@@ -6719,8 +6730,10 @@ void WiiUMenuApp::buildGrid() {
         m_activityPrefetchWait = 0.f;
     }
 
+    DebugLog::log("[init-diag] sidebar %lums", bgMs());
     wireGlobalActions();
     applyTheme();
+    DebugLog::log("[init-diag] applyTheme %lums", bgMs());
 
     auto& root = rootBox();
     root.clearChildren();
@@ -7371,19 +7384,8 @@ void WiiUMenuApp::finalizeRefresh() {
 }
 
 void WiiUMenuApp::checkNewGameSteamGridDbPrompt() {
-#ifdef SWITCHU_MENU
-    NifmInternetConnectionStatus nifmStatus = NifmInternetConnectionStatus_ConnectingUnknown1;
-    bool connected = false;
-    if (R_SUCCEEDED(nifmInitialize(NifmServiceType_User))) {
-        connected = R_SUCCEEDED(nifmGetInternetConnectionStatus(nullptr, nullptr, &nifmStatus)) &&
-                    nifmStatus == NifmInternetConnectionStatus_Connected;
-        nifmExit();
-    }
-    if (!connected) {
-        m_newGamePromptChecked = false;
-        return;
-    }
-#endif
+    // Only called by pollAutoNtpSync after its worker found the network
+    // connected; asking nifm again here stalled the frame a second time.
     if (m_allApps.empty())
         return;
 
@@ -7551,23 +7553,43 @@ void WiiUMenuApp::pollAutoNtpSync(float dt) {
     if (m_autoNtpSynced && m_newGamePromptChecked)
         return;
 
-    m_ntpCheckTimer += dt;
-    if (m_ntpCheckTimer < 3.0f)
+    // The nifm session open + status query costs 150-370 ms on the console
+    // (2026-11-16 logs: input-screens stalls right before each NTP sync), so
+    // it runs on a worker; the frame acts on the answer when it lands.
+    if (m_ntpConnFuture.valid()) {
+        if (m_ntpConnFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+            return;
+        try { m_ntpConnFuture.get(); } catch (...) {}
+    } else {
+        m_ntpCheckTimer += dt;
+        if (m_ntpCheckTimer < 3.0f)
+            return;
+        m_ntpCheckTimer = 0.f;
+        if (!m_threadPool.acceptingTasks())
+            return;
+        // Its own balanced nifm session. This poll used to read the status with no
+        // session of its own and worked only because the NTP client leaked an
+        // initialised nifm for the rest of the process. NTP now goes through the
+        // shared reference-counted runtime and no longer leaks, so a failed first
+        // attempt (offline at boot) would otherwise stop every later retry.
+        auto result = std::make_shared<std::atomic<bool>>(false);
+        m_ntpConnResult = result;
+        try {
+            m_ntpConnFuture = m_threadPool.submit([result] {
+                NifmInternetConnectionStatus nifmStatus = NifmInternetConnectionStatus_ConnectingUnknown1;
+                bool ok = false;
+                if (R_SUCCEEDED(nifmInitialize(NifmServiceType_User))) {
+                    ok = R_SUCCEEDED(nifmGetInternetConnectionStatus(nullptr, nullptr, &nifmStatus)) &&
+                         nifmStatus == NifmInternetConnectionStatus_Connected;
+                    nifmExit();
+                }
+                result->store(ok, std::memory_order_release);
+            });
+        } catch (...) {}
         return;
-    m_ntpCheckTimer = 0.f;
-
-    // Its own balanced nifm session. This poll used to read the status with no
-    // session of its own and worked only because the NTP client leaked an
-    // initialised nifm for the rest of the process. NTP now goes through the
-    // shared reference-counted runtime and no longer leaks, so a failed first
-    // attempt (offline at boot) would otherwise stop every later retry.
-    NifmInternetConnectionStatus nifmStatus = NifmInternetConnectionStatus_ConnectingUnknown1;
-    bool connected = false;
-    if (R_SUCCEEDED(nifmInitialize(NifmServiceType_User))) {
-        connected = R_SUCCEEDED(nifmGetInternetConnectionStatus(nullptr, nullptr, &nifmStatus)) &&
-                    nifmStatus == NifmInternetConnectionStatus_Connected;
-        nifmExit();
     }
+    const bool connected = m_ntpConnResult && m_ntpConnResult->load(std::memory_order_acquire);
+    m_ntpConnResult.reset();
     if (connected) {
         if (!m_autoNtpSynced) {
             switchu::services::NtpClient::syncAsync([this](bool ok, uint64_t timestamp) {
@@ -8076,6 +8098,7 @@ void WiiUMenuApp::onUpdate(float dt) {
     // enquanto ele ja esta na mao de quem usa.
     if (m_background)
         m_background->pumpImageSequence(app().gpu(), app().renderer());
+    switchu::menu::frame_probe::mark("bg-image-seq");
 
     // A capa personalizada do jogo em foco chega por aqui. O trabalho caro --
     // ler do cartao e decodificar -- ja aconteceu numa thread de trabalho;
@@ -8138,6 +8161,7 @@ void WiiUMenuApp::onUpdate(float dt) {
         const bool inThemeScreen = m_themeShop && m_themeShop->isActive();
         switchu::FileLog::flushIfStale(inThemeScreen ? 1 : 2);
     }
+    switchu::menu::frame_probe::mark("log-flush");
 
 
     // Skip rendering the home scene while the settings overlay is settled.
@@ -8337,12 +8361,15 @@ void WiiUMenuApp::onUpdate(float dt) {
         }
     }
 
+    switchu::menu::frame_probe::mark("deferred-assets-bt");
     finishAudioLoad(false);
+    switchu::menu::frame_probe::mark("audio-finish");
 
     if (m_settingsNeedRefresh && m_settings) {
         m_settingsNeedRefresh = false;
         m_settings->refreshTranslations();
     }
+    switchu::menu::frame_probe::mark("settings-refresh");
 
     if (m_pendingNetConnect) {
         m_pendingNetConnect = false;
@@ -8521,6 +8548,7 @@ void WiiUMenuApp::onUpdate(float dt) {
         handleFrontendSwitchHold(dt);
 #ifdef SWITCHU_MENU
     pollAutoNtpSync(dt);
+    switchu::menu::frame_probe::mark("ntp-poll");
 #endif
 
     if (!app().input().isHeld(nxui::Button::Plus) || !app().input().isHeld(nxui::Button::Minus))
