@@ -322,7 +322,6 @@ void QuickSettingsOverlay::setupNavigationActions() {
 bool QuickSettingsOverlay::itemShown(ItemIndex item) const {
     switch (item) {
         case ItemIndex::ActivityLog: return !m_extended;
-        case ItemIndex::Bluetooth:
         case ItemIndex::MiniPlayer: return m_extended;
         case ItemIndex::Count: return false;
         default: return true;
@@ -333,13 +332,13 @@ bool QuickSettingsOverlay::itemShown(ItemIndex item) const {
 // above the sliders, Bluetooth below Wi-Fi.
 void QuickSettingsOverlay::stepItem(int dir) {
     static const ItemIndex kClassic[] = {ItemIndex::Brightness, ItemIndex::BgmVolume, ItemIndex::SfxVolume,
-                                         ItemIndex::AirplaneMode, ItemIndex::Wifi, ItemIndex::ActivityLog,
-                                         ItemIndex::PowerActions};
+                                         ItemIndex::AirplaneMode, ItemIndex::Wifi, ItemIndex::Bluetooth,
+                                         ItemIndex::ActivityLog, ItemIndex::PowerActions};
     static const ItemIndex kExtended[] = {ItemIndex::MiniPlayer, ItemIndex::Brightness, ItemIndex::BgmVolume,
                                           ItemIndex::SfxVolume, ItemIndex::AirplaneMode, ItemIndex::Wifi,
                                           ItemIndex::Bluetooth, ItemIndex::PowerActions};
     const ItemIndex* order = m_extended ? kExtended : kClassic;
-    const int n = m_extended ? 8 : 7;
+    const int n = 8;
     int at = 0;
     for (int i = 0; i < n; ++i)
         if (order[i] == m_selectedItem) at = i;
@@ -419,7 +418,7 @@ void QuickSettingsOverlay::refreshHardwareStatus() {
         m_wifiEnabled = wf;
     }
 
-    if (m_extended && m_callbacks.bluetoothEnabled)
+    if (m_callbacks.bluetoothEnabled)
         m_bluetoothEnabled = m_callbacks.bluetoothEnabled();
 
     // Query battery if needed
@@ -584,9 +583,10 @@ nxui::Rect QuickSettingsOverlay::computeItemRect(ItemIndex item) const {
             return {cx - 4.f, panel.y + 328.f + o, cw + 8.f, 42.f};
         case ItemIndex::Wifi:
             return {cx - 4.f, panel.y + 378.f + o, cw + 8.f, 42.f};
-        case ItemIndex::ActivityLog:
         case ItemIndex::Bluetooth:
             return {cx - 4.f, panel.y + 428.f + o, cw + 8.f, 42.f};
+        case ItemIndex::ActivityLog: // Classic only, below Bluetooth
+            return {cx - 4.f, panel.y + 478.f, cw + 8.f, 42.f};
         case ItemIndex::PowerActions:
             return computePowerButtonRect(m_selectedPower);
         default:
@@ -599,7 +599,7 @@ nxui::Rect QuickSettingsOverlay::computePowerButtonRect(PowerAction action) cons
     float cx = panel.x + 22.f;
     const int n = powerCount();
     float btnW = (panel.width - 44.f - 10.f * static_cast<float>(n - 1)) / static_cast<float>(n);
-    float by = panel.y + 514.f + (m_extended ? 52.f : 0.f);
+    float by = panel.y + 514.f + (m_extended ? 52.f : 50.f);
 
     int idx = static_cast<int>(action);
     float bx = cx + idx * (btnW + 10.f);
@@ -720,14 +720,15 @@ void QuickSettingsOverlay::handleTouch(nxui::Input& input) {
             return;
         }
 
+        nxui::Rect btRect = computeItemRect(ItemIndex::Bluetooth);
+        if (btRect.contains(tx, ty)) {
+            m_selectedItem = ItemIndex::Bluetooth;
+            toggleItem(ItemIndex::Bluetooth);
+            updateCursorTarget();
+            return;
+        }
+
         if (m_extended) {
-            nxui::Rect btRect = computeItemRect(ItemIndex::Bluetooth);
-            if (btRect.contains(tx, ty)) {
-                m_selectedItem = ItemIndex::Bluetooth;
-                toggleItem(ItemIndex::Bluetooth);
-                updateCursorTarget();
-                return;
-            }
             nxui::Rect mpRect = computeItemRect(ItemIndex::MiniPlayer);
             if (mpRect.contains(tx, ty)) {
                 m_selectedItem = ItemIndex::MiniPlayer;
@@ -1018,8 +1019,9 @@ void QuickSettingsOverlay::render(nxui::Renderer& ren) {
     drawToggle(ItemIndex::Wifi, i18n.tr("quicksettings.wifi", "Wi-Fi"),
                m_wifiEnabled);
 
+    drawToggle(ItemIndex::Bluetooth, "Bluetooth", m_bluetoothEnabled);
+
     if (m_extended) {
-        drawToggle(ItemIndex::Bluetooth, "Bluetooth", m_bluetoothEnabled);
 
         // Mini player (C-UI-8): track title, previous / play-pause / next.
         nxui::Rect mp = computeItemRect(ItemIndex::MiniPlayer);
@@ -1085,7 +1087,7 @@ void QuickSettingsOverlay::render(nxui::Renderer& ren) {
     // 6. Power Options Section
     if (m_smallFont) {
         ren.drawText(i18n.tr("quicksettings.power_options", "OPÇÕES DE ENERGIA"),
-                     {cx, panel.y + 490.f + (m_extended ? 52.f : 0.f)}, m_smallFont,
+                     {cx, panel.y + 490.f + (m_extended ? 52.f : 50.f)}, m_smallFont,
                      nxui::Color(0.65f, 0.72f, 0.82f, alpha), 0.72f);
     }
 

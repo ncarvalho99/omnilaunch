@@ -1136,17 +1136,33 @@ void DiscordPanel::drawMe(nxui::Renderer& ren, const nxui::Rect& p, float a) {
 }
 
 void DiscordPanel::drawQrView(nxui::Renderer& ren, const nxui::Rect& p, float a) {
-    drawLabel(ren, m_font, p.x + 24.f, p.y + 36.f, T("discord_ui.scan_qr", "Scan QR Code"), textNormal(a));
+    const float textW = p.width - 48.f;
+    drawLabel(ren, m_font, p.x + 24.f, p.y + 36.f, fit(m_font, T("discord_ui.scan_qr", "Scan QR Code"), textW),
+              textNormal(a));
+    // The hint is longer than the panel in several languages: wrap it (two
+    // lines at most) instead of letting it run past the right edge.
+    float hintBottom = p.y + 64.f;
     if (m_smallFont) {
-        drawLabel(ren, m_smallFont, p.x + 24.f, p.y + 64.f,
-                  T("discord_ui.scan_hint", "Scan with Discord mobile app (User Settings > Scan QR Code)"), textMuted(a));
+        constexpr float kHintScale = 0.82f;
+        const auto lines = wrapLines(m_smallFont,
+            T("discord_ui.scan_hint", "Scan with Discord mobile app (User Settings > Scan QR Code)"),
+            textW / kHintScale);
+        const float lineH = m_smallFont->measure("Ag").y * kHintScale + 2.f;
+        float ly = p.y + 64.f;
+        for (std::size_t i = 0; i < lines.size() && i < 2; ++i) {
+            const std::string line = i == 1 && lines.size() > 2 ? fit(m_smallFont, lines[1] + " ...", textW, kHintScale)
+                                                               : fit(m_smallFont, lines[i], textW, kHintScale);
+            drawLabel(ren, m_smallFont, p.x + 24.f, ly, line, textMuted(a), kHintScale);
+            ly += lineH;
+        }
+        hintBottom = ly;
     }
 
     const auto snap = m_service ? m_service->remoteAuth().snapshot() : DiscordRemoteAuth::Snapshot{};
     if (snap.qrSize > 0 && !snap.qrModules.empty()) {
         const float qrBoxSize = 260.f;
         const float qx = p.x + (p.width - qrBoxSize) * 0.5f;
-        const float qy = p.y + 104.f;
+        const float qy = std::max(p.y + 104.f, hintBottom + 22.f);
 
         // White background box for QR code
         ren.drawRoundedRect({qx - 10.f, qy - 10.f, qrBoxSize + 20.f, qrBoxSize + 20.f},
@@ -1166,8 +1182,10 @@ void DiscordPanel::drawQrView(nxui::Renderer& ren, const nxui::Rect& p, float a)
             const std::string status = snap.username.empty()
                 ? T("discord_ui.waiting_scan", "Waiting for scan from phone...")
                 : T("discord_ui.confirm_phone", "Confirm login on phone: @") + snap.username;
-            drawLabel(ren, m_smallFont, p.x + 24.f, p.y + 400.f, status, textNormal(a));
-            drawLabel(ren, m_smallFont, p.x + 24.f, p.y + 430.f, T("discord_ui.press_b_cancel", "Press (B) to Cancel"), textMuted(a));
+            const float sy = qy + qrBoxSize + 26.f;
+            drawLabel(ren, m_smallFont, p.x + 24.f, sy, fit(m_smallFont, status, textW), textNormal(a));
+            drawLabel(ren, m_smallFont, p.x + 24.f, sy + 30.f,
+                      fit(m_smallFont, T("discord_ui.press_b_cancel", "Press (B) to Cancel"), textW), textMuted(a));
         }
     } else {
         drawLabel(ren, m_font, p.x + 100.f, p.y + 240.f, T("discord_ui.generating_qr", "Generating QR Code..."), textMuted(a));

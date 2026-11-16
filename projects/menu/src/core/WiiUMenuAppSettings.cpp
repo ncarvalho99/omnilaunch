@@ -1,5 +1,6 @@
 #include "WiiUMenuApp.hpp"
 #include "core/IconPack.hpp"
+#include "bluetooth/BluetoothManager.hpp"
 #include "news/NewsStore.hpp"
 #include "video/VideoPlayer.hpp"
 #include "themeshop/ThemePackageInstaller.hpp"
@@ -763,6 +764,14 @@ void WiiUMenuApp::createQuickSettings() {
     cbs.onAirplaneModeToggled = [](bool /*enabled*/) {
     };
     cbs.onWifiToggled = [](bool /*enabled*/) {
+    };
+    // Bluetooth row, as in the Cards layout. SetRadioEnabled keeps Airplane
+    // mode as it was (btm's DisableRadio would otherwise turn it on).
+    cbs.bluetoothEnabled = []() { return bluetooth::IsAvailable() && bluetooth::IsRadioEnabled(); };
+    cbs.onBluetoothToggled = [this](bool on) {
+        m_homeCore.startBluetooth();
+        if (R_FAILED(bluetooth::SetRadioEnabled(on)))
+            DebugLog::log("[quicksettings] Bluetooth change failed");
     };
     cbs.onActivityLogRequested = [this]() {
         closeQuickSettings();
@@ -2753,6 +2762,12 @@ void WiiUMenuApp::applyIconPack(const std::string& packId) {
 
     // Page arrows, battery widgets, game card, XMB tiles.
     loadStaticTextures();
+    // The Homebrew / System launcher widgets of the grid draw the XMB
+    // homebrew and settings textures in every layout, but loadStaticTextures
+    // reloads them only in the XMB layout. Reload them in place (the widgets
+    // keep pointers to these textures) whenever they were loaded before.
+    if (m_xmbAlbumTex.valid())
+        ensureXmbTextures();
     // A theme with its own game card keeps it.
     if (!customIconsBase.empty()) {
         const std::string themeCard = joinPath(customIconsBase, "gamecard.png");

@@ -389,6 +389,25 @@ bool DiscordRemoteAuth::runSession(net::NetService& net, RsaKey& key) {
             return true;   // expired (4003) or dropped: open a new session
         }
 
+        // The gateway does not always close the session at timeout_ms (seen on
+        // console: the same code stayed on screen past two minutes and could no
+        // longer be used). Renew it ourselves once the code has expired, unless
+        // a phone has already scanned it.
+        {
+            std::int64_t expires = 0;
+            Phase current = Phase::Preparing;
+            {
+                std::lock_guard<std::mutex> lk(m_mu);
+                expires = m_snap.expiresMs;
+                current = m_snap.phase;
+            }
+            if (current == Phase::ShowQr && expires != 0 && nowMs() >= expires) {
+                DebugLog::log("[discord-ra] QR code expired; opening a new session");
+                ws.close();
+                return true;
+            }
+        }
+
         if (nextHeartbeat != 0 && nowMs() >= nextHeartbeat) {
             ws.sendText("{\"op\":\"heartbeat\"}");
             nextHeartbeat = nowMs() + heartbeatInterval;
