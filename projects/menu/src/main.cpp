@@ -29,6 +29,7 @@
 #ifdef SWITCHU_MENU
 #include <cstring>
 #endif
+#include <iterator>
 #include <memory>
 
 namespace {
@@ -97,9 +98,28 @@ extern "C" void __libnx_initheap(void) {
     extern char* fake_heap_start;
     extern char* fake_heap_end;
 
+    // Leave 64 MiB of the applet pool free (HomeNX 0daa3cd, from
+    // cristowo/SwitchU via PR #61): a service running in the background
+    // (an audio sysmodule, a suspended title's helper) takes its memory from
+    // the same pool. Taking the top rung regardless left it a few KiB, and the
+    // menu then failed its first textures: black screen, missing covers. The
+    // last rung is still tried, as before.
+    constexpr size_t kPoolHeadroom = 64u * 1024u * 1024u;
+    size_t ceiling = 0;
+    {
+        u64 total = 0, used = 0;
+        if (R_SUCCEEDED(svcGetInfo(&total, InfoType_TotalMemorySize, CUR_PROCESS_HANDLE, 0)) &&
+            R_SUCCEEDED(svcGetInfo(&used, InfoType_UsedMemorySize, CUR_PROCESS_HANDLE, 0)) &&
+            total > used + kPoolHeadroom)
+            ceiling = static_cast<size_t>(total - used - kPoolHeadroom);
+    }
+
     void*  addr = nullptr;
     size_t size = 0;
+    const size_t lastRung = kHeapLadder[std::size(kHeapLadder) - 1];
     for (size_t want : kHeapLadder) {
+        if (ceiling != 0 && want > ceiling && want != lastRung)
+            continue;
         if (R_SUCCEEDED(svcSetHeapSize(&addr, want))) {
             size = want;
             break;
