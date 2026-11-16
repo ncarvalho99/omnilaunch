@@ -881,6 +881,9 @@ private:
     bool m_editGhostRectInit = false;
     float m_editGhostPulse = 0.f;
     std::vector<uint64_t> m_layoutSlots;
+    // The A-Z / Recent / Favorites / Most played grid as shown (empty when the
+    // personal layout is shown). Move mode adopts it as My order.
+    std::vector<uint64_t> m_lastProjectedSlots;
     std::unordered_map<std::uint64_t, switchu::widgets::WidgetSize> m_gameSizes;
     bool m_layoutDirty = false;
     std::unordered_map<std::uint64_t, std::unique_ptr<nxui::Texture>> m_folderCoverCache;

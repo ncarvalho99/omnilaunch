@@ -2493,6 +2493,7 @@ GridModel WiiUMenuApp::buildRootFolderModel() {
         DebugLog::log("[grid] sort=%d projected=%zu apps=%zu", mode,
                       projected.size(), apps.size());
     }
+    m_lastProjectedSlots = projected;
     const std::vector<std::uint64_t>& slots =
         m_config.sortMode == 0 ? m_layoutSlots : projected;
 
