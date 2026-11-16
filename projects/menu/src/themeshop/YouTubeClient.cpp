@@ -507,6 +507,7 @@ bool YouTubeClient::deleteTrack(size_t trackIndex) {
 void YouTubeClient::refreshDownloadedStatus() {
     struct ExistingFile {
         std::string normalized;
+        std::string stem;
         std::string fullPath;
     };
     std::vector<ExistingFile> existingFiles;
@@ -532,6 +533,7 @@ void YouTubeClient::refreshDownloadedStatus() {
             if (ext == ".mp3" || ext == ".ogg" || ext == ".wav") {
                 existingFiles.push_back({
                     normalizedComparison(entry.path().stem().string()),
+                    entry.path().stem().string(),
                     entry.path().string()
                 });
             }
@@ -540,25 +542,57 @@ void YouTubeClient::refreshDownloadedStatus() {
 
     std::lock_guard<std::mutex> lk(m_tracksMutex);
     for (auto& track : m_tracks) {
-        std::string cleanNorm = normalizedComparison(sanitizeFilename(track.title));
+        // A track counts as downloaded only when the file its own download
+        // would write is there: same name once both are reduced to letters and
+        // digits. A partial match used to count too, so after one download a
+        // short or non-Latin name (empty once reduced) matched every result:
+        // each search showed other songs as downloaded, and "Delete" on one of
+        // them removed the song that had really been downloaded.
+        const std::string cleanName = sanitizeFilename(track.title);
+        const std::string cleanNorm = normalizedComparison(cleanName);
         bool found = false;
         std::string matchedPath;
-        for (const auto& existing : existingFiles) {
-            if (existing.normalized == cleanNorm ||
-                existing.normalized.find(cleanNorm) != std::string::npos ||
-                cleanNorm.find(existing.normalized) != std::string::npos) {
-                found = true;
-                matchedPath = existing.fullPath;
-                break;
+        if (!cleanName.empty()) {
+            for (const auto& existing : existingFiles) {
+                // Non-Latin names reduce to nothing: those match by exact name.
+                const bool same = cleanNorm.empty() ? existing.stem == cleanName
+                                                    : existing.normalized == cleanNorm;
+                if (same) {
+                    found = true;
+                    matchedPath = existing.fullPath;
+                    break;
+                }
             }
+        }
+        // A download finished in this session is known by its exact path.
+        if (!found && !track.localFilePath.empty()) {
+            std::error_code existsEc;
+            found = std::filesystem::is_regular_file(track.localFilePath, existsEc);
+            if (found)
+                matchedPath = track.localFilePath;
         }
         track.isDownloaded = found;
         if (found) {
             track.localFilePath = matchedPath;
             track.statusText = "✓ Instalado";
+        } else {
+            track.localFilePath.clear();
+            track.statusText.clear();
         }
     }
 }
+
+namespace {
+// The list can be replaced by a new search while a download runs, so the
+// download finds its track again by video id instead of by position.
+YouTubeClient::TrackItem* findTrackById(std::vector<YouTubeClient::TrackItem>& tracks,
+                                        const std::string& id) {
+    for (auto& track : tracks)
+        if (track.id == id)
+            return &track;
+    return nullptr;
+}
+} // namespace
 
 bool YouTubeClient::downloadTrack(size_t trackIndex, StatusProgressCallback onProgress, CompleteCallback onComplete) {
     if (m_isDownloading.exchange(true)) {
@@ -579,7 +613,7 @@ bool YouTubeClient::downloadTrack(size_t trackIndex, StatusProgressCallback onPr
         track = m_tracks[trackIndex];
     }
 
-    auto task = [this, trackIndex, track, onProgress, onComplete]() {
+    auto task = [this, track, onProgress, onComplete]() {
         std::string cleanName = sanitizeFilename(track.title);
         std::string musicDir = musicDirectory();
         std::error_code ec;
@@ -619,7 +653,8 @@ bool YouTubeClient::downloadTrack(size_t trackIndex, StatusProgressCallback onPr
                 expectedBytes = static_cast<std::uint64_t>(durSec) * 24000ULL;
             }
 
-            auto progressCb = [this, trackIndex, onProgress, expectedBytes](std::uint64_t dl, std::uint64_t total) {
+            const std::string trackId = track.id;
+            auto progressCb = [this, trackId, onProgress, expectedBytes](std::uint64_t dl, std::uint64_t total) {
                 float p = 0.25f;
                 std::string statusMsg;
                 if (total > 0) {
@@ -633,9 +668,8 @@ bool YouTubeClient::downloadTrack(size_t trackIndex, StatusProgressCallback onPr
                 }
                 {
                     std::lock_guard<std::mutex> lk(m_tracksMutex);
-                    if (trackIndex < m_tracks.size()) {
-                        m_tracks[trackIndex].downloadProgress = p;
-                    }
+                    if (auto* current = findTrackById(m_tracks, trackId))
+                        current->downloadProgress = p;
                 }
                 if (onProgress) {
                     onProgress(statusMsg, p);
@@ -700,14 +734,15 @@ bool YouTubeClient::downloadTrack(size_t trackIndex, StatusProgressCallback onPr
 
         {
             std::lock_guard<std::mutex> lk(m_tracksMutex);
-            if (trackIndex < m_tracks.size()) {
-                m_tracks[trackIndex].isDownloading = false;
+            if (auto* current = findTrackById(m_tracks, track.id)) {
+                current->isDownloading = false;
                 if (success) {
-                    m_tracks[trackIndex].isDownloaded = true;
-                    m_tracks[trackIndex].downloadProgress = 1.0f;
-                    m_tracks[trackIndex].localFilePath = destPath;
+                    current->isDownloaded = true;
+                    current->downloadProgress = 1.0f;
+                    current->localFilePath = destPath;
+                    current->statusText = "✓ Instalado";
                 } else {
-                    m_tracks[trackIndex].downloadProgress = 0.0f;
+                    current->downloadProgress = 0.0f;
                 }
             }
         }
