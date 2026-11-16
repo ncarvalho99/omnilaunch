@@ -208,6 +208,12 @@ private:
     void requestPageSnapshot(int page);
     void pumpPageSnapshot(int first, int last, int landFirst, int landLast);
     int landingIndex() const;
+    // Network state read on a worker (pollNetState); the frame never waits on nifm.
+    void pollNetState();
+    bool m_netOnline = false;
+    float m_netStateNext = 0.f;
+    std::future<void> m_netStateFuture;
+    std::shared_ptr<std::atomic<bool>> m_netStateResult;
     StatusSnapshot m_status;
     std::unique_ptr<nxui::Texture> m_avatar;
     float m_statusTimer = 0.f;

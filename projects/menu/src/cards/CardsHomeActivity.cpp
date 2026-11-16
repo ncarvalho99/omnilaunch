@@ -892,6 +892,32 @@ void CardsHomeActivity::pollPlaytime() {
 #endif
 }
 
+// NetService::state() asks nifm for the connection status (55-285 ms on the
+// console, 2026-11-16) and starts the network runtime on first use (350 ms).
+// Run on the render thread every second for Nextendo, it stalled the frame.
+// A worker reads it at most once a second; the frame uses the last answer.
+void CardsHomeActivity::pollNetState() {
+    if (m_netStateFuture.valid()) {
+        if (m_netStateFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+            return;
+        try { m_netStateFuture.get(); } catch (...) {}
+        m_netOnline = m_netStateResult && m_netStateResult->load(std::memory_order_acquire);
+        m_netStateNext = m_time + 1.f;
+    }
+    if (m_time < m_netStateNext || !m_core.threadPool().acceptingTasks())
+        return;
+    auto result = std::make_shared<std::atomic<bool>>(false);
+    net::NetService* service = &m_core.net();
+    try {
+        m_netStateFuture = m_core.threadPool().submit([service, result] {
+            result->store(service->online(), std::memory_order_release);
+        });
+        m_netStateResult = std::move(result);
+    } catch (...) {
+        m_netStateNext = m_time + 1.f;
+    }
+}
+
 void CardsHomeActivity::refreshCatalogue() {
     if (m_catalog.loading())
         return;
@@ -1016,7 +1042,8 @@ void CardsHomeActivity::onUpdate(float dt) {
     switchu::menu::frame_probe::mark("svc-selfupdate");
     pollBrowserDownload();
     switchu::menu::frame_probe::mark("svc-browser");
-    m_core.nextendo().update(m_core, m_core.net().online());
+    pollNetState();
+    m_core.nextendo().update(m_core, m_netOnline);
     switchu::menu::frame_probe::mark("svc-nextendo");
     m_core.discord().update(m_core);
     switchu::menu::frame_probe::mark("svc-discord");
