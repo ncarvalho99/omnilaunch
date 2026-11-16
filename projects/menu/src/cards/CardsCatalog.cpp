@@ -23,6 +23,7 @@ void CardsCatalog::startLoad(AppListLoader& loader, nxui::ThreadPool& pool) {
     loader.setPrefetchIcons(false);
     loader.startAsync(pool);
     m_loading = true;
+    refreshPageFiles(pool);
 }
 
 bool CardsCatalog::poll(AppListLoader& loader, const AppConfig& config) {
@@ -43,23 +44,76 @@ bool CardsCatalog::poll(AppListLoader& loader, const AppConfig& config) {
     for (const auto& e : model.entries())
         if (e.isApplication() && e.titleId != 0)
             apps.push_back(e);
-    releaseAll();
-    m_all = std::move(apps);
+    // Refresh invalidates images, but must not join a decode doing SD I/O.
+    // Jobs capture only shared result storage; abandoned results cannot reattach.
+    for (auto& pending : m_pending) pending.cancelled->store(true);
+    m_pending.clear();
+    m_parked.clear();
     m_entries.clear();
+    m_all = std::move(apps);
     setPage(m_page, config);
     DebugLog::log("[cards] catalogue %zu titles (sort %d)", m_all.size(), config.cardsSort);
     return true;
 }
 
+void CardsCatalog::refreshPageFiles(nxui::ThreadPool& pool) {
+    if (m_fileFuture.valid()) {
+        m_rescanQueued = true;
+        return;
+    }
+    auto result = std::make_shared<PageFiles>();
+    try {
+        m_fileFuture = pool.submit([result] {
+#ifdef SWITCHU_MENU
+            result->homebrew = scanHomebrew("sdmc:/switch/OmniLaunch/OmniLaunch.nro", false);
+            std::error_code ec;
+            if (std::filesystem::exists(pages::kTikTokNro, ec)) result->tiktok = pages::kTikTokNro;
+            result->browser = home::installedBrowserPath();
+#endif
+        });
+        m_fileResult = std::move(result);
+    } catch (...) {}
+}
+
+bool CardsCatalog::pollPageFiles(nxui::ThreadPool& pool, const AppConfig& config) {
+    if (!m_fileFuture.valid() ||
+        m_fileFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return false;
+    bool changed = false;
+    try {
+        m_fileFuture.get();
+        // A rescan requested during this read supersedes it (e.g. install).
+        if (!m_rescanQueued) { m_files = std::move(*m_fileResult); changed = true; }
+    } catch (...) {}
+    m_fileResult.reset();
+    if (changed && (m_page == pages::Prefs::kHomebrew || m_page == pages::Prefs::kMedia))
+        setPage(m_page, config);
+    if (m_rescanQueued) {
+        m_rescanQueued = false;
+        refreshPageFiles(pool);
+    }
+    return changed;
+}
+
+void CardsCatalog::noteInstalled(std::uint64_t titleId) {
+    if (titleId == pages::homebrewId(pages::kTikTokNro)) m_files.tiktok = pages::kTikTokNro;
+    if (titleId == pages::homebrewId(home::kBrowserNro)) m_files.browser = home::kBrowserNro;
+}
+
 void CardsCatalog::setPage(int page, const AppConfig& config) {
     namespace pg = cards::pages;
     // Textures follow the title id: keep the ones still on the page.
-    std::vector<CardEntry> old = std::move(m_entries);
+    for (auto& entry : m_entries) {
+        if (!entry.icon) continue;
+        const auto id = entry.app.titleId;
+        std::erase_if(m_parked, [id](const CardEntry& e) { return e.app.titleId == id; });
+        m_parked.push_back(std::move(entry));
+    }
     m_entries.clear();
     // A decode still pending keeps its request flag, so it is not queued twice.
-    auto adopt = [&old](CardEntry& c) {
-        for (auto& o : old)
-            if (o.app.titleId == c.app.titleId) {
+    auto adopt = [this](CardEntry& c) {
+        for (auto& o : m_parked)
+            if (o.app.titleId == c.app.titleId && o.iconFile == c.iconFile &&
+                o.homebrewPath == c.homebrewPath && o.version == c.version && o.needsDownload == c.needsDownload) {
                 c.icon = std::move(o.icon);
                 c.iconFresh = o.iconFresh;
                 c.iconSnap = std::move(o.iconSnap);
@@ -94,14 +148,14 @@ void CardsCatalog::setPage(int page, const AppConfig& config) {
         }
     } else if (page == pg::Prefs::kHomebrew) {
 #ifdef SWITCHU_MENU
-        for (HomebrewApp& hb : scanHomebrew("sdmc:/switch/OmniLaunch/OmniLaunch.nro", false)) {
+        for (const HomebrewApp& hb : m_files.homebrew) {
             CardEntry c;
             c.system = false;
             c.isHomebrew = true;
             c.homebrewPath = hb.path;
-            c.author = std::move(hb.author);
-            c.version = std::move(hb.version);
-            c.app.title = hb.name.empty() ? std::filesystem::path(c.homebrewPath).stem().string() : std::move(hb.name);
+            c.author = hb.author;
+            c.version = hb.version;
+            c.app.title = hb.name.empty() ? std::filesystem::path(c.homebrewPath).stem().string() : hb.name;
             c.app.englishTitle = c.author;
             c.app.titleId = pg::homebrewId(c.homebrewPath);
             c.app.title = config.customTitle(c.app.titleId, c.app.title);
@@ -148,20 +202,24 @@ void CardsCatalog::setPage(int page, const AppConfig& config) {
                 adopt(c);
                 m_entries.push_back(std::move(c));
             };
-            std::error_code ec;
-            fetchCard(std::filesystem::exists(pg::kTikTokNro, ec) ? std::string(pg::kTikTokNro) : std::string(),
+            fetchCard(m_files.tiktok,
                       pg::kTikTokNro, pg::kTikTokUrl, "TikTok");
-            fetchCard(home::installedBrowserPath(), home::kBrowserNro, home::kBrowserUrl,
+            fetchCard(m_files.browser, home::kBrowserNro, home::kBrowserUrl,
                       i18n.tr("cards.tile_browser", "Browser"));
         }
         sort(config);
     }
     // A title can reappear after leaving its page while its decode is still
     // pending. Reconstruct request ownership from the job list as well.
-    for (auto& c : m_entries)
+    std::erase_if(m_parked, [](const CardEntry& e) { return !e.icon; });
+    while (m_parked.size() > 48) m_parked.erase(m_parked.begin());
+    for (auto& c : m_entries) {
+        c.iconRequested = false;
         for (const auto& p : m_pending)
-            if (p.titleId == c.app.titleId)
+            if (p.titleId == c.app.titleId && p.iconFile == c.iconFile &&
+                p.homebrewPath == c.homebrewPath && p.version == c.version && p.needsDownload == c.needsDownload)
                 c.iconRequested = true;
+    }
     // Pending decodes for absent titles are discarded by pumpIcons.
 }
 
@@ -262,7 +320,12 @@ void CardsCatalog::pumpIcons(nxui::GpuDevice& gpu, nxui::Renderer& ren, nxui::Th
             ++it;
             continue;
         }
-        const int index = indexOf(it->titleId);
+        int index = indexOf(it->titleId);
+        if (index >= 0) {
+            const auto& card = m_entries[static_cast<std::size_t>(index)];
+            if (it->iconFile != card.iconFile || it->homebrewPath != card.homebrewPath ||
+                it->version != card.version || it->needsDownload != card.needsDownload) index = -1;
+        }
         if (index >= 0 && uploadBudget <= 0)
             break; // leave the rest (futures unconsumed) for the next frame
         try { it->future.get(); } catch (...) {}
@@ -295,7 +358,7 @@ void CardsCatalog::pumpIcons(nxui::GpuDevice& gpu, nxui::Renderer& ren, nxui::Th
 
     // Release textures far from the focus.
     for (int i = 0; i < count(); ++i) {
-        if (i >= first - keep && i <= last + keep)
+        if (count() <= 48 || (i >= first - keep && i <= last + keep))
             continue;
         auto& card = m_entries[static_cast<std::size_t>(i)];
         if (card.icon) {
@@ -306,15 +369,23 @@ void CardsCatalog::pumpIcons(nxui::GpuDevice& gpu, nxui::Renderer& ren, nxui::Th
         }
     }
 
+    const auto active = std::count_if(m_entries.begin(), m_entries.end(),
+                                      [](const CardEntry& c) { return bool(c.icon); });
+    while (!m_parked.empty() && m_parked.size() + active > 48) m_parked.erase(m_parked.begin());
+
     // Queue decodes for the visible window. A snapshot icon is still decoded
     // again from its source, and replaced.
-    for (int i = first; i <= last; ++i) {
+    for (int i = first; i <= last && m_pending.size() < 16; ++i) {
         auto& card = m_entries[static_cast<std::size_t>(i)];
         if ((card.icon && card.iconFresh) || card.iconRequested || card.iconFailed)
             continue;
         card.iconRequested = true;
         PendingIcon p;
         p.titleId = card.app.titleId;
+        p.iconFile = card.iconFile;
+        p.homebrewPath = card.homebrewPath;
+        p.version = card.version;
+        p.needsDownload = card.needsDownload;
         p.decoded = std::make_shared<IconStreamer::DecodedIcon>();
         p.cancelled = std::make_shared<std::atomic<bool>>(false);
         p.snap = std::make_shared<SnapItem>();
@@ -383,6 +454,18 @@ int CardsCatalog::adoptSnapshotIcon(nxui::GpuDevice& gpu, nxui::Renderer& ren, c
 }
 
 void CardsCatalog::releaseAll() {
+    // Only teardown/reload calls this; page navigation never joins a worker.
+    if (m_fileFuture.valid()) {
+        m_fileFuture.wait();
+        try { m_fileFuture.get(); } catch (...) {}
+    }
+    m_fileResult.reset();
+    m_rescanQueued = false;
+    releaseIcons();
+}
+
+void CardsCatalog::releaseIcons() {
+    m_parked.clear();
     for (auto& p : m_pending)
         if (p.cancelled)
             p.cancelled->store(true);

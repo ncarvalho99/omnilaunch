@@ -598,6 +598,7 @@ void CardsHomeActivity::goToPage(int page, int dir) {
         const auto b = std::find(list.begin(), list.end(), page);
         dir = b > a ? 1 : -1;
     }
+    m_deferredPageFocus = 0; // explicit navigation supersedes a pending HOME focus
     m_page = page;
     m_catalog.setPage(page, m_core.config());
     const auto it = m_pageFocus.find(page);
@@ -761,7 +762,9 @@ void CardsHomeActivity::pollBrowserDownload() {
         showToast(i18n.tr("cards.download_failed", "Download failed."));
         return;
     }
-    // The card now points at the installed .nro (same stable id).
+    // The completed worker proves installation; no SD probe is needed here.
+    m_catalog.noteInstalled(id);
+    m_catalog.refreshPageFiles(m_core.threadPool());
     m_catalog.rebuild(m_core.config());
     const bool busy = overlayActive(true) || m_sheet.isOpen() || m_musicSheet.isOpen() || m_newsSheet.isOpen() ||
                       m_dotsOpen || m_powerOpen || m_cardOptOpen || m_moving || m_launching || m_leaving ||

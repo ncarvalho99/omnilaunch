@@ -5,6 +5,7 @@
 #include "cards/CardsPages.hpp"
 #include "core/ButtonGlyph.hpp"
 #include "core/DebugLog.hpp"
+#include "core/FrameProbe.hpp"
 #include "core/LeaveFrameCache.hpp"
 #include "net/NetService.hpp"
 #include "core/PlayTime.hpp"
@@ -256,6 +257,11 @@ void CardsHomeActivity::perfLine(const std::string& line) {
 }
 
 void CardsHomeActivity::flushPerfLog() {
+    // A pending write never makes a frame wait. Teardown drains the pool.
+    if (m_perfWrite.valid()) {
+        if (m_perfWrite.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
+        try { m_perfWrite.get(); } catch (...) {}
+    }
     std::string out;
     {
         std::lock_guard<std::mutex> lk(m_perfMutex);
@@ -264,11 +270,12 @@ void CardsHomeActivity::flushPerfLog() {
         out.swap(m_perfOut);
     }
 #ifdef SWITCHU_MENU
-    std::error_code ec;
-    std::filesystem::create_directories("sdmc:/config/OmniLaunch", ec);
-    std::ofstream f("sdmc:/config/OmniLaunch/perf.log", std::ios::app);
-    if (f)
-        f << out;
+    m_perfWrite = m_core.threadPool().submit([out = std::move(out)] {
+        std::error_code ec;
+        std::filesystem::create_directories("sdmc:/config/OmniLaunch", ec);
+        std::ofstream f("sdmc:/config/OmniLaunch/perf.log", std::ios::app);
+        if (f) f << out;
+    });
 #else
     (void)out;
 #endif
@@ -405,6 +412,7 @@ bool CardsHomeActivity::onCreate() {
         m_catalog.releaseAll();
         m_art.releaseAll();
         waitWallpaper();
+        if (m_perfWrite.valid()) { try { m_perfWrite.get(); } catch (...) {} }
     });
     m_core.frontendStarted();
     const uint64_t createStartTick = armGetSystemTick();
@@ -732,6 +740,7 @@ void CardsHomeActivity::onDestroy() {
     m_chrome.release();
     m_avatar.reset();
     flushPerfLog();
+    if (m_perfWrite.valid()) { try { m_perfWrite.get(); } catch (...) {} }
 }
 
 nxui::Widget* CardsHomeActivity::focusRoot() {
@@ -890,6 +899,8 @@ void CardsHomeActivity::refreshCatalogue() {
 }
 
 void CardsHomeActivity::onUpdate(float dt) {
+    switchu::menu::frame_probe::begin();
+    m_core.status().poll(m_core.threadPool(), home::HomeStatus::Clock::now(), m_core.config().cards.showFree);
     m_time += dt;
     m_inputDt = dt;
 #ifdef SWITCHU_MENU
@@ -961,6 +972,7 @@ void CardsHomeActivity::onUpdate(float dt) {
             m_catalog.setPage(m_page, m_core.config());
             index = m_catalog.indexOf(want);
         }
+        if (index < 0 && pages::isHomebrewId(want)) m_deferredPageFocus = want;
         if (index < 0)
             index = 0;
         m_selected = std::clamp(index, 0, std::max(0, m_catalog.count() - 1));
@@ -969,6 +981,17 @@ void CardsHomeActivity::onUpdate(float dt) {
         maybeShowTutorial();
     }
 
+    switchu::menu::frame_probe::mark("cards-catalog");
+    const auto pageFocus = (m_selected >= 0 && m_selected < m_catalog.count())
+        ? m_catalog.at(m_selected).app.titleId : 0;
+    if (!m_moving && !overlayActive() && !m_sheet.isOpen() && !m_musicSheet.isOpen() && !m_newsSheet.isOpen() &&
+        m_catalog.pollPageFiles(m_core.threadPool(), m_core.config())) {
+        const int deferred = m_deferredPageFocus ? m_catalog.indexOf(m_deferredPageFocus) : -1;
+        const int index = deferred >= 0 ? deferred : m_catalog.indexOf(pageFocus);
+        m_deferredPageFocus = 0;
+        m_selected = std::clamp(index, 0, std::max(0, m_catalog.count() - 1));
+        m_scroll = static_cast<float>(m_selected);
+    }
     if (m_refreshQueued && !m_moving && !m_sheet.isOpen() && !m_musicSheet.isOpen() && !m_newsSheet.isOpen() &&
         --m_refreshDelayFrames <= 0 && !m_catalog.loading()) {
         m_refreshQueued = false;
@@ -978,13 +1001,16 @@ void CardsHomeActivity::onUpdate(float dt) {
     if (m_deferredBluetoothInitFrames > 0 && --m_deferredBluetoothInitFrames == 0) {
         m_core.startBluetooth();
     }
+    switchu::menu::frame_probe::mark("cards-init");
     updateLeaveSplashHandoff(dt);
 
     nxui::AnimationManager::instance().update(dt);
     finishAudioLoad();
     m_audio.update();
     m_status.musicPlaying = m_audio.isPlaying() && !m_audio.isPaused();
+    switchu::menu::frame_probe::mark("cards-audio");
     pollPlaytime();
+    switchu::menu::frame_probe::mark("cards-profile-playtime");
     pollNetCheck();
     pollArtJobs();
     pollHomebrewUpdates();
@@ -1002,7 +1028,9 @@ void CardsHomeActivity::onUpdate(float dt) {
     if (m_discordPanel && m_discordPanel->isActive()) {
         m_discordPanel->update(dt);
     }
+    switchu::menu::frame_probe::mark("cards-services");
     updateLock(dt);
+    switchu::menu::frame_probe::mark("cards-lock");
     m_sheet.update(dt);
     m_musicSheet.update(dt, m_core.audioServices());
     m_newsSheet.update(dt, app().gpu(), app().renderer(), m_core.threadPool(), m_chrome, m_time);
@@ -1021,6 +1049,7 @@ void CardsHomeActivity::onUpdate(float dt) {
         m_padTest->update(dt);
     pumpWallpaper();
     pumpBluetoothAudioSheet();
+    switchu::menu::frame_probe::mark("cards-overlays");
     if (m_pageIn < 1.f)
         m_pageIn = std::min(1.f, m_pageIn + dt / 0.22f);
     if (m_tutorialCard > 0)
@@ -1119,6 +1148,7 @@ void CardsHomeActivity::onUpdate(float dt) {
     } else if (m_userSelect) {
         m_userSelect->update(dt);
     }
+    switchu::menu::frame_probe::mark("cards-input");
     if (overlayActive())
         m_overlayLatch = true;
     if (m_fadeIn > 0.f)
@@ -1181,10 +1211,13 @@ void CardsHomeActivity::onUpdate(float dt) {
             m_audio.setVolume(m_core.config().musicVolume);
         }
     }
+    switchu::menu::frame_probe::mark("cards-launch");
     pollDaemonNotifications();
+    switchu::menu::frame_probe::mark("cards-daemon");
     updateFrontendSwitch(dt);
     updateDetails(dt);
 
+    switchu::menu::frame_probe::mark("cards-details");
     // Ease the row toward the selection (snaps when motion is disabled: E8).
     const float target = static_cast<float>(m_selected);
     if (!m_core.config().cards.motion) {
@@ -1196,6 +1229,7 @@ void CardsHomeActivity::onUpdate(float dt) {
     }
 
     updateStatus(dt);
+    switchu::menu::frame_probe::mark("cards-status");
     const std::uint64_t focusedId =
         (m_selected >= 0 && m_selected < m_catalog.count()) ? m_catalog.at(m_selected).app.titleId : 0;
     if (focusedId != previousId)
@@ -1208,6 +1242,7 @@ void CardsHomeActivity::onUpdate(float dt) {
         m_bgChangedAt = m_time;
     }
     ensureVisibleIcons();
+    switchu::menu::frame_probe::mark("cards-images");
 }
 
 void CardsHomeActivity::requestPageSnapshot(int page) {
@@ -1223,8 +1258,14 @@ void CardsHomeActivity::pumpPageSnapshot(int first, int last) {
     if (page != m_snapPage)
         requestPageSnapshot(page); // every way of changing page lands here
     std::vector<SnapItem> got;
-    if (m_snapCache.take(page, got))
+    if (m_snapCache.take(page, got)) {
+        // Portraits determine the card face. Upload them before square icons
+        // so the per-frame budget cannot expose an avoidable icon-only frame.
+        std::stable_sort(got.begin(), got.end(), [](const SnapItem& a, const SnapItem& b) {
+            return a.kind > b.kind;
+        });
         m_snapItems = std::move(got);
+    }
     // Kept until the catalogue is in: its first load drops every icon texture
     // (CardsCatalog::poll -> releaseAll), and the saved icons go back on then.
     if (!m_snapItems.empty()) {
@@ -1275,7 +1316,9 @@ void CardsHomeActivity::ensureVisibleIcons() {
     const int first = static_cast<int>(std::floor(m_scroll)) - 1;
     const int last = static_cast<int>(std::ceil(m_scroll)) + 5;
     pumpPageSnapshot(first, last); // before the decodes, so saved images show first
+    switchu::menu::frame_probe::mark("cards-snapshot");
     m_catalog.pumpIcons(app().gpu(), app().renderer(), m_core.threadPool(), first, last, 4, 2);
+    switchu::menu::frame_probe::mark("cards-icon-upload");
     std::vector<std::uint64_t> wanted, keep;
     for (int i = std::max(0, first); i <= std::min(m_catalog.count() - 1, last); ++i)
         if (!m_catalog.at(i).system)
@@ -1312,13 +1355,13 @@ void CardsHomeActivity::updateStatus(float dt) {
 #ifdef SWITCHU_MENU
     // Battery figures come from the daemon's BatteryStatusChanged notification
     // (pollDaemonNotifications): psm gives nothing inside the menu applet.
-    const auto thermals = switchu::getThermalReading();
-    m_status.socCelsius = (thermals.hasSoc && m_core.config().cards.showTemp) ? thermals.soc : -1.f;
+    const auto& reading = m_core.status().latest();
+    m_status.socCelsius = m_core.config().cards.showTemp ? reading.soc : -1.f;
 #endif
-    struct statvfs st{};
     m_status.freeSpace.clear();
-    if (m_core.config().cards.showFree && statvfs("sdmc:/", &st) == 0) {
-        const double gb = static_cast<double>(st.f_bavail) * static_cast<double>(st.f_frsize) / 1e9;
+    const auto& space = m_core.status().latest();
+    if (m_core.config().cards.showFree && space.freeValid) {
+        const double gb = static_cast<double>(space.freeBytes) / 1e9;
         char free[24];
         std::snprintf(free, sizeof(free), "%.1f GB", gb);
         m_status.freeSpace = free;
@@ -1422,11 +1465,11 @@ void CardsHomeActivity::updateLock(float dt) {
     m_sleepPlanTimer += dt;
     if (m_sleepPlanTimer >= 3.f) {
         m_sleepPlanTimer = 0.f;
-        SetSysSleepSettings plan{};
-        if (R_SUCCEEDED(setsysGetSleepSettings(&plan))) {
+        const auto& plan = m_core.status().latest();
+        if (plan.sleepValid) {
             const bool docked = appletGetOperationMode() != AppletOperationMode_Handheld;
             m_lock.setSleepDelaySeconds(
-                sleepPlanSeconds(docked, docked ? plan.console_sleep_plan : plan.handheld_sleep_plan));
+                sleepPlanSeconds(docked, docked ? plan.consoleSleep : plan.handheldSleep));
         }
     }
 #else
@@ -1492,6 +1535,7 @@ void CardsHomeActivity::updateDetails(float dt) {
             m_details = *m_detailsPending;
         m_detailsPending.reset();
     }
+    switchu::menu::frame_probe::mark("cards-details-adopt");
     const std::uint64_t id =
         (m_selected >= 0 && m_selected < m_catalog.count()) ? m_catalog.at(m_selected).app.titleId : 0;
     if (id != m_detailsWanted) {
@@ -1506,6 +1550,7 @@ void CardsHomeActivity::updateDetails(float dt) {
     auto pending = std::make_shared<Details>();
     pending->titleId = id;
     pending->profile = switchu::menu::playtime::currentProfile(m_core.config());
+    switchu::menu::frame_probe::mark("cards-details-profile");
     m_detailsPending = pending;
     m_detailsFuture = m_core.threadPool().submit([pending]() {
 #ifdef SWITCHU_MENU

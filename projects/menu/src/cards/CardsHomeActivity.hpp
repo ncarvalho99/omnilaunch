@@ -203,6 +203,7 @@ private:
     // cards of each page, read when the page opens, written once it settles.
     CardsSnapshotCache m_snapCache;
     std::vector<SnapItem> m_snapItems; // read, waiting for the catalogue
+    std::uint64_t m_deferredPageFocus = 0; // HOME focus waiting on asynchronous NRO metadata
     int m_snapPage = -1;               // page m_snapItems / the read belong to
     void requestPageSnapshot(int page);
     void pumpPageSnapshot(int first, int last);
@@ -502,6 +503,7 @@ private:
     uint64_t m_perfLastFrameTick = 0;
     std::string m_perfOut;
     std::mutex m_perfMutex;
+    std::future<void> m_perfWrite;
     float m_perfWindow = 0.f;
     int m_perfFrames = 0;
     int m_perfSlow = 0;

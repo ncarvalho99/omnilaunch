@@ -82,6 +82,7 @@ float CardsArt::backgroundAge(std::uint64_t titleId, float now) const {
 }
 
 void CardsArt::request(nxui::ThreadPool& pool, std::uint64_t titleId, int kind) {
+    if (m_jobs.size() >= 16) return; // rapid navigation cannot grow the worker queue indefinitely
     auto& slot = (kind == 2 ? m_logos : kind == 1 ? m_backgrounds : m_covers)[titleId];
     // A snapshot cover is decoded again from its source, and replaced.
     if ((slot.tex && slot.fresh) || slot.requested || slot.missing)
@@ -161,15 +162,25 @@ void CardsArt::pump(nxui::GpuDevice& gpu, nxui::Renderer& ren, nxui::ThreadPool&
         it = m_jobs.erase(it);
     }
 
-    // Drop covers no longer near the focus; keep one background (the focused
-    // title's) plus whatever is still on screen while it fades.
-    for (auto it = m_covers.begin(); it != m_covers.end();) {
-        const bool kept = std::find(keep.begin(), keep.end(), it->first) != keep.end();
-        if (!kept && it->second.tex) {
-            it = m_covers.erase(it);
-            continue;
+    // Pages are projections, not cache lifetimes. Keep recently used covers
+    // across Games/Homebrew/Media/Applets; evict only past the session budget.
+    for (auto id : keep) {
+        const auto it = m_covers.find(id);
+        if (it != m_covers.end()) it->second.usedAt = now;
+    }
+    auto resident = std::count_if(m_covers.begin(), m_covers.end(),
+        [](const auto& entry) { return bool(entry.second.tex); });
+    while (resident > 48 || m_covers.size() > 128) {
+        auto victim = m_covers.end();
+        for (auto it = m_covers.begin(); it != m_covers.end(); ++it) {
+            if (it->second.requested || (resident > 48 && !it->second.tex) ||
+                std::find(keep.begin(), keep.end(), it->first) != keep.end()) continue;
+            if (victim == m_covers.end() || it->second.usedAt < victim->second.usedAt)
+                victim = it;
         }
-        ++it;
+        if (victim == m_covers.end()) break;
+        if (victim->second.tex) --resident;
+        m_covers.erase(victim);
     }
     // Once the focused title's background has finished fading in (0.6 s), the
     // previous ones are no longer drawn.

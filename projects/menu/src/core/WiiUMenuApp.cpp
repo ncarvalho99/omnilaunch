@@ -7654,6 +7654,7 @@ void WiiUMenuApp::setupLockScreen() {
 
 void WiiUMenuApp::onUpdate(float dt) {
     switchu::menu::frame_probe::begin();
+    m_homeCore.status().poll(m_threadPool, home::HomeStatus::Clock::now(), false, true);
     // HomeNX D2: the switch decision is taken at the end of this update
     // (updateFrontendSwitch), after daemon notifications and the lock screen.
     // Here only the wait-for-release and fade-in of an incoming switch run.
@@ -8220,8 +8221,8 @@ void WiiUMenuApp::onUpdate(float dt) {
         // console was left in rather than leaving it to inference.
         const unsigned opMode = (unsigned)appletGetOperationMode();
         const unsigned perfMode = (unsigned)appletGetPerformanceMode();
-        const auto thermals = switchu::getThermalReading();
-        const uint32_t gpuClockMhz = switchu::getGpuClockMhz();
+        const auto& status = m_homeCore.status().latest();
+        const uint32_t gpuClockMhz = status.gpuMhz;
         DebugLog::log("[perf] %.1f fps  avg=%.1fms worst=%.1fms  vsync=%.1fms gpu=%.1fms cpu=%.1fms presInt=%.1fms  opmode=%u perf=%u gpuMhz=%u soc=%.1fC  draws=%u binds=%u verts=%u blur=%u caps=%u uploads=%u batches=%u uploadwait=%.3fms  settings=%d(1=fullScene,2=sceneHidden) themeshop=%d",
                       m_perfFrames / m_perfAccumDt,
                       avgMs,
@@ -8233,7 +8234,7 @@ void WiiUMenuApp::onUpdate(float dt) {
                       opMode,
                       perfMode,
                       gpuClockMhz,
-                      thermals.soc,
+                      status.soc,
                       ren.lastFrameDrawCalls(),
                       ren.lastFramePipelineBinds(),
                       ren.lastFrameVertices(),
@@ -8928,12 +8929,12 @@ void WiiUMenuApp::onUpdate(float dt) {
     m_sleepPlanTimer += dt;
     if (m_sleepPlanTimer >= kSleepPlanPollSeconds) {
         m_sleepPlanTimer = 0.f;
-        SetSysSleepSettings plan{};
-        if (R_SUCCEEDED(setsysGetSleepSettings(&plan))) {
+        const auto& plan = m_homeCore.status().latest();
+        if (plan.sleepValid) {
             const bool docked = appletGetOperationMode() != AppletOperationMode_Handheld;
             m_lockScreen.setSleepDelaySeconds(
-                sleepPlanSeconds(docked, docked ? plan.console_sleep_plan
-                                                : plan.handheld_sleep_plan));
+                sleepPlanSeconds(docked, docked ? plan.consoleSleep
+                                                : plan.handheldSleep));
         }
     }
 

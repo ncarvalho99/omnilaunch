@@ -33,7 +33,8 @@ public:
 
     /// Requests covers for `wanted` and the background for `focused`; uploads
     /// finished decodes (main thread, at most `uploadBudget`) and drops covers
-    /// not in `keep`. `now` timestamps new textures for fades.
+    /// outside `keep` only when the 48-cover session limit is exceeded.
+    /// `now` timestamps new textures for fades and least-recent use.
     void pump(nxui::GpuDevice& gpu, nxui::Renderer& ren, nxui::ThreadPool& pool,
               const std::vector<std::uint64_t>& wanted, const std::vector<std::uint64_t>& keep,
               std::uint64_t focused, float now, int uploadBudget);
@@ -60,6 +61,7 @@ private:
     struct Slot {
         std::unique_ptr<nxui::Texture> tex;
         float shownAt = 0.f;
+        float usedAt = 0.f;
         bool requested = false;
         bool missing = false;
         bool fresh = false; // tex decoded from its source (not the snapshot)

@@ -7,6 +7,7 @@
 #include "cards/CardsSnapshot.hpp"
 #include "core/GridModel.hpp"
 #include "launcher/IconStreamer.hpp"
+#include "homebrew/HomebrewStore.hpp"
 #include <nxui/core/Texture.hpp>
 #include <cstdint>
 #include <future>
@@ -57,8 +58,11 @@ public:
     bool loading() const { return m_loading; }
 
     /// Pages (HomeNX E1). Rebuilds the visible cards for `page` from the last
-    /// loaded catalogue; textures of cards leaving the page are released.
+    /// loaded catalogue; up to 48 icons leaving the page stay parked by ID.
     void setPage(int page, const AppConfig& config);
+    void refreshPageFiles(nxui::ThreadPool& pool);
+    bool pollPageFiles(nxui::ThreadPool& pool, const AppConfig& config);
+    void noteInstalled(std::uint64_t titleId);
     int page() const { return m_page; }
     /// Rebuilds the current page (after a rename or a move to/from Media).
     void rebuild(const AppConfig& config) { setPage(m_page, config); }
@@ -96,17 +100,29 @@ public:
 private:
     struct PendingIcon {
         std::uint64_t titleId = 0;
+        std::string iconFile, homebrewPath, version;
+        bool needsDownload = false;
         std::shared_ptr<IconStreamer::DecodedIcon> decoded;
         std::shared_ptr<std::atomic<bool>> cancelled;
         std::shared_ptr<SnapItem> snap;
         std::future<void> future;
     };
+    void releaseIcons();
     static void decodeCardIcon(IconStreamer::DecodedIcon& out, std::uint64_t titleId, const std::string& iconFile,
                                const std::string& hbPath);
 
     std::vector<AppEntry> m_all;        // every installed title, loader order
     std::vector<CardEntry> m_entries;   // the current page
     std::vector<PendingIcon> m_pending;
+    std::vector<CardEntry> m_parked; // bounded, oldest first; render-thread owned
+    struct PageFiles {
+        std::vector<HomebrewApp> homebrew;
+        std::string tiktok, browser;
+    };
+    PageFiles m_files;
+    std::shared_ptr<PageFiles> m_fileResult;
+    std::future<void> m_fileFuture;
+    bool m_rescanQueued = false;
     bool m_loading = false;
     int m_page = 0;
     std::string m_assetsRoot;

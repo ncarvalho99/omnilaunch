@@ -170,8 +170,8 @@ void CardsHomeActivity::pollHomebrewUpdates() {
             text += (text.empty() ? "" : ". ") + tr.tr("cards.hb_failed", "Update failed: ") + r.failed.front();
         if (!text.empty())
             showToast(text);
-        if (!r.updated.empty() && m_page == AppConfig::CardsPrefs::kHomebrew)
-            m_catalog.rebuild(m_core.config()); // new versions on the cards
+        if (!r.updated.empty())
+            m_catalog.refreshPageFiles(m_core.threadPool()); // rescan off the render thread
     } else if (!m_hbSheetWanted && !m_hbPending.empty() && static_cast<int>(m_hbPending.size()) != before) {
         // HomeNX's toast: once per change, not on every visit.
         showToast(replaceAll(tr.tr("cards.hb_available", "{n} homebrew apps have an update (Menu > Updates)."),

@@ -18,6 +18,7 @@
 
 #include "home/HomeAudio.hpp"
 #include "home/HomePlaytime.hpp"
+#include "home/HomeStatus.hpp"
 #include "net/NetService.hpp"
 #include "launcher/AppListLoader.hpp"
 #include "steamgriddb/SteamGridDbManager.hpp"
@@ -62,6 +63,7 @@ public:
 
     HomeAudio& audioServices() { return m_audio; }
     HomePlaytime& playtime() { return m_playtime; }
+    HomeStatus& status() { return m_status; }
     SteamGridDbManager& steamGridDb() { return m_steamGridDb; }
     /// Catalogue fetch. The active frontend sets its transform in onCreate and
     /// clears it in onDestroy (the Core never keeps a dead frontend's callback).
@@ -146,6 +148,7 @@ private:
 
     HomeAudio m_audio;
     HomePlaytime m_playtime;
+    HomeStatus m_status;
     SteamGridDbManager m_steamGridDb;
     AppListLoader m_catalog;
     AppConfig m_config;
