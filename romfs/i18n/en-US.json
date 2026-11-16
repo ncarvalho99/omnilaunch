@@ -473,6 +473,15 @@
       "dns_auto": "Auto (DHCP)"
     },
     "steamgriddb": {
+      "pair_choice": "Send the key from your phone by scanning a QR code, or type it here.",
+      "pair_phone": "Use phone",
+      "pair_type": "Type it",
+      "pair_title": "SteamGridDB key from phone",
+      "pair_preparing": "Preparing the code...",
+      "pair_scan": "Scan with your phone's camera and paste your SteamGridDB API key on the page that opens.",
+      "pair_waiting": "Waiting for the phone...",
+      "pair_expired": "The code expired. Open it again to get a new one.",
+      "pair_failed": "The code could not be created. Check the internet connection.",
       "show_grid": "Show on grid menu",
       "show_grid_desc": "Hero backdrop behind the standard HOME grid.",
       "show_line": "Show on single-row menu",

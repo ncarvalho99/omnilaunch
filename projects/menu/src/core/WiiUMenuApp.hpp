@@ -37,6 +37,7 @@
 #include "widgets/FolderZoom.hpp"
 #include "steamgriddb/SteamGridDbManager.hpp"
 #include "steamgriddb/ArtworkCache.hpp"
+#include "steamgriddb/SteamGridDbPairing.hpp"
 #include "settings/SettingsScreen.hpp"
 #include "settings/GameOptionsScreen.hpp"
 #include "settings/SteamGridDbPickerScreen.hpp"
@@ -356,6 +357,10 @@ private:
     void createTextEntry();
     std::string defaultFolderName() const;
     void editSteamGridDbApiKey();
+    void typeSteamGridDbApiKey();
+    void startSteamGridDbKeyPairing();
+    void updateSteamGridDbKeyPairing();
+    void applySteamGridDbApiKey(const std::string& key);
     void startSteamGridDbScrape();
     void openSteamGridDbPicker(GameOptionsScreen::ArtworkKind kind,
                                 const std::string& query = std::string());
@@ -997,6 +1002,10 @@ private:
     std::uint32_t m_folderOptionsId = 0;
     nxui::Widget* m_contextMenuReturnFocus = nullptr;
     nxui::Widget* m_dialogReturnFocus = nullptr;
+    // SteamGridDB key sent from a phone (QR pairing); polled in onUpdate.
+    steamgriddb::KeyPairing m_sgdbPairing;
+    steamgriddb::KeyPairing::Phase m_sgdbPairingShown = steamgriddb::KeyPairing::Phase::Idle;
+    bool m_sgdbPairingOpen = false;
     // The Gallery is launched from a close-on-press dialog. Its return focus
     // must outlive that dialog's own return-focus handoff.
     nxui::Widget* m_gameGalleryReturnFocus = nullptr;

@@ -7663,6 +7663,7 @@ void WiiUMenuApp::onUpdate(float dt) {
         applyAppearanceOverrides(true);
     }
     syncSteamGridDbVisibility();
+    updateSteamGridDbKeyPairing();
     logControllerState(dt);
     m_homeCore.discord().update(m_homeCore);
     discord::Alert discordAlert;

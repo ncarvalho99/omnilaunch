@@ -71,6 +71,17 @@ public:
                           std::string createLabel,
                           CancelCallback onCancel = {});
 
+    // A QR code (size x size modules, 1 = dark) under the message, with the
+    // usual buttons. setQrStatus() changes the line under the code while open.
+    void showQr(const std::string& title,
+                const std::string& message,
+                std::vector<std::uint8_t> modules,
+                int size,
+                std::vector<ButtonDef> buttons,
+                CancelCallback onCancel = {});
+    void setQrStatus(const std::string& status) { m_qrStatus = status; }
+    bool isQrMode() const { return m_mode == DialogMode::Qr && (m_active && !m_animatingOut); }
+
     void hide();
 
     bool isActive() const { return m_active || m_animatingOut; }
@@ -163,6 +174,7 @@ private:
         UserSelect,
         DateTime,
         Timezone,
+        Qr,
     };
 
     struct UserEntry {
@@ -170,6 +182,15 @@ private:
         std::string nickname;
         nxui::Texture icon;
     };
+
+    std::vector<std::uint8_t> m_qrModules;
+    int m_qrSize = 0;
+    bool m_qrRequest = false; // show() called from showQr()
+    std::string m_qrStatus;
+    static constexpr float kQrBox = 220.f;
+    static constexpr float kQrStatusH = 34.f;
+    static constexpr float kQrPad = 10.f;
+    void renderQrContent(nxui::Renderer& ren, const nxui::Rect& panel, float alpha);
 
     nxui::Font*        m_font      = nullptr;
     nxui::Font*        m_smallFont = nullptr;

@@ -1032,6 +1032,7 @@ void CardsHomeActivity::onUpdate(float dt) {
         } else if (m_discordPanel && m_discordPanel->isActive()) {
             m_discordPanel->handleTouch(app().input());
         }
+        updateSgdbKeyPairing();
 #ifdef SWITCHU_MENU
         if (m_closeConfirmQueued && !(m_userSelect && m_userSelect->isActive())) {
             m_closeConfirmQueued = false;

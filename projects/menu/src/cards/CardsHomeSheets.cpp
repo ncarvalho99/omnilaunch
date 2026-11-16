@@ -1516,6 +1516,83 @@ void CardsHomeActivity::pollDeleteSoftware() {
 }
 #endif
 
+void CardsHomeActivity::typeSgdbKey() {
+    auto& t = nxui::I18n::instance();
+    requestText(t.tr("cards.art_sgdb_key", "SteamGridDB API key"),
+                t.tr("cards.art_sgdb_key_desc", "Free at steamgriddb.com (Preferences > API)"),
+                m_core.config().steamGridDbApiKey,
+                [this](const std::string& entered) { saveSgdbKey(entered); });
+}
+
+void CardsHomeActivity::saveSgdbKey(const std::string& entered) {
+    std::string key;
+    for (char c : entered)
+        if (!std::isspace(static_cast<unsigned char>(c))) key += c;
+    m_core.config().steamGridDbApiKey = key;
+    saveConfig("cards sgdb key");
+    auto& tr = nxui::I18n::instance();
+    showToast(key.empty()
+        ? tr.tr("cards.art_sgdb_key_removed", "SteamGridDB key removed")
+        : tr.tr("cards.art_sgdb_key_saved", "SteamGridDB key saved"));
+}
+
+void CardsHomeActivity::startSgdbKeyPairing() {
+    if (!m_userSelect) return;
+    auto& t = nxui::I18n::instance();
+    auto cancel = [this]() {
+        m_sgdbPairingOpen = false;
+        m_sgdbPairing.stop();
+    };
+    m_sgdbPairing.start();
+    m_sgdbPairingOpen = true;
+    m_sgdbPairingShown = steamgriddb::KeyPairing::Phase::Requesting;
+    m_userSelect->show(t.tr("settings.steamgriddb.pair_title", "SteamGridDB key from phone"),
+                       t.tr("settings.steamgriddb.pair_preparing", "Preparing the code..."),
+                       {{t.tr("button.cancel", "Cancel"), cancel, true}}, 0, cancel);
+    focusManager().setFocus(m_userSelect.get());
+}
+
+void CardsHomeActivity::updateSgdbKeyPairing() {
+    if (!m_sgdbPairingOpen || !m_userSelect)
+        return;
+    using Phase = steamgriddb::KeyPairing::Phase;
+    std::string key;
+    if (m_sgdbPairing.takeKey(key)) {
+        m_sgdbPairingOpen = false;
+        m_sgdbPairing.stop();
+        if (m_userSelect->isActive()) m_userSelect->hide();
+        saveSgdbKey(key);
+        return;
+    }
+    const auto snap = m_sgdbPairing.snapshot();
+    if (snap.phase == m_sgdbPairingShown)
+        return;
+    m_sgdbPairingShown = snap.phase;
+    auto& t = nxui::I18n::instance();
+    auto cancel = [this]() {
+        m_sgdbPairingOpen = false;
+        m_sgdbPairing.stop();
+    };
+    if (snap.phase == Phase::ShowQr) {
+        m_userSelect->showQr(t.tr("settings.steamgriddb.pair_title", "SteamGridDB key from phone"),
+                             t.tr("settings.steamgriddb.pair_scan",
+                                  "Scan with your phone's camera and paste your SteamGridDB API key on the page that opens."),
+                             snap.qrModules, snap.qrSize,
+                             {{t.tr("button.cancel", "Cancel"), cancel, true}}, cancel);
+        m_userSelect->setQrStatus(t.tr("settings.steamgriddb.pair_waiting", "Waiting for the phone..."));
+        focusManager().setFocus(m_userSelect.get());
+    } else if (snap.phase == Phase::Expired || snap.phase == Phase::Failed) {
+        m_sgdbPairingOpen = false;
+        m_sgdbPairing.stop();
+        m_userSelect->show(t.tr("settings.steamgriddb.pair_title", "SteamGridDB key from phone"),
+                           snap.phase == Phase::Expired
+                               ? t.tr("settings.steamgriddb.pair_expired", "The code expired. Open it again to get a new one.")
+                               : t.tr("settings.steamgriddb.pair_failed", "The code could not be created. Check the internet connection."),
+                           {{t.tr("button.ok", "OK"), []() {}, true}}, 0, {});
+        focusManager().setFocus(m_userSelect.get());
+    }
+}
+
 void CardsHomeActivity::requestText(const std::string& title, const std::string& guide, const std::string& initial,
                                     std::function<void(const std::string&)> onAccept) {
     if (!m_text)
@@ -2767,21 +2844,19 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
                 : t.tr("cards.art_sgdb_set", "Set");
         };
         sgdbKey.onA = [this]() {
+            // Typing a 32-character key with the pad is slow; the phone can send it.
             auto& t = nxui::I18n::instance();
-            requestText(t.tr("cards.art_sgdb_key", "SteamGridDB API key"),
-                        t.tr("cards.art_sgdb_key_desc", "Free at steamgriddb.com (Preferences > API)"),
-                        m_core.config().steamGridDbApiKey,
-                        [this](const std::string& entered) {
-                            std::string key;
-                            for (char c : entered)
-                                if (!std::isspace(static_cast<unsigned char>(c))) key += c;
-                            m_core.config().steamGridDbApiKey = key;
-                            saveConfig("cards sgdb key");
-                            auto& tr = nxui::I18n::instance();
-                            showToast(key.empty()
-                                ? tr.tr("cards.art_sgdb_key_removed", "SteamGridDB key removed")
-                                : tr.tr("cards.art_sgdb_key_saved", "SteamGridDB key saved"));
-                        });
+            m_audio.playSfx(Sfx::ModalShow);
+            m_userSelect->show(t.tr("cards.art_sgdb_key", "SteamGridDB API key"),
+                               t.tr("settings.steamgriddb.pair_choice",
+                                    "Send the key from your phone by scanning a QR code, or type it here."),
+                               {{t.tr("settings.steamgriddb.pair_phone", "Use phone"),
+                                 [this]() { startSgdbKeyPairing(); }, true},
+                                {t.tr("settings.steamgriddb.pair_type", "Type it"),
+                                 [this]() { typeSgdbKey(); }, true},
+                                {t.tr("button.cancel", "Cancel"), []() {}, true}},
+                               0, {});
+            focusManager().setFocus(m_userSelect.get());
         };
         sgdbKey.detail = i18n.tr("cards.art_sgdb_key_desc", "Free at steamgriddb.com (Preferences > API)");
         s.rows.push_back(std::move(sgdbKey));

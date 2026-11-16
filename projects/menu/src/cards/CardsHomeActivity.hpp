@@ -27,6 +27,7 @@
 #include "settings/ControllerTestScreen.hpp"
 #include "settings/SteamGridDbPickerScreen.hpp"
 #include "settings/TextEntryScreen.hpp"
+#include "steamgriddb/SteamGridDbPairing.hpp"
 #include "update/UpdateClient.hpp"
 #include <nxui/Activity.hpp>
 #include <nxui/Theme.hpp>
@@ -152,6 +153,10 @@ private:
     void openNewsSheet();
     void openDiscord();
     void ensureDiscordPanel();
+    void typeSgdbKey();
+    void startSgdbKeyPairing();
+    void updateSgdbKeyPairing();
+    void saveSgdbKey(const std::string& entered);
     void requestText(const std::string& title, const std::string& guide, const std::string& initial,
                      std::function<void(const std::string&)> onAccept);
     void renameSelected();
@@ -252,6 +257,10 @@ private:
     std::vector<discord::Alert> m_discordNotices;
     float m_detailChangedAt = 0.f;
     std::shared_ptr<OverlayDialog> m_userSelect;
+    // SteamGridDB key sent from a phone (QR pairing), shown in m_userSelect.
+    steamgriddb::KeyPairing m_sgdbPairing;
+    steamgriddb::KeyPairing::Phase m_sgdbPairingShown = steamgriddb::KeyPairing::Phase::Idle;
+    bool m_sgdbPairingOpen = false;
 
     // Pages (E1): the shown page and the focus kept per page.
     int m_page = 0;

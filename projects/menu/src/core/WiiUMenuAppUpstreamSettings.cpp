@@ -227,6 +227,85 @@ std::string defaultThemeRef() {
 
 
 void WiiUMenuApp::editSteamGridDbApiKey() {
+    // Typing a 32-character key with the pad is slow; the phone can send it.
+    if (!m_dialog) {
+        typeSteamGridDbApiKey();
+        return;
+    }
+    auto& i18n = nxui::I18n::instance();
+    m_audio.playSfx(Sfx::ModalShow);
+    if (!m_dialog->isActive())
+        m_dialogReturnFocus = focusManager().current();
+    m_dialog->show(
+        i18n.tr("settings.steamgriddb.api_key", "API key"),
+        i18n.tr("settings.steamgriddb.pair_choice",
+                "Send the key from your phone by scanning a QR code, or type it here."),
+        {
+            {i18n.tr("settings.steamgriddb.pair_phone", "Use phone"), [this]() { startSteamGridDbKeyPairing(); }, true},
+            {i18n.tr("settings.steamgriddb.pair_type", "Type it"), [this]() { typeSteamGridDbApiKey(); }, true},
+            {i18n.tr("button.cancel", "Cancel"), []() {}, true},
+        });
+    focusManager().setFocus(m_dialog.get());
+}
+
+void WiiUMenuApp::startSteamGridDbKeyPairing() {
+    if (!m_dialog) return;
+    auto& i18n = nxui::I18n::instance();
+    auto cancel = [this]() {
+        m_sgdbPairingOpen = false;
+        m_sgdbPairing.stop();
+    };
+    m_sgdbPairing.start();
+    m_sgdbPairingOpen = true;
+    m_sgdbPairingShown = steamgriddb::KeyPairing::Phase::Requesting;
+    m_dialog->show(i18n.tr("settings.steamgriddb.pair_title", "SteamGridDB key from phone"),
+                   i18n.tr("settings.steamgriddb.pair_preparing", "Preparing the code..."),
+                   {{i18n.tr("button.cancel", "Cancel"), cancel, true}}, 0, cancel);
+    focusManager().setFocus(m_dialog.get());
+}
+
+void WiiUMenuApp::updateSteamGridDbKeyPairing() {
+    if (!m_sgdbPairingOpen || !m_dialog)
+        return;
+    using Phase = steamgriddb::KeyPairing::Phase;
+    std::string key;
+    if (m_sgdbPairing.takeKey(key)) {
+        m_sgdbPairingOpen = false;
+        m_sgdbPairing.stop();
+        if (m_dialog->isActive()) m_dialog->hide();
+        applySteamGridDbApiKey(key);
+        return;
+    }
+    const auto snap = m_sgdbPairing.snapshot();
+    if (snap.phase == m_sgdbPairingShown)
+        return;
+    m_sgdbPairingShown = snap.phase;
+    auto& i18n = nxui::I18n::instance();
+    auto cancel = [this]() {
+        m_sgdbPairingOpen = false;
+        m_sgdbPairing.stop();
+    };
+    if (snap.phase == Phase::ShowQr) {
+        m_dialog->showQr(i18n.tr("settings.steamgriddb.pair_title", "SteamGridDB key from phone"),
+                         i18n.tr("settings.steamgriddb.pair_scan",
+                                 "Scan with your phone's camera and paste your SteamGridDB API key on the page that opens."),
+                         snap.qrModules, snap.qrSize,
+                         {{i18n.tr("button.cancel", "Cancel"), cancel, true}}, cancel);
+        m_dialog->setQrStatus(i18n.tr("settings.steamgriddb.pair_waiting", "Waiting for the phone..."));
+        focusManager().setFocus(m_dialog.get());
+    } else if (snap.phase == Phase::Expired || snap.phase == Phase::Failed) {
+        m_sgdbPairingOpen = false;
+        m_sgdbPairing.stop();
+        m_dialog->show(i18n.tr("settings.steamgriddb.pair_title", "SteamGridDB key from phone"),
+                       snap.phase == Phase::Expired
+                           ? i18n.tr("settings.steamgriddb.pair_expired", "The code expired. Open it again to get a new one.")
+                           : i18n.tr("settings.steamgriddb.pair_failed", "The code could not be created. Check the internet connection."),
+                       {{i18n.tr("button.ok", "OK"), []() {}, true}});
+        focusManager().setFocus(m_dialog.get());
+    }
+}
+
+void WiiUMenuApp::typeSteamGridDbApiKey() {
     auto& i18n = nxui::I18n::instance();
     requestTextEntry(i18n.tr("settings.steamgriddb.api_key", "API key"),
                      // Not masked. The key is stored in plain text in
@@ -234,7 +313,11 @@ void WiiUMenuApp::editSteamGridDbApiKey() {
                      // protects nothing and left no way to check a mistyped
                      // key against a failed download.
                      "SteamGridDB", m_config.steamGridDbApiKey, 192, false,
-                     [this](const std::string& typed) {
+                     [this](const std::string& typed) { applySteamGridDbApiKey(typed); });
+}
+
+void WiiUMenuApp::applySteamGridDbApiKey(const std::string& typed) {
+    {
         m_config.steamGridDbApiKey = typed;
         m_config.save();
         if (m_themeShop) {
@@ -247,8 +330,7 @@ void WiiUMenuApp::editSteamGridDbApiKey() {
                 : nxui::I18n::instance().tr("settings.steamgriddb.key_saved", "API key saved."));
             focusManager().setFocus(m_themeShop.get());
         }
-
-    });
+    }
 }
 
 void WiiUMenuApp::startSteamGridDbScrape() {

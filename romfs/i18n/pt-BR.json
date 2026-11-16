@@ -473,6 +473,15 @@
       "dns_auto": "Auto (DHCP)"
     },
     "steamgriddb": {
+      "pair_choice": "Envie a chave pelo celular lendo um QR code, ou digite aqui.",
+      "pair_phone": "Usar celular",
+      "pair_type": "Digitar",
+      "pair_title": "Chave SteamGridDB pelo celular",
+      "pair_preparing": "Preparando o código...",
+      "pair_scan": "Leia com a câmera do celular e cole sua chave de API do SteamGridDB na página que abrir.",
+      "pair_waiting": "Aguardando o celular...",
+      "pair_expired": "O código expirou. Abra de novo para gerar outro.",
+      "pair_failed": "Não foi possível criar o código. Verifique a conexão com a internet.",
       "show_grid": "Mostrar no menu em grade",
       "show_grid_desc": "Hero atrás da grade padrão do HOME.",
       "show_line": "Mostrar no menu de linha única",

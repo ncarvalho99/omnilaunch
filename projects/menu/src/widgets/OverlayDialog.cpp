@@ -161,6 +161,9 @@ void OverlayDialog::buildWidgetTree() {
         }
     }
 
+    // QR mode: the code and a status line between the message and the buttons.
+    const float qrH = (m_qrSize > 0) ? kQrBox + kQrPad * 2.f + kQrStatusH : 0.f;
+
     const float btnH = m_stackButtons ? 50.f : kButtonH;
     const float buttonStackH = m_stackButtons
         ? (btnH * btnCount + kButtonGap * (btnCount - 1))
@@ -169,6 +172,7 @@ void OverlayDialog::buildWidgetTree() {
     m_panelH = kPanelPadY
              + (titleH > 0.f ? titleH + kTitleMsgGap : 0.f)
              + (msgH   > 0.f ? msgH   + kMsgBtnGap   : 0.f)
+             + (qrH    > 0.f ? qrH    + kMsgBtnGap   : 0.f)
              + buttonStackH
              + kPanelPadY;
 
@@ -219,6 +223,14 @@ void OverlayDialog::buildWidgetTree() {
         reserved->setMarginBottom(kMsgBtnGap);
         addChild(reserved);
         m_messageTop = msgH;
+    }
+
+    if (qrH > 0.f) {
+        // Space the QR code and its status are painted into (renderQrContent).
+        auto qrSpace = std::make_shared<nxui::Box>(nxui::Axis::COLUMN);
+        qrSpace->setRect({0, 0, contentW, qrH});
+        qrSpace->setMarginBottom(kMsgBtnGap);
+        addChild(qrSpace);
     }
 
     float btnW    = m_stackButtons ? contentW : ((contentW - kButtonGap * (btnCount - 1)) / (float)btnCount);
@@ -517,6 +529,11 @@ void OverlayDialog::show(const std::string& title,
     m_title   = title;
     m_message = message;
     m_buttons = std::move(buttons);
+    if (!m_qrRequest) {
+        m_qrModules.clear();
+        m_qrSize = 0;
+        m_qrStatus.clear();
+    }
     if (m_buttons.empty())
         m_buttons.push_back({"OK", {}, true});
 
@@ -557,6 +574,52 @@ void OverlayDialog::show(const std::string& title,
     m_touchOnSelected = false;
     m_ignoreInitialTouchRelease = true;
     m_pendingInitialAccessibilityFrames = 2;
+}
+
+void OverlayDialog::showQr(const std::string& title,
+                           const std::string& message,
+                           std::vector<std::uint8_t> modules,
+                           int size,
+                           std::vector<ButtonDef> buttons,
+                           CancelCallback onCancel) {
+    m_qrModules = std::move(modules);
+    m_qrSize = (size > 0 && m_qrModules.size() == static_cast<std::size_t>(size) * size) ? size : 0;
+    m_qrStatus.clear();
+    m_qrRequest = true;
+    show(title, message, std::move(buttons), 0, std::move(onCancel));
+    m_qrRequest = false;
+    if (m_qrSize > 0)
+        m_mode = DialogMode::Qr;
+}
+
+void OverlayDialog::renderQrContent(nxui::Renderer& ren, const nxui::Rect& panel, float alpha) {
+    if (m_qrSize <= 0) return;
+    const float s = scale();
+    const float box = kQrBox * s;
+    const float pad = kQrPad * s;
+    // Laid out bottom-up from the button row, matching the space reserved in
+    // buildWidgetTree.
+    const float statusH = kQrStatusH * s;
+    const float areaBottom = panel.bottom() - (kPanelPadY + kButtonH + kMsgBtnGap) * s;
+    const float statusY = areaBottom - statusH;
+    const float boxY = statusY - pad - box;
+    const float boxX = panel.x + (panel.width - box) * 0.5f;
+    ren.drawRoundedRect({boxX - pad, boxY - pad, box + pad * 2.f, box + pad * 2.f},
+                        nxui::Color(1.f, 1.f, 1.f, alpha), 12.f * s);
+    const float cell = box / static_cast<float>(m_qrSize);
+    const nxui::Color dark(0.06f, 0.07f, 0.09f, alpha);
+    for (int y = 0; y < m_qrSize; ++y)
+        for (int x = 0; x < m_qrSize; ++x)
+            if (m_qrModules[static_cast<std::size_t>(y * m_qrSize + x)])
+                ren.drawRect({boxX + x * cell, boxY + y * cell, cell + 0.5f, cell + 0.5f}, dark);
+    nxui::Font* font = m_smallFont ? m_smallFont : m_font;
+    if (font && !m_qrStatus.empty()) {
+        const float textScale = 0.9f * s;
+        const float w = font->measure(m_qrStatus).x * textScale;
+        const nxui::Color text = m_theme ? m_theme->textSecondary : nxui::Color::white();
+        ren.drawText(m_qrStatus, {panel.x + (panel.width - w) * 0.5f, statusY + 6.f * s},
+                     font, text.withAlpha(text.a * alpha), textScale);
+    }
 }
 
 void OverlayDialog::showUserSwitcher(UserSelectCallback onSelect,
@@ -1770,7 +1833,7 @@ void OverlayDialog::update(float dt) {
             announceCurrentSelection(true, true);
     }
 
-    if (m_mode == DialogMode::Buttons) {
+    if (m_mode == DialogMode::Buttons || m_mode == DialogMode::Qr) {
         for (auto& c : children())
             c->update(dt);
     }
@@ -1904,13 +1967,15 @@ void OverlayDialog::render(nxui::Renderer& ren) {
             c->render(ren);
         if (!m_messageLines.empty())
             renderScrollingMessage(ren, panel, alpha);
+        if (m_mode == DialogMode::Qr)
+            renderQrContent(ren, panel, alpha);
     }
 
     m_cursor.render(ren);
 }
 
 nxui::Rect OverlayDialog::focusRect() const {
-    if (m_mode == DialogMode::Buttons && m_selected >= 0 &&
+    if ((m_mode == DialogMode::Buttons || m_mode == DialogMode::Qr) && m_selected >= 0 &&
         m_selected < (int)m_btnWidgets.size() && m_btnWidgets[m_selected]) {
         return scaledRect(m_btnWidgets[m_selected]->rect(), m_panelScale.value());
     }
