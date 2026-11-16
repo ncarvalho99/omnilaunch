@@ -136,13 +136,21 @@ public:
                     // The card is written holding only the file lock, so a
                     // thread that logs meanwhile appends to the buffer and
                     // carries on instead of waiting for the write.
-                    std::lock_guard<std::mutex> fileLock(self.m_fileMutex);
+                    std::unique_lock<std::mutex> fileLock(self.m_fileMutex);
                     std::string chunk;
                     {
                         std::lock_guard<std::mutex> sinkLock(self.m_mutex);
                         chunk = self.m_sink.take_due(1);
                     }
+                    const u64 writeStart = armGetSystemTick();
                     self.m_sink.write_chunk(chunk);
+                    const u64 writeMs = armTicksToNs(armGetSystemTick() - writeStart) / 1'000'000ULL;
+                    fileLock.unlock();
+                    // How long the card took for the log is how busy it was;
+                    // a slow write here lines up with stalls elsewhere.
+                    if (writeMs >= 100)
+                        log("[log-writer] %zu bytes took %llu ms", chunk.size(),
+                            static_cast<unsigned long long>(writeMs));
                 }
                 lock.lock();
             }

@@ -1,4 +1,5 @@
 #include "WiiUMenuApp.hpp"
+#include "core/FrameProbe.hpp"
 #include "core/IconPack.hpp"
 #include "launcher/HekateReboot.hpp"
 #include "services/NtpClient.hpp"
@@ -7652,6 +7653,7 @@ void WiiUMenuApp::setupLockScreen() {
 }
 
 void WiiUMenuApp::onUpdate(float dt) {
+    switchu::menu::frame_probe::begin();
     // HomeNX D2: the switch decision is taken at the end of this update
     // (updateFrontendSwitch), after daemon notifications and the lock screen.
     // Here only the wait-for-release and fade-in of an incoming switch run.
@@ -7671,6 +7673,7 @@ void WiiUMenuApp::onUpdate(float dt) {
     updateSteamGridDbKeyPairing();
     logControllerState(dt);
     m_homeCore.discord().update(m_homeCore);
+    switchu::menu::frame_probe::mark("discord");
     discord::Alert discordAlert;
     if (m_homeCore.discord().takeAlert(discordAlert)) {
         if (m_titlePill) {
@@ -7680,6 +7683,7 @@ void WiiUMenuApp::onUpdate(float dt) {
     }
     m_animalesePlayer.update(dt);
     m_audio.update();
+    switchu::menu::frame_probe::mark("audio");
 
     if (m_nextendoDownloadingActive) {
         auto& nextendo = m_homeCore.nextendo();
@@ -7721,12 +7725,14 @@ void WiiUMenuApp::onUpdate(float dt) {
     // Widget-owned images are intentionally managed before recording the next
     // frame. This is the only safe point to retire Deko textures from pages
     // that have left the screen and to warm the next page.
+    switchu::menu::frame_probe::mark("pre-assets");
     syncWidgetPageAssets();
     pollRecentWidgetAssets();
     syncWidgetIconContent();
     syncFolderPreviews();
     pollGameArtworkAssets();
     syncFolderHeader();
+    switchu::menu::frame_probe::mark("widget-assets");
 
     // Harvest deferred account enumeration from fast return
     if (m_deferredProfileListFuture.valid() &&
@@ -7878,6 +7884,7 @@ void WiiUMenuApp::onUpdate(float dt) {
         refreshPlazaCommunities();
     }
 
+    switchu::menu::frame_probe::mark("fonts-list-plaza");
     if (m_grid && m_deferredInitialAssetFrames == 0
         && !(m_launchAnim && m_launchAnim->isPlaying())) {
         // Per-frame top-up. This is the path that repairs the icons after a
@@ -7908,7 +7915,9 @@ void WiiUMenuApp::onUpdate(float dt) {
         m_navigator.resetToHome();
     }
 
+    switchu::menu::frame_probe::mark("icon-streamer");
     syncSteamGridDb();
+    switchu::menu::frame_probe::mark("steamgriddb-sync");
     if (m_navigator.route() == switchu::navigation::Route::Home
         && !(m_dialog && m_dialog->isActive())
         && !(m_settings && m_settings->isActive())
@@ -7919,8 +7928,10 @@ void WiiUMenuApp::onUpdate(float dt) {
         showFocusedSteamGridDbArtwork();
     }
 
+    switchu::menu::frame_probe::mark("backdrop-focus");
     if (m_folderCaptureReady)
         openCapturedFolder();
+    switchu::menu::frame_probe::mark("folder-open");
 
     if (m_titlePill) {
         if (m_appLayoutMode == AppLayoutMode::Cards && m_openFolderId == 0) {
@@ -8055,6 +8066,7 @@ void WiiUMenuApp::onUpdate(float dt) {
     // the carousel needs the per-frame placement anyway.
     updateCursor();
 
+    switchu::menu::frame_probe::mark("pill-theme-cursor");
     syncSoftwareDeletion();
 
     // O restante da sequencia de fundo entra por aqui, alguns quadros por vez.
@@ -8262,8 +8274,10 @@ void WiiUMenuApp::onUpdate(float dt) {
         m_audio.setMusicFade(1.f);
     }
 
+    switchu::menu::frame_probe::mark("bg-log-perf");
     syncThemePackageTransfer();
     syncGameArtworkSave();
+    switchu::menu::frame_probe::mark("theme-artwork-save");
 
 #ifdef SWITCHU_MENU
     // Safe mode explains itself once per boot, after the first frames so it
@@ -8454,6 +8468,7 @@ void WiiUMenuApp::onUpdate(float dt) {
             }
         }
     }
+    switchu::menu::frame_probe::mark("deferred-init-daemon-msgs");
     m_sysMsg.pump();
     if (m_refreshCooldownFrames > 0)
         --m_refreshCooldownFrames;
@@ -8468,6 +8483,7 @@ void WiiUMenuApp::onUpdate(float dt) {
         finalizeRefresh();
     }
     pollPlaytimeRefresh();
+    switchu::menu::frame_probe::mark("refresh-playtime");
 #endif
 
     bool debugTouchBlocked = false;
@@ -8499,6 +8515,7 @@ void WiiUMenuApp::onUpdate(float dt) {
     syncUpdateDownload();
     syncBrowserFetch();
     syncLauncherWork();
+    switchu::menu::frame_probe::mark("update-browser-launcher");
     if (!lockScreenUp)
         handleFrontendSwitchHold(dt);
 #ifdef SWITCHU_MENU
@@ -8858,6 +8875,7 @@ void WiiUMenuApp::onUpdate(float dt) {
         }
     }
 
+    switchu::menu::frame_probe::mark("input-screens");
     m_sidebar.update(dt, focusManager().current());
 
     if (m_pointerCursor) {
@@ -8878,6 +8896,7 @@ void WiiUMenuApp::onUpdate(float dt) {
     }
 
     nxui::AnimationManager::instance().update(motionDt);
+    switchu::menu::frame_probe::mark("sidebar-pointer-anim");
 
     // In dynamic-line mode, and while a layout morph is in flight, the focused
     // widget itself is moving. Sample its interpolated display rectangle every
@@ -8919,6 +8938,7 @@ void WiiUMenuApp::onUpdate(float dt) {
     }
 
     m_lockScreen.update(dt, app().input(), sleepSuppressed);
+    switchu::menu::frame_probe::mark("edit-lock");
 
     if (!m_lockScreen.hidesScene()) {
         // Any unlock starts rendering on this same loop iteration, so the
@@ -8943,6 +8963,7 @@ void WiiUMenuApp::onUpdate(float dt) {
     }
 
     updateFrontendSwitch(dt);
+    switchu::menu::frame_probe::mark("tail");
 }
 
 bool WiiUMenuApp::frontendSwitchBlocked() const {

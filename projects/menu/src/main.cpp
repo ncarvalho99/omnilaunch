@@ -31,6 +31,7 @@
 #endif
 #include <iterator>
 #include <memory>
+#include "core/FrameProbe.hpp"
 
 namespace {
 constexpr size_t kMenuAppletHeapSize = 224u * 1024u * 1024u;
@@ -487,6 +488,24 @@ int main(int argc, char* argv[]) {
                 totalRc, usedRc);
         }
         app.setLogSink([](const char* msg) { DebugLog::log("%s", msg); });
+        // Every render-thread iteration of 50 ms or more says where its time
+        // went: the loop phases, the time the thread actually ran (cpu), and
+        // the Classic onUpdate steps that took 5 ms or more. A frame whose
+        // cpu is far below its total was waiting, not working.
+        app.setSlowFrameHook([](const nxui::Application::FrameTrace& t) {
+            const auto ms = [](std::uint64_t from, std::uint64_t to) {
+                return from != 0 && to >= from ? armTicksToNs(to - from) / 1'000'000.0 : 0.0;
+            };
+            char steps[256];
+            switchu::menu::frame_probe::formatSlowSteps(steps, sizeof(steps), 5.0, t.start);
+            DebugLog::log("[slow-frame] total=%.1f cpu=%.1f applet=%.1f input=%.1f update=%.1f "
+                          "widgets=%.1f acquire=%.1f render=%.1f present=%.1f after=%.1f steps: %s",
+                          ms(t.start, t.end), armTicksToNs(t.cpuTicks) / 1'000'000.0,
+                          ms(t.start, t.appletEnd), ms(t.appletEnd, t.inputEnd),
+                          ms(t.inputEnd, t.updateEnd), ms(t.updateEnd, t.widgetsEnd),
+                          ms(t.widgetsEnd, t.beginFrameEnd), ms(t.beginFrameEnd, t.renderEnd),
+                          ms(t.renderEnd, t.endFrameEnd), ms(t.endFrameEnd, t.end), steps);
+        }, 0.05f);
         nxui::GpuDevice::setDebugSink([](const char* msg) {
             DebugLog::log("%s", msg);
             switchu::FileLog::flush();

@@ -273,7 +273,18 @@ void Application::run() {
     float idleSeconds = 0.f;
     bool skipIdleFrame = false;
 
+    // Ticks this thread has run for, on every core (13.0.0+); 0 if unknown.
+    const auto threadCpuTicks = []() -> std::uint64_t {
+        u64 ticks = 0;
+        if (R_FAILED(svcGetInfo(&ticks, InfoType_ThreadTickCount, CUR_THREAD_HANDLE, UINT64_MAX)))
+            return 0;
+        return ticks;
+    };
+
     while (m_running) {
+        FrameTrace trace;
+        trace.start = armGetSystemTick();
+        const std::uint64_t cpuStart = m_slowFrameHook ? threadCpuTicks() : 0;
         // Serve a fila de mensagens do applet.
         //
         // Isto nao existia: o laco era while(m_running) puro, e nada nunca lia
@@ -297,6 +308,7 @@ void Application::run() {
         }
 
         uint64_t nowTick = armGetSystemTick();
+        trace.appletEnd = nowTick;
         float dt = static_cast<float>(nowTick - prevTick)
                  / static_cast<float>(armGetSystemTickFreq());
         prevTick = nowTick;
@@ -310,9 +322,11 @@ void Application::run() {
         if (m_firstInputTick == 0)
             m_firstInputTick = armGetSystemTick();
         dispatchInput();
+        trace.inputEnd = armGetSystemTick();
 
         if (m_activity) {
             m_activity->onUpdate(dt);
+            trace.updateEnd = armGetSystemTick();
             // An exit requested this frame (a launch or resume hands the
             // console over) wins over a queued activity change: the change is
             // dropped rather than creating an activity that is destroyed at once.
@@ -323,6 +337,7 @@ void Application::run() {
                 break;
             }
             m_activity->m_rootBox->update(dt);
+            trace.widgetsEnd = armGetSystemTick();
 
             if (m_renderEnabled) {
                 // Static menus do not need a full GPU submission at 60 Hz.
@@ -337,17 +352,28 @@ void Application::run() {
                     }
                 }
                 m_gpu.beginFrame();
+                trace.beginFrameEnd = armGetSystemTick();
                 m_renderer->beginFrame();
                 m_activity->m_rootBox->render(*m_renderer);
                 m_activity->onRender(*m_renderer);
+                trace.renderEnd = armGetSystemTick();
                 m_renderer->endFrame();
                 m_gpu.endFrame();
+                trace.endFrameEnd = armGetSystemTick();
                 if (m_firstFrameTick == 0 && m_firstInputTick != 0 && m_firstFrameCallback) {
                     m_firstFrameTick = armGetSystemTick();
                     auto callback = std::move(m_firstFrameCallback);
                     callback(m_firstInputTick, m_firstFrameTick);
                 }
                 m_activity->onAfterPresent(*m_renderer);
+                trace.end = armGetSystemTick();
+                if (m_slowFrameHook
+                    && static_cast<float>(trace.end - trace.start)
+                           >= m_slowFrameThreshold * static_cast<float>(armGetSystemTickFreq())) {
+                    const std::uint64_t cpuEnd = threadCpuTicks();
+                    trace.cpuTicks = cpuStart != 0 && cpuEnd >= cpuStart ? cpuEnd - cpuStart : 0;
+                    m_slowFrameHook(trace);
+                }
             } else {
                 // Yield CPU while another app owns the foreground.
                 svcSleepThread(100000000LL); // 100 ms

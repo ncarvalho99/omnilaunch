@@ -113,6 +113,29 @@ public:
     // was being logged as 84.8 ms. Measure with this; animate with the delta.
     float lastFrameSeconds() const { return m_lastFrameSeconds; }
 
+    // Where one loop iteration spent its time, as system ticks taken on the
+    // render thread. `cpuTicks` is the time the thread actually ran (0 when
+    // the kernel cannot say): a slow iteration with little CPU was waiting --
+    // on a lock, IPC, the card or another thread on its core.
+    struct FrameTrace {
+        std::uint64_t start = 0;        // before the applet message pump
+        std::uint64_t appletEnd = 0;
+        std::uint64_t inputEnd = 0;
+        std::uint64_t updateEnd = 0;    // activity onUpdate
+        std::uint64_t widgetsEnd = 0;   // root widget tree update
+        std::uint64_t beginFrameEnd = 0;// acquire of the next image
+        std::uint64_t renderEnd = 0;    // widget tree + activity onRender
+        std::uint64_t endFrameEnd = 0;  // submit and present
+        std::uint64_t end = 0;          // after onAfterPresent
+        std::uint64_t cpuTicks = 0;
+    };
+    // Called after any rendered iteration that took at least
+    // `thresholdSeconds`. Measurement only: it must not change the frame.
+    void setSlowFrameHook(std::function<void(const FrameTrace&)> hook, float thresholdSeconds) {
+        m_slowFrameHook = std::move(hook);
+        m_slowFrameThreshold = thresholdSeconds;
+    }
+
 private:
     void dispatchInput();
     bool applyPendingActivity();
@@ -134,6 +157,8 @@ private:
     std::uint64_t m_firstInputTick = 0;
     std::uint64_t m_firstFrameTick = 0;
     float m_lastFrameSeconds = 0.f;
+    std::function<void(const FrameTrace&)> m_slowFrameHook;
+    float m_slowFrameThreshold = 0.f;
     int  m_navDebounce = 0;
     // Frames a direction has been held for. Navigation used to fire only on the
     // frame a button went down, so holding one moved a single icon and stopped.
