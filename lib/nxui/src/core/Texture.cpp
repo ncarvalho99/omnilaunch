@@ -2,6 +2,7 @@
 #include <nxui/core/GpuDevice.hpp>
 #include <nxui/core/Renderer.hpp>
 
+#include <nxui/core/ImageDecode.hpp> // before the implementation below
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
@@ -366,80 +367,30 @@ bool Texture::loadBc1Memory(GpuDevice& gpu, Renderer& ren, const uint8_t* head, 
 // what makes it callable from a worker thread.
 DecodedImage Texture::decodeFile(const std::string& path, int maxSide) {
     DecodedImage out;
-
-    int w, h, ch;
-    uint8_t* data = stbi_load(path.c_str(), &w, &h, &ch, 4);
-    if (!data) {
-        std::printf("[Texture] stbi_load FAILED: %s\n", path.c_str());
+    // Size read first, over 3840x2160 refused, big ones one at a time, then
+    // shrunk to maxSide (ImageDecode.hpp).
+    int w = 0, h = 0;
+    uint8_t* data = image::decodeFile(path.c_str(), maxSide, w, h);
+    if (!data)
         return out;
-    }
-    // A file can decode without failing outright and still describe nothing
-    // usable. Caught here so the path that scales and uploads never sees it.
-    if (w <= 0 || h <= 0) {
-        std::printf("[Texture] decoded %dx%d, refusing: %s\n", w, h, path.c_str());
-        stbi_image_free(data);
-        return out;
-    }
-
-    int dw = w, dh = h;
-    if (maxSide > 0 && (w > maxSide || h > maxSide)) {
-        float scale = std::min((float)maxSide / w, (float)maxSide / h);
-        dw = std::max(1, (int)(w * scale));
-        dh = std::max(1, (int)(h * scale));
-    }
-
-    out.width  = dw;
-    out.height = dh;
-    out.rgba.resize((size_t)dw * dh * 4);
-    if (dw == w && dh == h) {
-        std::memcpy(out.rgba.data(), data, out.rgba.size());
-    } else {
-        for (int y = 0; y < dh; ++y) {
-            int sy = y * h / dh;
-            for (int x = 0; x < dw; ++x) {
-                int sx = x * w / dw;
-                std::memcpy(out.rgba.data() + ((size_t)y * dw + x) * 4,
-                            data            + ((size_t)sy * w + sx) * 4, 4);
-            }
-        }
-    }
-    stbi_image_free(data);
+    out.width  = w;
+    out.height = h;
+    out.rgba.assign(data, data + (size_t)w * h * 4);
+    std::free(data);
     return out;
 }
-
 DecodedImage Texture::decodeMemory(const uint8_t* data, size_t size, int maxSide) {
     DecodedImage out;
-    if (!data || size == 0 || size > 0x7FFFFFFFu)
-        return out;
-    int w, h, ch;
-    uint8_t* pixels = stbi_load_from_memory(data, (int)size, &w, &h, &ch, 4);
+    int w = 0, h = 0;
+    uint8_t* pixels = image::decodeMemory(data, size, maxSide, w, h);
     if (!pixels)
         return out;
-    if (w <= 0 || h <= 0) {
-        stbi_image_free(pixels);
-        return out;
-    }
-    int dw = w, dh = h;
-    if (maxSide > 0 && (w > maxSide || h > maxSide)) {
-        float scale = std::min((float)maxSide / w, (float)maxSide / h);
-        dw = std::max(1, (int)(w * scale));
-        dh = std::max(1, (int)(h * scale));
-    }
-    out.width  = dw;
-    out.height = dh;
-    out.rgba.resize((size_t)dw * dh * 4);
-    for (int y = 0; y < dh; ++y) {
-        int sy = y * h / dh;
-        for (int x = 0; x < dw; ++x) {
-            int sx = x * w / dw;
-            std::memcpy(out.rgba.data() + ((size_t)y * dw + x) * 4,
-                        pixels          + ((size_t)sy * w + sx) * 4, 4);
-        }
-    }
-    stbi_image_free(pixels);
+    out.width  = w;
+    out.height = h;
+    out.rgba.assign(pixels, pixels + (size_t)w * h * 4);
+    std::free(pixels);
     return out;
 }
-
 bool Texture::loadFromDecoded(GpuDevice& gpu, Renderer& ren, const DecodedImage& image) {
     if (!image.valid()) {
         m_valid = false;
@@ -458,31 +409,9 @@ bool Texture::loadFromFile(GpuDevice& gpu, Renderer& ren, const std::string& pat
 bool Texture::loadFromMemory(GpuDevice& gpu, Renderer& ren,
                              const uint8_t* data, size_t dataSize, int maxSide)
 {
-    int w, h, ch;
-    uint8_t* pixels = stbi_load_from_memory(data, (int)dataSize, &w, &h, &ch, 4);
+    int w = 0, h = 0;
+    uint8_t* pixels = image::decodeMemory(data, dataSize, maxSide, w, h);
     if (!pixels) return false;
-
-    if (maxSide > 0 && (w > maxSide || h > maxSide)) {
-        float scale = std::min((float)maxSide / w, (float)maxSide / h);
-        int dw = std::max(1, (int)(w * scale));
-        int dh = std::max(1, (int)(h * scale));
-        uint8_t* scaled = (uint8_t*)std::malloc((size_t)dw * dh * 4);
-        if (scaled) {
-            for (int y = 0; y < dh; ++y) {
-                int sy = y * h / dh;
-                for (int x = 0; x < dw; ++x) {
-                    int sx = x * w / dw;
-                    std::memcpy(scaled + ((size_t)y * dw + x) * 4,
-                                pixels + ((size_t)sy * w + sx) * 4, 4);
-                }
-            }
-            stbi_image_free(pixels);
-            pixels = scaled;
-            w = dw;
-            h = dh;
-        }
-    }
-
     bool ok = loadFromPixels(gpu, ren, pixels, w, h);
     std::free(pixels);
     return ok;
