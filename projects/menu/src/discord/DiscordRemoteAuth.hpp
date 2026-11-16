@@ -56,6 +56,7 @@ private:
     struct RsaKey;
 
     void run(net::NetService& net);
+    bool runSession(net::NetService& net, RsaKey& key);
     void setPhase(Phase p, const std::string& err = "");
 
     std::thread m_thread;

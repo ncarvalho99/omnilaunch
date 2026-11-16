@@ -20,6 +20,8 @@
 
 #include <chrono>
 #include <cstring>
+#include <sstream>
+#include <thread>
 #include <vector>
 
 namespace discord {
@@ -192,6 +194,11 @@ void DiscordRemoteAuth::setPhase(Phase p, const std::string& err) {
     if (!err.empty()) m_snap.error = err;
 }
 
+// A QR code lives only for the gateway's timeout_ms (about two minutes); after
+// that the gateway closes with 4003. The key is generated once (it costs
+// seconds on the console) and every session reuses it, so an expired or
+// dropped session just shows a fresh code instead of leaving the player in
+// front of a dead one.
 void DiscordRemoteAuth::run(net::NetService& net) {
     DebugLog::log("[discord-ra] generating RSA-2048 key...");
     RsaKey key;
@@ -201,6 +208,35 @@ void DiscordRemoteAuth::run(net::NetService& net) {
         return;
     }
 
+    constexpr int kMaxSessions = 20;
+    for (int session = 0; session < kMaxSessions && !m_stop.load(); ++session) {
+        if (!runSession(net, key))
+            return;
+        const Phase p = phase();
+        if (p == Phase::Done || p == Phase::Failed)
+            return;
+        if (p == Phase::Cancelled) {
+            // Leave "cancelled" on screen briefly, then offer a new code.
+            for (int i = 0; i < 30 && !m_stop.load(); ++i)
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        if (m_stop.load())
+            return;
+        std::lock_guard<std::mutex> lk(m_mu);
+        const std::string lastError = m_snap.error;
+        m_snap = Snapshot{};
+        m_snap.phase = Phase::Preparing;
+        m_snap.error = lastError;
+    }
+    if (!m_stop.load()) {
+        DebugLog::log("[discord-ra] giving up after %d sessions", kMaxSessions);
+        setPhase(Phase::Failed, "Discord login timed out. Try again.");
+    }
+}
+
+// One gateway session. Returns false when the flow is over (logged in, failed
+// for good or stopped) and true when a new session should be opened.
+bool DiscordRemoteAuth::runSession(net::NetService& net, RsaKey& key) {
     net::WebSocket ws(net);
     std::string wsErr;
     std::vector<std::string> headers = {
@@ -210,132 +246,147 @@ void DiscordRemoteAuth::run(net::NetService& net) {
     DebugLog::log("[discord-ra] connecting to %s...", kRemoteAuthGatewayUrl);
     if (!ws.connect(kRemoteAuthGatewayUrl, headers, wsErr, &m_stop)) {
         DebugLog::log("[discord-ra] connection failed: %s", wsErr.c_str());
-        setPhase(Phase::Failed, "Failed to connect to Discord Remote Auth.");
-        return;
+        {
+            std::lock_guard<std::mutex> lk(m_mu);
+            m_snap.error = "Can't reach Discord (" + wsErr + ")";
+        }
+        // The network may still be coming up: pause, then try again.
+        for (int i = 0; i < 30 && !m_stop.load(); ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        return true;
     }
 
     std::int64_t nextHeartbeat = 0;
     std::int64_t heartbeatInterval = 41250;
     bool proofSent = false;
 
-    while (!m_stop.load() && ws.isOpen()) {
+    while (!m_stop.load()) {
         std::vector<net::ws::Message> msgs;
-        if (ws.wait(msgs, 500, &m_stop)) {
-            for (const auto& msg : msgs) {
-                if (msg.binary) continue;
-                const auto j = nlohmann::json::parse(msg.data, nullptr, false);
-                if (j.is_discarded() || !j.is_object()) continue;
+        const bool alive = ws.wait(msgs, 500, &m_stop);
+        for (const auto& msg : msgs) {
+            if (msg.binary) continue;
+            const auto j = nlohmann::json::parse(msg.data, nullptr, false);
+            if (j.is_discarded() || !j.is_object()) continue;
 
-                const std::string op = j.value("op", "");
-                if (op == "hello") {
-                    heartbeatInterval = j.value("heartbeat_interval", 41250);
-                    nextHeartbeat = nowMs() + heartbeatInterval;
-                    const int timeout = j.value("timeout_ms", 120000);
-                    {
-                        std::lock_guard<std::mutex> lk(m_mu);
-                        m_snap.expiresMs = nowMs() + timeout;
-                    }
-                    nlohmann::json init;
-                    init["op"] = "init";
-                    init["encoded_public_key"] = key.spkiB64;
-                    ws.sendText(init.dump());
-                } else if (op == "nonce_proof") {
-                    std::vector<std::uint8_t> nonce;
-                    if (!key.decrypt(j.value("encrypted_nonce", ""), nonce)) {
-                        setPhase(Phase::Failed, "Login handshake decryption failed.");
-                        ws.close();
-                        return;
-                    }
-                    if (m_hashedProof) {
-#ifdef __SWITCH__
-                        unsigned char digest[32] = {};
-#if MBEDTLS_VERSION_MAJOR >= 3
-                        mbedtls_sha256(nonce.data(), nonce.size(), digest, 0);
-#else
-                        mbedtls_sha256_ret(nonce.data(), nonce.size(), digest, 0);
-#endif
-                        nlohmann::json proof;
-                        proof["op"] = "nonce_proof";
-                        proof["proof"] = base64Url(digest, 32);
-                        ws.sendText(proof.dump());
-#endif
-                    } else {
-                        nlohmann::json proof;
-                        proof["op"] = "nonce_proof";
-                        proof["nonce"] = base64Url(nonce.data(), nonce.size());
-                        ws.sendText(proof.dump());
-                    }
-                    proofSent = true;
-                } else if (op == "pending_remote_init") {
-                    const std::string fp = j.value("fingerprint", "");
-                    const std::string url = "https://discord.com/ra/" + fp;
-                    DebugLog::log("[discord-ra] QR URL ready: %s", url.c_str());
-
-                    // Generate QR matrix
-                    const auto qr = qrcodegen::QrCode::encodeText(url.c_str(), qrcodegen::QrCode::Ecc::MEDIUM);
-                    const int size = qr.getSize();
-                    std::vector<std::uint8_t> modules(static_cast<std::size_t>(size * size), 0);
-                    for (int y = 0; y < size; ++y) {
-                        for (int x = 0; x < size; ++x) {
-                            modules[static_cast<std::size_t>(y * size + x)] = qr.getModule(x, y) ? 1 : 0;
-                        }
-                    }
-
-                    {
-                        std::lock_guard<std::mutex> lk(m_mu);
-                        m_snap.qrUrl = url;
-                        m_snap.qrSize = size;
-                        m_snap.qrModules = std::move(modules);
-                        m_snap.phase = Phase::ShowQr;
-                        m_snap.error.clear();
-                    }
-                } else if (op == "pending_ticket") {
-                    std::vector<std::uint8_t> payload;
-                    if (key.decrypt(j.value("encrypted_user_payload", ""), payload)) {
-                        const std::string s(payload.begin(), payload.end());
-                        // Colon-separated: userId:discriminator:avatar:username
-                        std::vector<std::string> parts;
-                        std::stringstream ss(s);
-                        std::string p;
-                        while (std::getline(ss, p, ':')) parts.push_back(p);
-                        std::lock_guard<std::mutex> lk(m_mu);
-                        if (parts.size() >= 4) {
-                            m_snap.userId = parts[0];
-                            m_snap.avatar = (parts[2] == "0") ? "" : parts[2];
-                            m_snap.username = parts[3];
-                            for (std::size_t i = 4; i < parts.size(); ++i) {
-                                m_snap.username += ":" + parts[i];
-                            }
-                        }
-                        m_snap.phase = Phase::Confirm;
-                        DebugLog::log("[discord-ra] scanned by phone, user=%s", m_snap.username.c_str());
-                    }
-                } else if (op == "pending_login") {
-                    setPhase(Phase::LoggingIn);
-                    const std::string ticket = j.value("ticket", "");
-                    std::string encryptedToken, exchangeErr;
-                    if (api::exchangeRemoteAuthTicket(net, ticket, encryptedToken, exchangeErr)) {
-                        std::vector<std::uint8_t> tokenBytes;
-                        if (key.decrypt(encryptedToken, tokenBytes)) {
-                            std::string token(tokenBytes.begin(), tokenBytes.end());
-                            std::lock_guard<std::mutex> lk(m_mu);
-                            m_snap.token = std::move(token);
-                            m_snap.phase = Phase::Done;
-                            DebugLog::log("[discord-ra] login successful for user %s", m_snap.username.c_str());
-                            ws.close();
-                            return;
-                        }
-                    }
-                    setPhase(Phase::Failed, exchangeErr.empty() ? "Could not decrypt session token." : exchangeErr);
-                    ws.close();
-                    return;
-                } else if (op == "cancel") {
-                    DebugLog::log("[discord-ra] login cancelled on phone");
-                    setPhase(Phase::Cancelled);
-                    ws.close();
-                    return;
+            const std::string op = j.value("op", "");
+            if (op == "hello") {
+                heartbeatInterval = j.value("heartbeat_interval", 41250);
+                nextHeartbeat = nowMs() + heartbeatInterval;
+                const int timeout = j.value("timeout_ms", 120000);
+                {
+                    std::lock_guard<std::mutex> lk(m_mu);
+                    m_snap.expiresMs = nowMs() + timeout;
                 }
+                nlohmann::json init;
+                init["op"] = "init";
+                init["encoded_public_key"] = key.spkiB64;
+                ws.sendText(init.dump());
+            } else if (op == "nonce_proof") {
+                std::vector<std::uint8_t> nonce;
+                if (!key.decrypt(j.value("encrypted_nonce", ""), nonce)) {
+                    setPhase(Phase::Failed, "Login handshake decryption failed.");
+                    ws.close();
+                    return false;
+                }
+                if (m_hashedProof) {
+#ifdef __SWITCH__
+                    unsigned char digest[32] = {};
+#if MBEDTLS_VERSION_MAJOR >= 3
+                    mbedtls_sha256(nonce.data(), nonce.size(), digest, 0);
+#else
+                    mbedtls_sha256_ret(nonce.data(), nonce.size(), digest, 0);
+#endif
+                    nlohmann::json proof;
+                    proof["op"] = "nonce_proof";
+                    proof["proof"] = base64Url(digest, 32);
+                    ws.sendText(proof.dump());
+#endif
+                } else {
+                    nlohmann::json proof;
+                    proof["op"] = "nonce_proof";
+                    proof["nonce"] = base64Url(nonce.data(), nonce.size());
+                    ws.sendText(proof.dump());
+                }
+                proofSent = true;
+            } else if (op == "pending_remote_init") {
+                const std::string fp = j.value("fingerprint", "");
+                const std::string url = "https://discord.com/ra/" + fp;
+                DebugLog::log("[discord-ra] QR code ready");
+
+                const auto qr = qrcodegen::QrCode::encodeText(url.c_str(), qrcodegen::QrCode::Ecc::MEDIUM);
+                const int size = qr.getSize();
+                std::vector<std::uint8_t> modules(static_cast<std::size_t>(size * size), 0);
+                for (int y = 0; y < size; ++y) {
+                    for (int x = 0; x < size; ++x) {
+                        modules[static_cast<std::size_t>(y * size + x)] = qr.getModule(x, y) ? 1 : 0;
+                    }
+                }
+
+                std::lock_guard<std::mutex> lk(m_mu);
+                m_snap.qrUrl = url;
+                m_snap.qrSize = size;
+                m_snap.qrModules = std::move(modules);
+                m_snap.phase = Phase::ShowQr;
+                m_snap.error.clear();
+            } else if (op == "pending_ticket") {
+                std::vector<std::uint8_t> payload;
+                if (key.decrypt(j.value("encrypted_user_payload", ""), payload)) {
+                    const std::string s(payload.begin(), payload.end());
+                    // Colon-separated: userId:discriminator:avatar:username
+                    std::vector<std::string> parts;
+                    std::stringstream ss(s);
+                    std::string p;
+                    while (std::getline(ss, p, ':')) parts.push_back(p);
+                    std::lock_guard<std::mutex> lk(m_mu);
+                    if (parts.size() >= 4) {
+                        m_snap.userId = parts[0];
+                        m_snap.avatar = (parts[2] == "0") ? "" : parts[2];
+                        m_snap.username = parts[3];
+                        for (std::size_t i = 4; i < parts.size(); ++i) {
+                            m_snap.username += ":" + parts[i];
+                        }
+                    }
+                    m_snap.phase = Phase::Confirm;
+                    DebugLog::log("[discord-ra] scanned by phone, user=%s", m_snap.username.c_str());
+                }
+            } else if (op == "pending_login") {
+                setPhase(Phase::LoggingIn);
+                const std::string ticket = j.value("ticket", "");
+                std::string encryptedToken, exchangeErr;
+                if (api::exchangeRemoteAuthTicket(net, ticket, encryptedToken, exchangeErr)) {
+                    std::vector<std::uint8_t> tokenBytes;
+                    if (key.decrypt(encryptedToken, tokenBytes)) {
+                        std::string token(tokenBytes.begin(), tokenBytes.end());
+                        std::lock_guard<std::mutex> lk(m_mu);
+                        m_snap.token = std::move(token);
+                        m_snap.phase = Phase::Done;
+                        DebugLog::log("[discord-ra] login successful for user %s", m_snap.username.c_str());
+                        ws.close();
+                        return false;
+                    }
+                }
+                DebugLog::log("[discord-ra] ticket exchange failed: %s",
+                              exchangeErr.empty() ? "token not readable" : exchangeErr.c_str());
+                setPhase(Phase::Failed, exchangeErr.empty() ? "Could not decrypt session token." : exchangeErr);
+                ws.close();
+                return false;
+            } else if (op == "cancel") {
+                DebugLog::log("[discord-ra] login cancelled on phone");
+                setPhase(Phase::Cancelled);
+                ws.close();
+                return true;
             }
+        }
+
+        if (!alive || !ws.isOpen()) {
+            const int code = ws.closeCode();
+            DebugLog::log("[discord-ra] gateway closed code=%d phase=%d", code, static_cast<int>(phase()));
+            if (proofSent && phase() == Phase::Preparing) {
+                // Closed after the proof and before a QR code: the proof format
+                // was rejected, so try the other revision next session.
+                m_hashedProof = !m_hashedProof;
+            }
+            return true;   // expired (4003) or dropped: open a new session
         }
 
         if (nextHeartbeat != 0 && nowMs() >= nextHeartbeat) {
@@ -343,10 +394,8 @@ void DiscordRemoteAuth::run(net::NetService& net) {
             nextHeartbeat = nowMs() + heartbeatInterval;
         }
     }
-
-    if (m_snap.phase == Phase::Preparing && proofSent) {
-        m_hashedProof = !m_hashedProof; // retry alternate proof format if needed
-    }
+    ws.close();
+    return false;
 }
 
 } // namespace discord
