@@ -27,10 +27,15 @@ constexpr const char* kLegacyBackupRoot   = "sdmc:/backup/SwitchU";
 constexpr const char* kConfigFile         = "config.json";
 constexpr const char* kPartSuffix         = ".omnilaunch-part";
 
-// Only config.json is compared byte for byte. Everything else is compared by
-// size and modification time: reading both copies of every small file cost
-// about 9 ms per file before the menu could start, 4.5 s at boot on a card
-// with 485 files, and a size-only check on large files kept stale copies.
+// Settings and state (config.json, folders, layout, lists, small files of any
+// other kind) are compared byte for byte, and so is everything on a restore.
+// Media -- icons, artwork, theme pictures, music, video, fonts -- is compared
+// by size and modification time when backing up: reading both copies of
+// every small picture cost about 9 ms per file before the menu could start,
+// 4.5 s at boot on a card with 485 files. Those files are replaced whole by
+// downloads, so a same-size edit that keeps its old time is not expected of
+// them; for state files that assumption would not hold.
+constexpr off_t kCompareContentsBelow = 256 * 1024;
 
 struct Stats {
     unsigned copied = 0;
@@ -81,6 +86,17 @@ bool excludedFile(const char* name) {
         || std::strcmp(name, "leave_frame.bin") == 0;
 }
 
+bool isMedia(const char* name) {
+    static constexpr const char* kMedia[] = {
+        ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".img", ".dds",
+        ".mp3", ".ogg", ".wav", ".flac", ".bfstm", ".mp4", ".ttf", ".otf",
+    };
+    for (const char* extension : kMedia)
+        if (endsWith(name, extension))
+            return true;
+    return false;
+}
+
 bool fileStat(const std::string& path, off_t& size, time_t& modified) {
     struct stat info {};
     if (stat(path.c_str(), &info) != 0 || !S_ISREG(info.st_mode))
@@ -114,9 +130,11 @@ bool sameContents(const std::string& a, const std::string& b) {
     return same;
 }
 
-// A copy is written after its source was last changed, so its time is the same
-// or later; an edit made since then moves the source past it. Without a time
-// on either side, the contents decide.
+// With compareContents off (media, backing up): a copy is written after its
+// source last changed, so its time is the same or later, and a new download
+// moves the source past it. That is a heuristic, not proof; large files were
+// compared by size alone before. Without a time on either side, small files
+// fall back to their contents.
 bool upToDate(const std::string& source, off_t sourceSize, time_t sourceModified,
               const std::string& destination, bool compareContents) {
     off_t destinationSize = 0;
@@ -124,8 +142,12 @@ bool upToDate(const std::string& source, off_t sourceSize, time_t sourceModified
     if (!fileStat(destination, destinationSize, destinationModified)
         || destinationSize != sourceSize)
         return false;
-    if (!compareContents && sourceModified > 0 && destinationModified > 0)
-        return destinationModified >= sourceModified;
+    if (!compareContents) {
+        if (sourceModified > 0 && destinationModified > 0)
+            return destinationModified >= sourceModified;
+        if (sourceSize > kCompareContentsBelow)
+            return true;
+    }
     return sameContents(source, destination);
 }
 
@@ -171,7 +193,7 @@ bool copyFile(const std::string& source, const std::string& destination, Stats& 
 // stays in the backup, which is the safe way round for a copy whose job is
 // to outlive a wipe.
 void mirror(const std::string& sourceDir, const std::string& destinationDir,
-            const std::string& relative, Stats& stats) {
+            const std::string& relative, Stats& stats, bool restoring) {
     if (!ensureDirectory(destinationDir)) {
         ++stats.failed;
         switchu::FileLog::log("[backup] cannot create %s errno=%d",
@@ -195,14 +217,15 @@ void mirror(const std::string& sourceDir, const std::string& destinationDir,
             continue;
         if (S_ISDIR(info.st_mode)) {
             if (!excludedDirectory(relative, name))
-                mirror(source, destination, relative + name + "/", stats);
+                mirror(source, destination, relative + name + "/", stats, restoring);
             continue;
         }
         if (!S_ISREG(info.st_mode) || excludedFile(name))
             continue;
         if (relative.empty() && std::strcmp(name, kConfigFile) == 0)
             continue;   // the caller copies it last
-        if (upToDate(source, info.st_size, info.st_mtime, destination, false))
+        const bool compareContents = restoring || !isMedia(name);
+        if (upToDate(source, info.st_size, info.st_mtime, destination, compareContents))
             ++stats.unchanged;
         else
             copyFile(source, destination, stats);
@@ -250,7 +273,7 @@ void restoreOrBackUp() {
         action = "restored";
         switchu::FileLog::log("[backup] configuration missing; restoring from %s", backupRoot.c_str());
         ensureDirectory(kConfigParent);
-        mirror(backupRoot, kConfigRoot, "", stats);
+        mirror(backupRoot, kConfigRoot, "", stats, true);
         if (stats.failed == 0)
             copyConfigFileLast(backupRoot, kConfigRoot, stats);
         else
@@ -259,7 +282,7 @@ void restoreOrBackUp() {
     } else if (haveConfig) {
         action = "backed up";
         ensureDirectory(kBackupParent);
-        mirror(kConfigRoot, kBackupRoot, "", stats);
+        mirror(kConfigRoot, kBackupRoot, "", stats, false);
         if (stats.failed == 0)
             copyConfigFileLast(kConfigRoot, kBackupRoot, stats);
     } else {
