@@ -16,6 +16,7 @@
 #include "cards/CardsSheet.hpp"
 #include "discord/DiscordPanel.hpp"
 #include "core/AudioManager.hpp"
+#include <array>
 #include "core/LeaveFrameCache.hpp"
 #include "core/SystemMessages.hpp"
 #include "homebrew/HomebrewUpdateCatalog.hpp"
@@ -317,6 +318,7 @@ private:
     home::AppFetch m_fetch;
     std::shared_ptr<ProgressDialog> m_fetchProgress;
     std::uint64_t m_fetchCardId = 0;
+    std::shared_ptr<std::atomic<bool>> m_achievementsCancel;
     void startAppFetch(const CardEntry& card);
     void pollBrowserDownload();
     void stopBrowserDownload(); ///< cancel and wait (onDestroy, quiesce)
@@ -383,6 +385,7 @@ private:
     // Panel details of the selected title, read off the main thread: version
     // from the control cache, last played from pdm.
     struct Details {
+        std::array<std::uint64_t, 2> profile{};
         std::uint64_t titleId = 0;
         std::string version;
         std::optional<std::uint64_t> lastPlayed;

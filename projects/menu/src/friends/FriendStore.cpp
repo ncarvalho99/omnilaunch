@@ -1,5 +1,6 @@
 #include "FriendStore.hpp"
 #include "core/DebugLog.hpp"
+#include "core/PlayTime.hpp"
 #include <algorithm>
 #include <cstddef>
 #include <cstdio>
@@ -247,6 +248,7 @@ std::string loadFriendCode(AccountUid uid) {
 
 std::vector<PlayRecord> loadMyPlayHistory(AccountUid uid, const std::vector<std::uint64_t>& titleIds) {
     std::vector<PlayRecord> out;
+    std::lock_guard<std::mutex> pdmGuard(switchu::menu::playtime::queryMutex());
     const Result rc = pdmqryInitialize();
     if (R_FAILED(rc)) {
         DebugLog::log("[social] pdm:qry unavailable rc=0x%X", rc);

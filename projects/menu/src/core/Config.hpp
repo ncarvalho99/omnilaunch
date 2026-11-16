@@ -197,9 +197,19 @@ struct AppConfig {
     // off the UI thread whenever the menu comes up in sort mode 3 or enters
     // it. Kept on disk only so the grid can open in the right order before
     // that query answers -- the menu is recreated on every return from a game,
-    // so an in-memory copy would start empty every time. Titles never played
-    // are not stored.
+    // so an in-memory copy would start empty every time. Measured zeroes are
+    // stored too, so never-played titles are not queried on every boot.
     std::vector<std::pair<std::uint64_t, std::uint64_t>> playtime;
+    // One rebuildable cache, explicitly owned by a profile and algorithm version.
+    // Older binaries can ignore this key; unowned legacy totals are re-queried.
+    std::string playtimeProfile;
+    bool selectPlaytimeProfile(const std::string& profile) {
+        if (playtimeProfile == profile) return false;
+        playtimeProfile = profile;
+        playtime.clear();
+        playtimeCheckedSequence = 0;
+        return true;
+    }
 
     std::uint64_t playtimeOf(std::uint64_t titleId) const {
         for (const auto& e : playtime)

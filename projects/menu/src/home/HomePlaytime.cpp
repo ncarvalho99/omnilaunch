@@ -14,12 +14,13 @@ bool HomePlaytime::start(nxui::ThreadPool& pool, std::vector<std::uint64_t> titl
     if (m_future.valid() || titleIds.empty())
         return false;
     auto state = std::make_shared<State>();
+    state->profile = m_profile;
     state->requested = titleIds.size();
     state->checkedSequence = checkedSequence;
     m_state = state;
     m_future = pool.submit([state, titleIds = std::move(titleIds)]() {
 #ifdef SWITCHU_MENU
-        state->playtime = switchu::menu::playtime::queryAll(titleIds, &state->cancelled);
+        state->playtime = switchu::menu::playtime::queryAll(titleIds, &state->cancelled, state->profile);
 #else
         (void)titleIds;
 #endif
@@ -40,7 +41,14 @@ int HomePlaytime::poll(AppConfig& config) {
         failed = true;
     }
     int changed = 0;
-    if (!failed && state) {
+#ifdef SWITCHU_MENU
+    if (state && (state->profile != m_profile ||
+        state->profile != switchu::menu::playtime::currentProfile(config))) {
+        DebugLog::log("[playtime] discarded result for a profile left behind");
+        failed = true;
+    }
+#endif
+    if (!failed && state && !state->cancelled.load()) {
         for (const auto& [titleId, nanoseconds] : state->playtime)
             changed += config.setPlaytime(titleId, nanoseconds) ? 1 : 0;
         // Advanced only when every title answered: a stopped or failed batch
@@ -54,6 +62,30 @@ int HomePlaytime::poll(AppConfig& config) {
     // Nothing is saved here. Every launch writes the config before the
     // handoff, and that write carries this cache with it.
     return changed;
+}
+
+bool HomePlaytime::syncProfile(AppConfig& config) {
+#ifdef SWITCHU_MENU
+    const auto now = std::chrono::steady_clock::now();
+    const std::string preference = config.defaultProfileEnabled ? config.defaultProfileUid : "";
+    if (m_profileReady && preference == m_preference &&
+        now - m_profileChecked < std::chrono::seconds(3)) return false;
+    m_profileChecked = now;
+    m_preference = preference;
+    const auto user = switchu::menu::playtime::currentProfile(config);
+    const bool changed = !m_profileReady || user != m_profile;
+    m_profileReady = true;
+    m_profile = user;
+    const bool invalidated = config.selectPlaytimeProfile(switchu::menu::playtime::profileKey(user));
+    if (changed || invalidated) {
+        cancel();
+        DebugLog::log("[playtime] profile cache invalidated; full refresh required");
+        return true;
+    }
+#else
+    (void)config;
+#endif
+    return false;
 }
 
 void HomePlaytime::cancel() {

@@ -1299,8 +1299,8 @@ void CardsHomeActivity::drawCardOptions(nxui::Renderer& ren) {
     } else if (m_cardOptIsHomebrew) {
         about = m_cardOptAuthor.empty() ? i18n.tr("cards.homebrew", "Homebrew") : m_cardOptAuthor;
     } else {
-        const auto optPlayed = switchu::menu::playtime::query(id);
-        const std::uint64_t played = (optPlayed && *optPlayed > 0) ? *optPlayed : 0;
+        // Rendering must never perform a PDM IPC or wait for an event scan.
+        const std::uint64_t played = m_core.config().playtimeOf(id);
         if (played > 0)
             about = switchu::menu::playtime::format(played);
         else
@@ -1756,6 +1756,9 @@ void CardsHomeActivity::openNotificationsSheet() {
 
 // ── Achievements (E11, C-UI-5) ──────────────────────────────────────────────
 void CardsHomeActivity::openAchievementsSheet(std::uint64_t titleId) {
+    if (m_achievementsCancel) m_achievementsCancel->store(true);
+    auto cancelled = std::make_shared<std::atomic<bool>>(false);
+    m_achievementsCancel = cancelled;
     auto& i18n = nxui::I18n::instance();
     namespace ach = achievements;
     m_audio.playSfx(Sfx::ModalShow);
@@ -1768,17 +1771,22 @@ void CardsHomeActivity::openAchievementsSheet(std::uint64_t titleId) {
         std::atomic<bool> queryFailed{false};
     };
     auto st = std::make_shared<State>();
-    st->play.seconds = m_core.config().playtimeOf(titleId) / 1000000000ULL;
+    // Achievements are historically console-wide; do not mix a selected
+    // profile's cache into their existing shared, monotonic milestone file.
     // No game chosen (menu on the Nintendo page): only the overall set.
     if (titleId != 0) try {
         // Launch count, then load -> record -> save as one serialized
         // transaction (CardsAchievements recordAndSave), all off the UI thread.
-        m_core.threadPool().submit([st, titleId]() {
+        m_core.threadPool().submit([st, titleId, cancelled]() {
 #ifdef SWITCHU_MENU
+            if (auto seconds = switchu::menu::playtime::query(titleId))
+                st->play.seconds = *seconds / 1000000000ULL;
+            else st->queryFailed.store(true);
             if (auto n = switchu::menu::playtime::queryLaunches(titleId))
                 st->play.launches = *n;
             else st->queryFailed.store(true);
 #endif
+            if (cancelled->load()) return;
             bool ok = true;
             std::vector<const ach::Milestone*> fresh;
             try { fresh = ach::recordAndSave(ach::kPath, titleId, st->play,
@@ -1821,23 +1829,46 @@ void CardsHomeActivity::openAchievementsSheet(std::uint64_t titleId) {
     }    const int idx = m_catalog.indexOf(titleId);
     const std::string title = idx >= 0 ? m_catalog.at(idx).app.title : std::string();
 
-    // Overall milestones (build 185): different games played and all play
-    // time together, from the play time cache; recorded on the pool.
-    auto overall = std::make_shared<ach::Play>();
-    for (const auto& [id, ns] : m_core.config().playtime) {
-        if (ns == 0 || pages::isSystemId(id) || pages::isHomebrewId(id))
-            continue;
-        overall->launches += 1;
-        overall->seconds += ns / 1000000000ULL;
+    // Overall milestones retain their console-wide ownership. Never sum the
+    // selected profile's possibly partial sort cache into the shared awards.
+    struct OverallState {
+        ach::Play play;
+        std::atomic<bool> ready{false}, failed{false};
+    };
+    auto overall = std::make_shared<OverallState>();
+    std::vector<std::uint64_t> overallIds;
+    for (const auto& entry : m_catalog.all()) {
+        const auto id = entry.titleId;
+        if (entry.isApplication() && id && !pages::isSystemId(id) && !pages::isHomebrewId(id))
+            overallIds.push_back(id);
     }
     try {
-        m_core.threadPool().submit([overall]() {
+        m_core.threadPool().submit([overall, cancelled, ids = std::move(overallIds)]() {
+            ach::Play play;
+#ifdef SWITCHU_MENU
+            const auto totals = switchu::menu::playtime::queryAll(ids, cancelled.get());
+            if (cancelled->load() || totals.size() != ids.size()) {
+                overall->failed.store(true);
+                overall->ready.store(true);
+                return; // no partial aggregate is written as complete
+            }
+            for (const auto& [id, ns] : totals) {
+                if (!ns) continue;
+                ++play.launches;
+                play.seconds += ns / 1000000000ULL;
+            }
+#endif
+            if (cancelled->load()) return;
             bool ok = true;
-            try { ach::recordOverallAndSave(ach::kPath, *overall, static_cast<std::int64_t>(std::time(nullptr)), ok); }
+            try { ach::recordOverallAndSave(ach::kPath, play, static_cast<std::int64_t>(std::time(nullptr)), ok); }
             catch (...) { ok = false; }
-            if (!ok) DebugLog::log("[cards] overall achievements save failed");
+            overall->play = play;
+            overall->failed.store(!ok);
+            overall->ready.store(true); // release publishes play before UI reads
         });
     } catch (...) {
+        overall->failed.store(true);
+        overall->ready.store(true);
     }
     std::vector<CardsSheet::Row> allRows;
     for (const auto& m : ach::kOverall) {
@@ -1845,15 +1876,17 @@ void CardsHomeActivity::openAchievementsSheet(std::uint64_t titleId) {
         CardsSheet::Row r;
         r.label = i18n.tr(m.key, m.name);
         r.detail = m.about;
-        r.progress = [overall, mp]() { return ach::progress(*mp, *overall); };
+        r.progress = [overall, mp]() { return overall->ready.load() ? ach::progress(*mp, overall->play) : 0.f; };
         r.value = [overall, mp]() -> std::string {
-            const float f = ach::progress(*mp, *overall);
+            if (!overall->ready.load()) return "...";
+            if (overall->failed.load()) return nxui::I18n::instance().tr("cards.query_failed", "Unavailable");
+            const float f = ach::progress(*mp, overall->play);
             if (f >= 1.f) return nxui::I18n::instance().tr("cards.ach_done", "Earned");
             char buf[48];
             if (mp->hours)
-                std::snprintf(buf, sizeof(buf), "%.1f / %u h", static_cast<double>(overall->seconds) / 3600.0, mp->goal);
+                std::snprintf(buf, sizeof(buf), "%.1f / %u h", static_cast<double>(overall->play.seconds) / 3600.0, mp->goal);
             else
-                std::snprintf(buf, sizeof(buf), "%u / %u", overall->launches, mp->goal);
+                std::snprintf(buf, sizeof(buf), "%u / %u", overall->play.launches, mp->goal);
             return buf;
         };
         allRows.push_back(std::move(r));

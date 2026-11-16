@@ -1070,6 +1070,10 @@ void WiiUMenuApp::requestPlaytimeRefresh(const char* reason) {
 
 void WiiUMenuApp::pollPlaytimeRefresh() {
 #ifdef SWITCHU_MENU
+    if (m_homeCore.playtime().syncProfile(m_config)) {
+        m_playtimeRefreshQueued = true;
+        m_playtimeResortPending = true;
+    }
     if (m_homeCore.playtime().running()) {
         const int changed = m_homeCore.playtime().poll(m_config);
         if (changed < 0)

@@ -386,6 +386,7 @@ bool CardsHomeActivity::onCreate() {
         m_fadeIn = 0.f;
     }
     m_core.setFrontendQuiesce([this] {
+        if (m_achievementsCancel) m_achievementsCancel->store(true);
         stopSpeedTest();
         stopHomebrewUpdates();
         waitSelfUpdate();
@@ -523,6 +524,7 @@ bool CardsHomeActivity::onCreate() {
     m_sheet.onNavigate([this] { m_audio.playSfx(Sfx::Navigate); });
     m_sheet.onActivate([this] { m_audio.playSfx(Sfx::Activate); });
     m_sheet.onClosed([this] {
+        if (m_achievementsCancel) m_achievementsCancel->store(true);
         m_audio.playSfx(Sfx::ModalHide);
         // B on a sub-sheet opened from Settings goes back to that Settings row.
         if (!m_subSheetTitle.empty() && m_sheet.title() == m_subSheetTitle) {
@@ -666,6 +668,7 @@ void CardsHomeActivity::onDestroy() {
     m_core.frontendStopping();
 #ifdef SWITCHU_MENU
     m_core.playtime().cancel();
+    if (m_achievementsCancel) m_achievementsCancel->store(true);
     closingTrace.http_cancel_done_tick = armGetSystemTick();
 #endif
     // Stop our decodes and wait for our pool work before the Core loader is
@@ -835,6 +838,11 @@ void CardsHomeActivity::pollPlaytime() {
 #ifdef SWITCHU_MENU
     auto& playtime = m_core.playtime();
     auto& config = m_core.config();
+    if (playtime.syncProfile(config)) {
+        m_playtimeQueued = true;
+        m_details = {};
+        m_detailsWanted = 0;
+    }
     if (playtime.running()) {
         const int changed = playtime.poll(config);
         if (changed > 0 && config.cardsSort == 2 && m_moving)
@@ -1473,7 +1481,8 @@ void CardsHomeActivity::updateDetails(float dt) {
     if (m_detailsFuture.valid() &&
         m_detailsFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
         m_detailsFuture.get();
-        if (m_detailsPending && m_detailsPending->titleId == m_detailsWanted)
+        if (m_detailsPending && m_detailsPending->titleId == m_detailsWanted &&
+            m_detailsPending->profile == switchu::menu::playtime::currentProfile(m_core.config()))
             m_details = *m_detailsPending;
         m_detailsPending.reset();
     }
@@ -1490,13 +1499,14 @@ void CardsHomeActivity::updateDetails(float dt) {
         return;
     auto pending = std::make_shared<Details>();
     pending->titleId = id;
+    pending->profile = switchu::menu::playtime::currentProfile(m_core.config());
     m_detailsPending = pending;
     m_detailsFuture = m_core.threadPool().submit([pending]() {
 #ifdef SWITCHU_MENU
         switchu::control_cache::Meta meta{};
         if (switchu::control_cache::readMeta(pending->titleId, meta) && meta.display_version[0] != '\0')
             pending->version = meta.display_version;
-        pending->lastPlayed = switchu::menu::playtime::queryLastPlayed(pending->titleId);
+        pending->lastPlayed = switchu::menu::playtime::queryLastPlayed(pending->titleId, pending->profile);
 #endif
     });
 }

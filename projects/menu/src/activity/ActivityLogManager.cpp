@@ -1,5 +1,6 @@
 #include "ActivityLogManager.hpp"
 #include "core/DebugLog.hpp"
+#include "core/PlayTime.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -496,6 +497,7 @@ MonthlyLogSummary ActivityLogManager::queryMonth(int year, int month) const {
 void ActivityLogManager::queryPdmStatistics(const std::vector<std::pair<std::uint64_t, std::string>>& installedTitles) {
 #ifdef __SWITCH__
     PdmPlayStatistics stats{};
+    std::lock_guard<std::mutex> pdmGuard(switchu::menu::playtime::queryMutex());
     const Result initRc = pdmqryInitialize();
     if (R_FAILED(initRc)) {
         DebugLog::log("[activity] pdmqryInitialize failed rc=0x%08X", (unsigned int)initRc);
@@ -565,6 +567,7 @@ void ActivityLogManager::queryPdmStatistics(const std::vector<std::pair<std::uin
 
 void ActivityLogManager::queryPdmAppletEvents(const std::unordered_map<std::uint64_t, std::string>& titleNames) {
 #ifdef __SWITCH__
+    std::lock_guard<std::mutex> pdmGuard(switchu::menu::playtime::queryMutex());
     const Result initRc = pdmqryInitialize();
     if (R_FAILED(initRc)) {
         DebugLog::log("[activity] pdmqryInitialize failed in applet events rc=0x%08X", (unsigned int)initRc);

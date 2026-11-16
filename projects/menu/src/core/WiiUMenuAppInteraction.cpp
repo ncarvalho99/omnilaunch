@@ -62,13 +62,11 @@ std::string installedModSummary(std::uint64_t titleId) {
     return i18n.tr("dialog.details_mods_detected", "Detected") + ": " + std::to_string(count);
 }
 
-// Asked of pdm directly rather than read from the sort cache: the dossier is
-// one title, opened on purpose, and the cache is only kept fresh while the
-// most-played view is in use.
-std::string installedPlayTime(std::uint64_t titleId) {
-    const auto nanoseconds = switchu::menu::playtime::query(titleId);
-    if (nanoseconds && *nanoseconds > 0)
-        return switchu::menu::playtime::format(*nanoseconds);
+// Read the profile-owned cache: the dossier opens on the UI thread and must
+// not wait behind a statistics query or an event-log scan.
+std::string installedPlayTime(std::uint64_t titleId, const AppConfig& config) {
+    if (config.hasPlaytime(titleId))
+        return switchu::menu::playtime::format(config.playtimeOf(titleId));
     return nxui::I18n::instance().tr("dialog.details_playtime_unavailable", "Not available yet");
 }
 
@@ -1383,7 +1381,7 @@ void WiiUMenuApp::showGameDetails(std::uint64_t titleId, const std::string& titl
     const std::string searchTitle = m_config.gamePortSearchTitle(titleId, title);
     m_gameDetails->openForGame(titleId, title, searchTitle, std::move(cover), liveCover,
                                 installedDisplayVersion(titleId), installedModSummary(titleId),
-                                installedPlayTime(titleId), metadataPlatform,
+                                installedPlayTime(titleId, m_config), metadataPlatform,
                                 m_config.isGamePort(titleId),
                                 m_config.isFavorite(titleId));
     // Game Details is persistent and may already sit below an overlay created
