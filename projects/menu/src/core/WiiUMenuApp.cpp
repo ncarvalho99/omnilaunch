@@ -817,7 +817,11 @@ bool WiiUMenuApp::onCreate() {
 
 #ifdef SWITCHU_MENU
     m_sysMsg.setCallback([this](SysAction a) { handleSystemAction(a); });
-    DebugLog::log("[init] async notifications via AppletStorage only");
+    {
+        const Result evRc = appletGetPopInteractiveInDataEvent(&m_notifyEvent);
+        m_notifyEventOk = R_SUCCEEDED(evRc);
+        DebugLog::log("[init] async notifications via AppletStorage only (event rc=0x%X)", evRc);
+    }
 
     const auto& initTrace = app().initializeTrace();
     switchu::smi::MenuReadyArgs ready{};
@@ -902,6 +906,10 @@ void WiiUMenuApp::onDestroy() {
     closingTrace.gpu_drain_start_tick = shutdownTrace.gpuDrainStartTick;
     closingTrace.gpu_drain_end_tick = shutdownTrace.gpuDrainEndTick;
     closingTrace.on_destroy_start_tick = shutdownTrace.activityDestroyStartTick;
+    if (m_notifyEventOk) {
+        eventClose(&m_notifyEvent);
+        m_notifyEventOk = false;
+    }
 #endif
     // Wake this frontend's libcurl transfers before the worker pool drains.
     // Without this, a stalled package transfer can hold the outgoing menu
@@ -6714,6 +6722,7 @@ void WiiUMenuApp::buildGrid() {
     m_sidebarActions = sidebarActions;
     DebugLog::log("[init-diag] widgets/focus/leave session %lums", bgMs());
     m_sidebar.setColumnScale(static_cast<float>(std::clamp(m_config.sidebarScalePercent, 80, 130)) / 100.f);
+    m_sidebar.setThreadPool(&m_threadPool);
     m_sidebar.build(app().gpu(), app().renderer(), SD_ASSETS, m_sidebarActions, m_config.sidebarOrder);
     if (!returningFromSuspendedApp) {
         m_sidebar.reloadAssets(app().gpu(), app().renderer(), SD_ASSETS,
@@ -8383,7 +8392,10 @@ void WiiUMenuApp::onUpdate(float dt) {
     }
 
 #ifdef SWITCHU_MENU
-    {
+    // Asking AM for the queue every frame is an IPC that, right after a
+    // frontend switch, took 240-830 ms with nothing queued. The event says
+    // whether anything is there; without it, fall back to asking.
+    if (!m_notifyEventOk || R_SUCCEEDED(eventWait(&m_notifyEvent, 0))) {
         AppletStorage notifySt;
         while (R_SUCCEEDED(appletPopInteractiveInData(&notifySt))) {
             switchu::smi::DaemonNotification notif{};
@@ -8905,6 +8917,7 @@ void WiiUMenuApp::onUpdate(float dt) {
     }
 
     switchu::menu::frame_probe::mark("input-screens");
+    m_sidebar.pumpAssets(app().gpu(), app().renderer());
     m_sidebar.update(dt, focusManager().current());
 
     if (m_pointerCursor) {

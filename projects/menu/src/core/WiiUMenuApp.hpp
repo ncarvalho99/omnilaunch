@@ -857,6 +857,12 @@ private:
     AppListLoader&  m_appLoader; // HomeCore-owned catalogue loader (C5c)
     IconStreamer    m_iconStreamer;
     SystemMessages  m_sysMsg;
+#ifdef SWITCHU_MENU
+    // Signalled by AM while daemon notifications wait in the interactive
+    // in-data queue; checking it is a kernel wait, not an IPC to AM.
+    Event m_notifyEvent{};
+    bool  m_notifyEventOk = false;
+#endif
     switchu::navigation::MenuNavigator m_navigator;
 
     bool m_showDebugOverlay  = false;

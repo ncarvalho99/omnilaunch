@@ -3,6 +3,7 @@
 #include "core/IconPack.hpp"
 #include <nxui/core/I18n.hpp>
 #include <nxui/core/Input.hpp>
+#include <switch.h>
 #include <filesystem>
 #include <algorithm>
 #include <system_error>
@@ -286,6 +287,9 @@ void SidebarManager::reloadAssets(nxui::GpuDevice& gpu, nxui::Renderer& ren,
 }
 
 void SidebarManager::invalidateAssetsCache() {
+    // A decode still in flight belongs to the icons being discarded.
+    m_iconDecode.reset();
+    ++m_iconGeneration;
     m_loadedAssetsBase.clear();
     m_loadedCustomIconsBase.clear();
     m_assetsLoaded = false;
@@ -333,8 +337,40 @@ void SidebarManager::loadAssets(nxui::GpuDevice& gpu, nxui::Renderer& ren,
     };
     if ((int)m_icons.size() != kSidebarIconCount)
         m_icons.resize(kSidebarIconCount);
-    for (int i = 0; i < kSidebarIconCount; ++i)
-        loadIconTexture(i, iconFiles[i]);
+    if (m_pool && m_pool->acceptingTasks()) {
+        // Reading and decoding ten PNGs off the card held the Classic switch
+        // frame for ~470 ms. The worker does that part; pumpAssets() uploads.
+        // Until then a button draws nothing, under the switch fade.
+        std::vector<std::string> customPaths(kSidebarIconCount);
+        std::vector<std::string> fallbackPaths(kSidebarIconCount);
+        for (int i = 0; i < kSidebarIconCount; ++i) {
+            if (useCustomStaticIcons)
+                customPaths[i] = joinPath(customIconsBase, iconFiles[i]);
+            fallbackPaths[i] = defaultAssetPath(iconFiles[i]);
+        }
+        auto job = std::make_shared<IconDecode>();
+        job->generation = ++m_iconGeneration;
+        job->startTick = armGetSystemTick();
+        m_iconDecode = job;
+        m_pool->submit([job, customPaths = std::move(customPaths),
+                        fallbackPaths = std::move(fallbackPaths)]() {
+            job->images.resize(fallbackPaths.size());
+            for (std::size_t i = 0; i < fallbackPaths.size(); ++i) {
+                nxui::DecodedImage image;
+                if (!customPaths[i].empty())
+                    image = nxui::Texture::decodeFile(customPaths[i], 128);
+                if (!image.valid())
+                    image = nxui::Texture::decodeFile(fallbackPaths[i], 128);
+                job->images[i] = std::move(image);
+            }
+            job->done.store(true, std::memory_order_release);
+        });
+    } else {
+        m_iconDecode.reset();
+        ++m_iconGeneration;
+        for (int i = 0; i < kSidebarIconCount; ++i)
+            loadIconTexture(i, iconFiles[i]);
+    }
 
     static const struct { int iconIdx; const char* webpFile; bool useFirstFrame; } animDefs[] = {
         { 0, "sphaira.webp",    false },
@@ -396,6 +432,27 @@ void SidebarManager::tryLoadAnimation(nxui::GpuDevice& gpu, nxui::Renderer& ren,
     if (entry.anim.load(gpu, ren, webpPath)) {
         m_anims.push_back(std::move(entry));
     }
+}
+
+void SidebarManager::pumpAssets(nxui::GpuDevice& gpu, nxui::Renderer& ren) {
+    if (!m_iconDecode || !m_iconDecode->done.load(std::memory_order_acquire))
+        return;
+    auto job = std::move(m_iconDecode);
+    m_iconDecode.reset();
+    if (job->generation != m_iconGeneration)
+        return;
+    if ((int)m_icons.size() != kSidebarIconCount)
+        m_icons.resize(kSidebarIconCount);
+    int loaded = 0;
+    for (int i = 0; i < kSidebarIconCount && i < (int)job->images.size(); ++i) {
+        if (m_icons[i].loadFromDecoded(gpu, ren, job->images[i]))
+            ++loaded;
+        else
+            DebugLog::log("[sidebar-assets] icon %d failed to decode", i);
+    }
+    DebugLog::log("[sidebar-assets] %d icon(s) ready %llums after request", loaded,
+                  static_cast<unsigned long long>(
+                      armTicksToNs(armGetSystemTick() - job->startTick) / 1000000ULL));
 }
 
 void SidebarManager::update(float dt, nxui::Widget* focusedWidget) {

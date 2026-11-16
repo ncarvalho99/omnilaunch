@@ -4,8 +4,10 @@
 #include <nxui/core/Texture.hpp>
 #include <nxui/core/GpuDevice.hpp>
 #include <nxui/core/Renderer.hpp>
+#include <nxui/core/ThreadPool.hpp>
 #include <nxui/Theme.hpp>
 #include <nxui/widgets/Widget.hpp>
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <string>
@@ -37,6 +39,12 @@ public:
     void invalidateAssetsCache();
 
     void update(float dt, nxui::Widget* focusedWidget);
+
+    // With a pool, the static icons are read and decoded on a worker and
+    // uploaded by pumpAssets() on the render thread; without one, inline.
+    void setThreadPool(nxui::ThreadPool* pool) { m_pool = pool; }
+    // Render thread, once per frame: uploads icons a worker has finished.
+    void pumpAssets(nxui::GpuDevice& gpu, nxui::Renderer& ren);
 
     // The dynamic-line HOME layout turns the two side columns into one
     // horizontal control strip between the profile bar and the applications.
@@ -81,6 +89,19 @@ private:
     void tryLoadAnimation(nxui::GpuDevice& gpu, nxui::Renderer& ren,
                           const std::string& webpPath, AppletButton* button,
                           nxui::Texture* staticIcon);
+
+    // One worker decode of the static icons. Shared with the task, so the
+    // task never touches this object; a newer request bumps m_iconGeneration
+    // and the older result is dropped.
+    struct IconDecode {
+        std::vector<nxui::DecodedImage> images;
+        std::atomic<bool> done{false};
+        std::uint32_t generation = 0;
+        std::uint64_t startTick = 0;
+    };
+    std::shared_ptr<IconDecode> m_iconDecode;
+    std::uint32_t m_iconGeneration = 0;
+    nxui::ThreadPool* m_pool = nullptr;
 
     std::vector<nxui::Texture> m_icons;
     std::vector<std::shared_ptr<AppletButton>> m_leftButtons;
