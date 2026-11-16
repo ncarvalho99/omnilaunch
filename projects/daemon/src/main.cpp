@@ -1232,23 +1232,11 @@ static void openMenuFromHome(const char* source) {
             switchu::FileLog::log("[%s] HOME aborted: foreground request failed", source);
             return;
         }
-        // A forwarder (homebrew wrapped as an application, title id outside the
-        // retail 0x01... range) left suspended can keep the menu applet from
-        // coming up, freezing the console on its last frame (PoloNX #161). Close
-        // it instead of suspending it; forwarders often ignore RequestExit, so the
-        // graceful wait is short. The cold menu comes up from the exit path.
-        const uint64_t runningId = daemon::app::suspendedTitleId();
-        const uint8_t idClass = static_cast<uint8_t>(runningId >> 56);
-        if (runningId != 0 && idClass != 0x01 && idClass != 0x04) {
-            switchu::FileLog::log("[%s] HOME over forwarder 0x%016lX: closing it instead of suspending",
-                                  source, runningId);
-            const Result closeRc = daemon::app::beginTerminateWithin(2'000'000'000ULL);
-            switchu::FileLog::log("[%s] forwarder close rc=0x%X", source, closeRc);
-            if (R_SUCCEEDED(closeRc)) {
-                logHomeState(source, "after");
-                return;
-            }
-        }
+        // Forwarders and homebrew run as applications stay suspended like games,
+        // so they can be resumed (PoloNX #168 reverted the close-on-HOME of #161).
+        // The freeze #161 worked around, a menu that never comes up over a
+        // suspended forwarder, is handled by the menu-ready watchdog, which then
+        // closes the forwarder instead of resuming it.
         const auto status = buildSystemStatus(smi::MenuTransitionReason::HomeRequest,
                                               homeTick);
         switchu::FileLog::log("[%s] HOME launching MainMenu status.running=%d suspended=0x%016lX",
@@ -2651,10 +2639,24 @@ static void menuReadyWatchTick() {
     switchu::FileLog::flush();
     g_guardRun.onClosing();
     daemon::menu_la::terminate(2'000'000'000ULL);
-    if (daemon::app::isRunning() && daemon::app::suspendedTitleId() != 0) {
+    const uint64_t suspendedId = daemon::app::suspendedTitleId();
+    const uint8_t idClass = static_cast<uint8_t>(suspendedId >> 56);
+    const bool forwarder = suspendedId != 0 && idClass != 0x01 && idClass != 0x04;
+    if (daemon::app::isRunning() && forwarder) {
+        // A forwarder (homebrew wrapped as an application) can keep the menu
+        // from coming up while it is suspended (PoloNX #159). Resuming it would
+        // only bring the same state back: close it, gracefully for at most
+        // 2 s, and the menu starts from the app-exit path.
+        const Result closeRc = daemon::app::beginTerminateWithin(2'000'000'000ULL);
+        switchu::FileLog::log("[watchdog] closing suspended forwarder 0x%016lX rc=0x%X",
+                              suspendedId, closeRc);
+        if (R_SUCCEEDED(closeRc))
+            return;
+    }
+    if (daemon::app::isRunning() && suspendedId != 0) {
         Action action{};
         action.type = ActionType::ResumeApplication;
-        action.title_id = daemon::app::suspendedTitleId();
+        action.title_id = suspendedId;
         action.commandReceivedTick = armGetSystemTick();
         g_actionQueue.push_back(action);
         switchu::FileLog::log("[watchdog] queued resume of the suspended application");
