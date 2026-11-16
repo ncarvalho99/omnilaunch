@@ -70,6 +70,29 @@ void restoreHbmenu() {
 
 } // namespace
 
+// libnx's own __appInit without the time service and HID (adapted from HomeNX
+// 8d0fd8b): this program never reads the clock or input, and the default
+// timeInitialize() aborted the launch (2345-0038, InitFail_Time) whenever the
+// console's time service had run out of sessions.
+extern "C" void __appInit(void) {
+    if (R_FAILED(smInitialize())) diagAbortWithResult(MAKERESULT(Module_Libnx, LibnxError_InitFail_SM));
+    if (hosversionGet() == 0 && R_SUCCEEDED(setsysInitialize())) {
+        SetSysFirmwareVersion fw;
+        if (R_SUCCEEDED(setsysGetFirmwareVersion(&fw))) hosversionSet(MAKEHOSVERSION(fw.major, fw.minor, fw.micro));
+        setsysExit();
+    }
+    if (R_FAILED(appletInitialize())) diagAbortWithResult(MAKERESULT(Module_Libnx, LibnxError_InitFail_AM));
+    if (R_FAILED(fsInitialize())) diagAbortWithResult(MAKERESULT(Module_Libnx, LibnxError_InitFail_FS));
+    fsdevMountSdmc();
+}
+
+extern "C" void __appExit(void) {
+    fsdevUnmountAll();
+    fsExit();
+    appletExit();
+    smExit();
+}
+
 int main(int argc, char** argv) {
     if (readLine(kChained) == processId()) {
         std::remove(kChained);

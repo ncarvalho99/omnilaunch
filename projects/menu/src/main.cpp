@@ -13,6 +13,7 @@
 #include <nxui/core/Font.hpp>
 #include <fmt/format.h>
 #include <switchu/file_log.hpp>
+#include <switchu/time_budget.hpp>
 #ifdef SWITCHU_MENU
 #include <nxui/core/GpuDevice.hpp>
 #include "settings/SystemPrefs.hpp"
@@ -153,8 +154,11 @@ extern "C" void __appInit(void) {
     rc = hidInitialize();
     if (R_FAILED(rc)) svcOutputDebugString("[SwitchU-menu] hidInitialize FAIL", 33);
 
-    timeInitialize();
-    __libnx_init_time();
+    // Not timeInitialize(): it takes 6 of the time service's few sessions,
+    // which a menu started after several sysmodules often cannot get. Only the
+    // user clock and the time zone are opened; ClockService retries until they
+    // are (switchu/time_budget.hpp).
+    switchu::timebudget::poll();
     setsysInitialize();
     setInitialize();
     lblInitialize();

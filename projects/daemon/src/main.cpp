@@ -7,6 +7,7 @@
 #include <switchu/control_cache.hpp>
 #include <switchu/ns_ext.hpp>
 #include <switchu/file_log.hpp>
+#include <switchu/time_budget.hpp>
 #include <switchu/sd_commit.hpp>
 #include "app_manager.hpp"
 #include "ecs.hpp"
@@ -117,12 +118,13 @@ extern "C" void __appInit(void) {
     }
     svcOutputDebugString("[SwitchU-daemon] appletInitialize OK", 37);
 
-    rc = timeInitialize();
-    g_timeReady = R_SUCCEEDED(rc);
-    if (R_FAILED(rc))
-        svcOutputDebugString("[SwitchU-daemon] timeInitialize FAIL", 37);
-    if (g_timeReady)
-        __libnx_init_time();
+    // No timeInitialize(): it holds 6 of the time service's few sessions for
+    // the daemon's whole life, which the menu and homebrew then lacked
+    // (switchu/time_budget.hpp, from HomeNX 8d0fd8b). time() only needs the
+    // boot time; setting the clock opens what it needs for that call.
+    g_timeReady = switchu::timebudget::refreshBootTime(/*force=*/true);
+    if (!g_timeReady)
+        svcOutputDebugString("[SwitchU-daemon] time not available yet", 39);
 
     rc = setsysInitialize();
     g_setsysReady = R_SUCCEEDED(rc);
@@ -273,7 +275,6 @@ extern "C" void __appExit(void) {
     if (g_nsReady) nsExit();
     if (g_setReady) setExit();
     if (g_setsysReady) setsysExit();
-    if (g_timeReady) timeExit();
 
     appletExit();
     fsdevUnmountAll();
@@ -909,6 +910,7 @@ static Result setClockByService(const char* srvName, u32 getClockCmd, u64 timest
 }
 
 static Result applySystemTime(u64 targetTimestamp, bool isInternetSync) {
+    switchu::timebudget::FullScope timeScope; // clocks for this call only
     // 1. Set NetworkSystemClock using time:s cmd 1 (GetStandardNetworkSystemClock)
     const Result netRc = setClockByService("time:s", 1, targetTimestamp);
 
@@ -930,6 +932,8 @@ static Result applySystemTime(u64 targetTimestamp, bool isInternetSync) {
         (unsigned long long)targetTimestamp, isInternetSync ? 1 : 0,
         netRc, localRc, userRc, setsysRc, liveRc,
         (unsigned long long)actual, readRc);
+    // time() counts from the boot time libnx read: read it again.
+    switchu::timebudget::refreshBootTime(/*force=*/true);
 
     if (R_FAILED(localRc) && R_FAILED(userRc) && R_FAILED(netRc)) {
         return localRc != 0 ? localRc : (userRc != 0 ? userRc : netRc);
@@ -949,6 +953,7 @@ static Result applySystemTime(u64 targetTimestamp, bool isInternetSync) {
 }
 
 static Result setManualDateTime(const smi::ManualDateTimeArgs& args) {
+    switchu::timebudget::FullScope timeScope; // time zone rule for the conversion
     TimeCalendarTime calendar{};
     calendar.year = static_cast<u16>(args.year);
     calendar.month = static_cast<u8>(args.month);
@@ -3118,9 +3123,12 @@ static void stopControlCacheWorker() {
 // real date -- after which this costs one comparison per iteration.
 static bool g_wallClockReady = false;
 static void ensureWallClock() {
-    if (g_wallClockReady || !g_timeReady)
+    if (g_wallClockReady)
         return;
-    __libnx_init_time();
+    // Rate-limited inside: at most one attempt every 2 s.
+    if (!switchu::timebudget::refreshBootTime())
+        return;
+    g_timeReady = true;
     const std::time_t now = std::time(nullptr);
     std::tm calendar{};
     if (::localtime_r(&now, &calendar) && calendar.tm_year + 1900 >= 2020) {
