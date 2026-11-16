@@ -25,6 +25,10 @@ std::string formatError(const net::Response& res) {
     if (!res.error.empty()) return res.error;
     if (!res.body.empty()) {
         const auto j = nlohmann::json::parse(res.body, nullptr, false);
+        // A CAPTCHA cannot be solved here; the token sign-in still works
+        // (HomeNX cc4be05).
+        if (!j.is_discarded() && j.is_object() && j.contains("captcha_key"))
+            return "Discord is asking for a CAPTCHA, which HOME can't solve. Use \"Sign in with User Token\" instead.";
         if (!j.is_discarded() && j.is_object() && j.contains("message") && j["message"].is_string()) {
             return j["message"].get<std::string>();
         }

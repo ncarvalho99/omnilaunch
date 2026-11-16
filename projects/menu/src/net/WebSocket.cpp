@@ -163,7 +163,16 @@ bool WebSocket::connect(const std::string& url, const std::vector<std::string>& 
             m_service.rememberRoot(url, {});
     }
     if (rc != CURLE_OK) {
-        error = std::string("connect: ") + curl_easy_strerror(rc);
+        // Which stage failed (HomeNX 3dc5d93): ip=none means before any address
+        // was found (name lookup); errno is the socket's.
+        const char* ip = nullptr;
+        long osErr = 0;
+        curl_easy_getinfo(c, CURLINFO_PRIMARY_IP, &ip);
+        curl_easy_getinfo(c, CURLINFO_OS_ERRNO, &osErr);
+        error = std::string("connect: ") + curl_easy_strerror(rc) +
+                " (rc=" + std::to_string(static_cast<int>(rc)) +
+                " ip=" + (ip && *ip ? ip : "none") +
+                " errno=" + std::to_string(osErr) + ")";
         release();
         return false;
     }
