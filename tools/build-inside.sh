@@ -108,11 +108,11 @@ if [ "$VARIANT" = sysmodule ]; then
     # author's release on first use. Never leave a stale copy in the package.
     rm -rf "$DIST/switch/OmniLaunch/apps"
     mkdir -p artifacts
-    ZIP="$PWD/artifacts/OmniLaunch-1.3.1.zip"
+    ZIP="$PWD/artifacts/OmniLaunch-1.3.2.zip"
     rm -f "$ZIP" "$PWD/artifacts/OmniLaunch-sysmodule-$MODE.zip"
     ( cd "$DIST" && zip -qr "$ZIP" atmosphere switch ) || exit $?
     cp -f "$ZIP" "$PWD/artifacts/OmniLaunch-sysmodule-$MODE.zip"
-    echo "pronto: artifacts/OmniLaunch-1.3.1.zip ($(du -h "$ZIP" | cut -f1))"
+    echo "pronto: artifacts/OmniLaunch-1.3.2.zip ($(du -h "$ZIP" | cut -f1))"
     echo "copie atmosphere/ e switch/ do zip para a raiz do cartao SD"
 else
     echo "pronto: build/cross/aarch64/$MODE/SwitchU.nro"

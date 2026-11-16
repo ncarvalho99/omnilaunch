@@ -434,6 +434,7 @@ void WiiUMenuApp::createSettings() {
         if (m_settings)
             m_settings->setDefaultProfileState(m_config.defaultProfileEnabled,
                                                m_config.defaultProfileUid);
+        refreshShownUserAvatar();
     });
     m_settings->onAddUser([this]() {
         m_launcher.launchUserCreator();
@@ -3326,7 +3327,8 @@ void WiiUMenuApp::applyTheme() {
     m_pageIndicator->setBorderColor(m_theme.panelBorder);
     m_pageIndicator->setHighlightColor(m_theme.panelHighlight);
     m_pageIndicator->setTheme(&m_theme);
-    for (auto& avatar : m_userAvatarButtons) {
+    // Every account, not only the one shown: a hidden one can be swapped in.
+    for (auto& avatar : m_allUserAvatars) {
         avatar->setBaseColor(m_theme.panelBase);
         avatar->setBorderColor(m_theme.panelBorder);
         avatar->setHighlightColor(m_theme.panelHighlight);
@@ -3586,7 +3588,7 @@ void WiiUMenuApp::openFriends(AccountUid forUser) {
     AccountUid uid = forUser;
     std::string name;
     std::shared_ptr<nxui::Texture> avatar;
-    for (const auto& btn : m_userAvatarButtons) {
+    for (const auto& btn : m_allUserAvatars) {
         if (!btn || btn->addUserMode()) continue;
         const AccountUid btnUid = btn->uid();
         if (!accountUidIsValid(&uid)) uid = btnUid;
@@ -3647,7 +3649,23 @@ void WiiUMenuApp::openProfileCarousel() {
         m_profileCarousel->onNavigateSfx([this]() { m_audio.playSfx(Sfx::Navigate); });
         m_profileCarousel->onLockSfx([this]() { m_audio.playSfx(Sfx::ConfirmPositive); });
         m_profileCarousel->onCloseSfx([this]() { m_audio.playSfx(Sfx::ModalHide); });
-        m_profileCarousel->onLockProfile([](std::optional<AccountUid>) {});
+        // X on an account makes it the HOME account: the one the top bar shows
+        // and the one games start with (the same setting as Settings >
+        // default profile).
+        m_profileCarousel->onLockProfile([this](std::optional<AccountUid> uid) {
+            char hex[33] = {};
+            if (uid)
+                std::snprintf(hex, sizeof(hex), "%016llX%016llX",
+                              static_cast<unsigned long long>(uid->uid[0]),
+                              static_cast<unsigned long long>(uid->uid[1]));
+            m_config.defaultProfileEnabled = uid.has_value();
+            m_config.defaultProfileUid = uid ? std::string(hex) : std::string();
+            m_config.save();
+            if (m_settings)
+                m_settings->setDefaultProfileState(m_config.defaultProfileEnabled,
+                                                   m_config.defaultProfileUid);
+            refreshShownUserAvatar();
+        });
         m_profileCarousel->onOpenProfile([this](AccountUid uid) {
             m_profileCarousel->hide();
             openFriends(uid);
@@ -3665,7 +3683,11 @@ void WiiUMenuApp::openProfileCarousel() {
         if (m_overlayLayer) m_overlayLayer->addChild(m_profileCarousel);
     }
     std::vector<HomeProfile> profiles;
-    for (const auto& btn : m_userAvatarButtons) {
+    std::optional<AccountUid> shownUid;
+    if (!m_userAvatarButtons.empty() && m_userAvatarButtons.front())
+        shownUid = m_userAvatarButtons.front()->uid();
+    m_profileCarousel->setLockedUid(shownUid);
+    for (const auto& btn : m_allUserAvatars) {
         if (!btn || btn->addUserMode()) continue;
         HomeProfile p;
         p.uid = btn->uid();

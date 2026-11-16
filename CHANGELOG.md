@@ -1,3 +1,77 @@
+# OmniLaunch 1.3.2
+
+Update for OmniLaunch 1.3.1. Docked clocks stay docked after a game (issue #5), a new OmniLaunch tab to change the look of any theme: text colour (issue #6), solid window colour and corner roundness, an icon store with icon packs that switch live, and icons that are ready on every page of HOME.
+
+If you encounter any bugs, please report them directly to the developer on Telegram at https://t.me/ncarvalho99 with your console logs (`/config/OmniLaunch/menu.log`).
+
+## English
+
+### Docked performance (issue #5)
+- Leaving a game, port or homebrew while docked no longer switches the console to handheld clocks. The docked performance mode is kept when a title exits and when HOME is ready, so the next game runs at docked clocks again.
+
+### Theme look: Theme Shop > OmniLaunch
+- **Text colour** (issue #6): turn on a custom colour for titles, labels and hints, with hue, saturation and brightness sliders or a typed code such as `#FFD54F`, for text that is hard to read over a theme.
+- **Solid window colour**: windows, side buttons, the top buttons and the button hints take one flat colour instead of the theme's glass. Opaque black is the lightest choice for the console and suits OLED screens.
+- **Glass sharpness** moved here. Below 100 % opacity, the solid colour blurs what shows through it by this amount.
+- **Corner roundness** from 0 % (square) to 100 %, for windows, buttons, icons, battery rings and the selection frame together.
+- **Use the theme's look** turns the three back to the theme's own glass, corners and text.
+- The other rows that were on this tab moved to the Options tab.
+
+### Icon store
+- New **Icons** tab in the Theme Shop: download icon packs that replace the menu's icons (sidebar, top buttons, battery, arrows and more) and switch them without restarting.
+- Installed packs show an **Update** badge when a new version is published.
+- The **Themes** tab holds both catalogues behind an Animated / Static switch.
+- Catalogue previews are kept on the SD card, so reopening the shop does not download them again.
+
+### Icons on HOME (issue #4)
+- Classic keeps the icons of the page you see and the pages beside it, and loads the next page before you reach it: the second page no longer opens on loading spinners after a style switch or a game.
+- Switching views with Minus reuses the icons already loaded.
+
+### Music player
+- A held touch on the open player no longer drags icons on the HOME page.
+- Classic draws the player with its own frosted glass.
+- Downloaded songs keep accented and Japanese, Chinese or Korean letters in their names; styled letters are drawn as plain letters instead of boxes.
+- The music button looks like the buttons beside it; a small dot shows that music is playing.
+- Theme songs are listed only under Themes.
+
+### Top bar (Classic)
+- The top bar shows one account: the first one, or the one you chose. Press it to open the account picker with every account and the + tile to create one; press X on an account there to show it in the top bar and start games with it.
+- The button hints in the lower right corner take the solid window colour too.
+
+## Português
+
+### Desempenho no dock (issue #5)
+- Sair de um jogo, port ou homebrew com o console no dock não muda mais os clocks para o modo portátil. O modo de desempenho do dock é mantido quando o título fecha e quando o HOME fica pronto, então o próximo jogo volta a rodar com os clocks do dock.
+
+### Visual do tema: Loja de Temas > OmniLaunch
+- **Cor do texto** (issue #6): ative uma cor própria para títulos, rótulos e dicas, com controles de matiz, saturação e brilho ou um código digitado como `#FFD54F`, para textos difíceis de ler sobre um tema.
+- **Cor sólida das janelas**: janelas, botões laterais, os botões do topo e as dicas de botões usam uma cor lisa em vez do vidro do tema. Preto opaco é a opção mais leve para o console e combina com telas OLED.
+- **Nitidez do vidro** veio para cá. Abaixo de 100 % de opacidade, a cor sólida desfoca o que aparece por trás dela nessa medida.
+- **Arredondamento dos cantos** de 0 % (quadrado) a 100 %, para janelas, botões, ícones, anéis de bateria e a moldura de seleção juntos.
+- **Usar o visual do tema** volta as três opções para o vidro, os cantos e o texto do próprio tema.
+- As outras opções que ficavam nesta aba foram para a aba Opções.
+
+### Loja de ícones
+- Nova aba **Ícones** na Loja de Temas: baixe pacotes de ícones que substituem os ícones do menu (barra lateral, botões do topo, bateria, setas e mais) e troque sem reiniciar.
+- Pacotes instalados mostram o selo **Atualizar** quando sai uma versão nova.
+- A aba **Temas** reúne os dois catálogos com a chave Animados / Estáticos.
+- As prévias do catálogo ficam guardadas no cartão SD, então reabrir a loja não baixa tudo de novo.
+
+### Ícones no HOME (issue #4)
+- O Classic guarda os ícones da página vista e das páginas ao lado, e carrega a próxima página antes de você chegar nela: a segunda página não abre mais com ícones carregando depois de trocar de estilo ou sair de um jogo.
+- Trocar de visualização com Menos reaproveita os ícones já carregados.
+
+### Player de música
+- Um toque segurado no player aberto não arrasta mais os ícones do HOME.
+- O Classic desenha o player com o próprio vidro fosco.
+- Músicas baixadas mantêm acentos e letras em japonês, chinês ou coreano no nome; letras estilizadas aparecem como letras normais em vez de quadrados.
+- O botão de música tem o mesmo visual dos botões ao lado; um pontinho indica que há música tocando.
+- As músicas de tema aparecem só em Temas.
+
+### Barra superior (Classic)
+- A barra superior mostra uma conta só: a primeira, ou a que você escolher. Aperte nela para abrir o seletor com todas as contas e o bloco + para criar uma; aperte X numa conta para mostrá-la na barra e abrir os jogos com ela.
+- As dicas de botões no canto inferior direito também usam a cor sólida das janelas.
+
 # OmniLaunch 1.3.1
 
 Update for OmniLaunch 1.3.0. One music player for Classic and Cards with a list of every theme's music, long song titles that scroll instead of being cut, faster and more reliable music downloads, text in Japanese, Chinese, Korean and emoji, and icons and covers that are already there when HOME opens.

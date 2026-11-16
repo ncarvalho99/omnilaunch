@@ -1248,6 +1248,7 @@ void WiiUMenuApp::ensureMetroTextures() {
 
 void WiiUMenuApp::buildUserAvatarBar(bool loadImmediately) {
     m_userAvatarButtons.clear();
+    m_allUserAvatars.clear();
 
     if (!m_userAvatarBar) {
         m_userAvatarBar = std::make_shared<nxui::Box>(nxui::Axis::ROW);
@@ -1314,28 +1315,8 @@ void WiiUMenuApp::appendAddUserButton() {
         }
         return;
     }
-    if (!m_userAvatarButtons.empty() && m_userAvatarButtons.back()->addUserMode())
-        return;
-
-    auto add = std::make_shared<UserAvatarButton>();
-    add->setSize(56.f, 56.f);
-    add->setMinWidth(56.f);
-    add->setMinHeight(56.f);
-    add->setShrink(0.f);
-    add->setCornerRadius(28.f);
-    add->setChromeEnabled(true);
-    add->setTheme(&m_theme);
-    add->setAddUserMode(true);
-    add->setFocusable(true);
-    add->setOnActivate([this]() {
-        m_audio.playSfx(Sfx::Activate);
-#ifdef SWITCHU_MENU
-        m_launcher.launchUserCreator();
-#endif
-    });
-    m_userAvatarButtons.push_back(add);
-    m_userAvatarBar->addChild(add);
-
+    // No "+" tile in the bar any more: the top bar shows a single account and
+    // the profile carousel it opens has the "+" tile for creating one.
     if (!m_bell) {
         m_bell = std::make_shared<NotificationBell>();
         m_bell->setSize(56.f, 56.f);
@@ -1350,8 +1331,50 @@ void WiiUMenuApp::appendAddUserButton() {
 
     wireUserAvatarNavigation();
     layoutTopHud();
-    DebugLog::log("[profiles] add-user tile appended count=%d",
-                  static_cast<int>(m_pendingProfileUids.size()));
+    DebugLog::log("[profiles] account bar complete accounts=%d",
+                  static_cast<int>(m_allUserAvatars.size()));
+}
+
+// One avatar in the top bar: the default profile (Settings, or X on a tile of
+// the profile carousel) when it is set and still exists, else the first
+// account. Every account keeps its button in m_allUserAvatars; only the shown
+// one is a child of the bar.
+void WiiUMenuApp::refreshShownUserAvatar() {
+    if (!m_userAvatarBar || m_allUserAvatars.empty())
+        return;
+
+    std::shared_ptr<UserAvatarButton> chosen = m_allUserAvatars.front();
+    AccountUid defaultUid{};
+    if (m_config.defaultProfileEnabled && hexToAccountUid(m_config.defaultProfileUid, defaultUid)) {
+        for (const auto& avatar : m_allUserAvatars) {
+            const AccountUid uid = avatar->uid();
+            if (std::memcmp(&uid, &defaultUid, sizeof(AccountUid)) == 0) {
+                chosen = avatar;
+                break;
+            }
+        }
+    }
+    if (m_userAvatarButtons.size() == 1 && m_userAvatarButtons.front() == chosen)
+        return;
+
+    bool hadFocus = false;
+    for (const auto& old : m_userAvatarButtons) {
+        if (focusManager().current() == old.get())
+            hadFocus = true;
+        m_userAvatarBar->removeChild(old.get());
+    }
+    m_userAvatarButtons.assign(1, chosen);
+    // The avatar goes before the bell.
+    if (m_bell)
+        m_userAvatarBar->removeChild(m_bell.get());
+    m_userAvatarBar->addChild(chosen);
+    if (m_bell)
+        m_userAvatarBar->addChild(m_bell);
+
+    wireUserAvatarNavigation();
+    layoutTopHud();
+    if (hadFocus)
+        focusManager().setFocus(chosen.get());
 }
 
 void WiiUMenuApp::layoutTopHud() {
@@ -1648,13 +1671,8 @@ void WiiUMenuApp::loadNextUserAvatar() {
     });
 
     accountProfileClose(&profile);
-    m_userAvatarButtons.push_back(avatar);
-    m_userAvatarBar->addChild(avatar);
-
-    if (!m_userAvatarButtons.empty())
-        wireUserAvatarNavigation();
-
-    layoutTopHud();
+    m_allUserAvatars.push_back(avatar);
+    refreshShownUserAvatar();
 
     if (m_pendingProfileIndex >= m_pendingProfileUids.size())
         appendAddUserButton();
@@ -9543,8 +9561,13 @@ void WiiUMenuApp::renderActionHintBar(nxui::Renderer& ren) {
     const float blockH = rows.size() * kHintCapH +
                          (rows.size() - 1) * kHintRowGap;
     float y = 720.f - kHintEdgeY - blockH + (1.f - reveal) * 4.f;
-    const nxui::Color tint = m_theme.panelBase.withAlpha(
-        m_theme.mode == nxui::ThemeMode::Dark ? 0.30f : 0.24f);
+    // The capsules draw their own frosted fill rather than going through the
+    // glass paths, so the player's solid window colour has to be applied here
+    // (Theme Shop > OmniLaunch); the corner setting already reaches them.
+    const auto& look = nxui::Appearance::get();
+    const nxui::Color tint = look.solidPanels
+        ? look.panelColor
+        : m_theme.panelBase.withAlpha(m_theme.mode == nxui::ThemeMode::Dark ? 0.30f : 0.24f);
 
     for (const auto& row : rows) {
         const int first = row.first;

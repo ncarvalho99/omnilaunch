@@ -1,51 +1,65 @@
 
-Music player
-- One player for both styles: Classic now opens the same player as Cards, so the song shown is always the one playing.
-- Two lists: Playlist (your downloaded songs and the current theme's music) and Themes (the music of every installed theme). Switch with L and R.
-- Theme songs are named after their theme instead of "theme".
-- Long titles scroll: the playing song and the selected song show their whole name in a moving line instead of being cut with "...". Works for theme names and downloaded songs.
-- X plays or pauses; on a downloaded song in Playlist, press X twice to delete it. Y changes the playlist order (SD songs first, theme music first, only one of them).
-- In Classic, L inside the player goes back to Playlist and no longer opens Discord.
-- Theme music stays in the playlist next to your SD songs.
+Docked performance (issue 5)
+- Leaving a game, port or homebrew while docked no longer switches the console to handheld clocks. The docked performance mode is kept when a title exits and when HOME is ready, so the next game runs at docked clocks again.
 
-Music downloads
-- Downloads from the YouTube tab are prepared on the OmniLaunch server and then sent to the console, which is faster and works again for videos that failed before.
-- A new search shows a loading panel instead of the previous results.
+Theme look: Theme Shop > OmniLaunch
+- Text colour (issue 6): turn on a custom colour for titles, labels and hints, with hue, saturation and brightness sliders or a typed code such as FFD54F, for text that is hard to read over a theme.
+- Solid window colour: windows, side buttons, the top buttons and the button hints take one flat colour instead of the theme's glass. Opaque black is the lightest choice for the console and suits OLED screens.
+- Glass sharpness moved here. Below 100 % opacity, the solid colour blurs what shows through it by this amount.
+- Corner roundness from 0 % (square) to 100 %, for windows, buttons, icons, battery rings and the selection frame together.
+- Use the theme's look turns the three back to the theme's own glass, corners and text.
+- The other rows that were on this tab moved to the Options tab.
 
-Text
-- Japanese, Chinese and Korean titles and emoji (monochrome) are drawn with the console's own fonts instead of boxes.
+Icon store
+- New Icons tab in the Theme Shop: download icon packs that replace the menu's icons (sidebar, top buttons, battery, arrows and more) and switch them without restarting.
+- Installed packs show an Update badge when a new version is published.
+- The Themes tab holds both catalogues behind an Animated / Static switch.
+- Catalogue previews are kept on the SD card, so reopening the shop does not download them again.
 
 Icons on HOME (issue 4)
-- Classic: the icons of the last page you saw are saved and appear in the first frames after a game or a style switch, then are checked against their source.
-- Cards: every page (Games, Homebrew, Nintendo, Media) keeps its icons and covers the same way, so cards open with their cover instead of a small square icon that grows into it.
+- Classic keeps the icons of the page you see and the pages beside it, and loads the next page before you reach it: the second page no longer opens on loading spinners after a style switch or a game.
+- Switching views with Minus reuses the icons already loaded.
 
-Known issues
-- Rarely (about 1 in 28 cold boots) the menu restarts once during start-up; it recovers by itself.
-- USB file transfer (MTP) may not be detected through some USB hubs; connect the console directly to the computer.
-- A music download that is being prepared cannot be cancelled yet.
+Music player
+- A held touch on the open player no longer drags icons on the HOME page.
+- Classic draws the player with its own frosted glass.
+- Downloaded songs keep accented and Japanese, Chinese or Korean letters in their names; styled letters are drawn as plain letters instead of boxes.
+- The music button looks like the buttons beside it; a small dot shows that music is playing.
+- Theme songs are listed only under Themes.
+
+Top bar (Classic)
+- The top bar shows one account: the first one, or the one you chose. Press it to open the account picker with every account and the + tile to create one; press X on an account there to show it in the top bar and start games with it.
+- The button hints in the lower right corner take the solid window colour too.
 --pt-BR--
 
-Player de música
-- Um player para os dois estilos: o Classic agora abre o mesmo player do Cards, então a música mostrada é sempre a que está tocando.
-- Duas listas: Playlist (suas músicas baixadas e a música do tema atual) e Temas (a música de todos os temas instalados). Troque com L e R.
-- As músicas de tema levam o nome do tema em vez de "theme".
-- Títulos longos rolam: a música tocando e a selecionada mostram o nome inteiro numa linha que se move, em vez de cortar com "...". Vale para nomes de temas e músicas baixadas.
-- X toca ou pausa; numa música baixada da Playlist, aperte X duas vezes para apagá-la. Y muda a ordem da playlist (SD primeiro, tema primeiro, só uma delas).
-- No Classic, o L dentro do player volta para a Playlist e não abre mais o Discord.
-- A música do tema continua na playlist junto das suas músicas do SD.
+Desempenho no dock (issue 5)
+- Sair de um jogo, port ou homebrew com o console no dock não muda mais os clocks para o modo portátil. O modo de desempenho do dock é mantido quando o título fecha e quando o HOME fica pronto, então o próximo jogo volta a rodar com os clocks do dock.
 
-Download de músicas
-- Os downloads da aba YouTube são preparados no servidor do OmniLaunch e depois enviados ao console, o que é mais rápido e voltou a funcionar para vídeos que falhavam.
-- Uma nova busca mostra um painel de carregamento em vez dos resultados anteriores.
+Visual do tema: Loja de Temas > OmniLaunch
+- Cor do texto (issue 6): ative uma cor própria para títulos, rótulos e dicas, com controles de matiz, saturação e brilho ou um código digitado como FFD54F, para textos difíceis de ler sobre um tema.
+- Cor sólida das janelas: janelas, botões laterais, os botões do topo e as dicas de botões usam uma cor lisa em vez do vidro do tema. Preto opaco é a opção mais leve para o console e combina com telas OLED.
+- Nitidez do vidro veio para cá. Abaixo de 100 % de opacidade, a cor sólida desfoca o que aparece por trás dela nessa medida.
+- Arredondamento dos cantos de 0 % (quadrado) a 100 %, para janelas, botões, ícones, anéis de bateria e a moldura de seleção juntos.
+- Usar o visual do tema volta as três opções para o vidro, os cantos e o texto do próprio tema.
+- As outras opções que ficavam nesta aba foram para a aba Opções.
 
-Texto
-- Títulos em japonês, chinês e coreano e emojis (monocromáticos) aparecem com as fontes do próprio console em vez de quadrados.
+Loja de ícones
+- Nova aba Ícones na Loja de Temas: baixe pacotes de ícones que substituem os ícones do menu (barra lateral, botões do topo, bateria, setas e mais) e troque sem reiniciar.
+- Pacotes instalados mostram o selo Atualizar quando sai uma versão nova.
+- A aba Temas reúne os dois catálogos com a chave Animados / Estáticos.
+- As prévias do catálogo ficam guardadas no cartão SD, então reabrir a loja não baixa tudo de novo.
 
 Ícones no HOME (issue 4)
-- Classic: os ícones da última página vista ficam salvos e aparecem nos primeiros quadros depois de um jogo ou de uma troca de estilo, e depois são conferidos com a origem.
-- Cards: todas as páginas (Jogos, Homebrew, Nintendo, Mídia) guardam ícones e capas do mesmo jeito, então os cartões abrem já com a capa em vez de um ícone pequeno que cresce até ela.
+- O Classic guarda os ícones da página vista e das páginas ao lado, e carrega a próxima página antes de você chegar nela: a segunda página não abre mais com ícones carregando depois de trocar de estilo ou sair de um jogo.
+- Trocar de visualização com Menos reaproveita os ícones já carregados.
 
-Problemas conhecidos
-- Raramente (cerca de 1 em 28 boots a frio) o menu reinicia uma vez durante a inicialização; ele se recupera sozinho.
-- A transferência USB (MTP) pode não ser detectada através de alguns hubs USB; conecte o console direto no computador.
-- Um download de música em preparação ainda não pode ser cancelado.
+Player de música
+- Um toque segurado no player aberto não arrasta mais os ícones do HOME.
+- O Classic desenha o player com o próprio vidro fosco.
+- Músicas baixadas mantêm acentos e letras em japonês, chinês ou coreano no nome; letras estilizadas aparecem como letras normais em vez de quadrados.
+- O botão de música tem o mesmo visual dos botões ao lado; um pontinho indica que há música tocando.
+- As músicas de tema aparecem só em Temas.
+
+Barra superior (Classic)
+- A barra superior mostra uma conta só: a primeira, ou a que você escolher. Aperte nela para abrir o seletor com todas as contas e o bloco + para criar uma; aperte X numa conta para mostrá-la na barra e abrir os jogos com ela.
+- As dicas de botões no canto inferior direito também usam a cor sólida das janelas.

@@ -785,7 +785,13 @@ private:
     std::shared_ptr<nxui::Label> m_folderHeaderLabel;
     nxui::AnimatedFloat m_folderHeaderAnim{0.f};
     nxui::Rect m_folderHeaderRest{410.f, 78.f, 460.f, 58.f};
+    // The top bar shows one account: the default profile when one is set,
+    // else the first. m_userAvatarButtons holds that one (what the bar,
+    // navigation and layout see); m_allUserAvatars holds every account for the
+    // profile carousel and the Social screen.
     std::vector<std::shared_ptr<UserAvatarButton>> m_userAvatarButtons;
+    std::vector<std::shared_ptr<UserAvatarButton>> m_allUserAvatars;
+    void refreshShownUserAvatar();
 
     AudioManager& m_audio;
     AccessibilityManager& m_accessibility;
