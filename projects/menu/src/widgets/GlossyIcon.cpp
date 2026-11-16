@@ -6,6 +6,7 @@
 #include "core/DebugLog.hpp"
 #include <nxui/core/Renderer.hpp>
 #include <nxui/core/Font.hpp>
+#include <nxui/Appearance.hpp>
 #include <nxui/core/ThreadPool.hpp>
 #include <nxui/third_party/stb/stb_image.h>
 #include <algorithm>
@@ -16,6 +17,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <vector>
 #ifdef SWITCHU_MENU
 #include <switch.h>
 #endif
@@ -190,27 +192,82 @@ void drawBatteryRing(nxui::Renderer& ren, const nxui::Vec2& center,
             {center.x - radius, center.y - radius, radius * 2.f, radius * 2.f},
             activeColor, radius, thickness);
     } else if (progress > 0.f) {
+        // The partial arc follows the same rounded square as the track, with
+        // the corner roundness the player chose (Theme Shop > OmniLaunch). It
+        // used to be a circle whatever the setting, so a part-charged console
+        // stayed round beside square controller rings at 100 %.
+        //
+        // The stroke of drawRoundedRectOutline sits inside the box; the path
+        // here runs along the middle of that stroke.
+        const float half = radius - thickness * 0.5f;
+        const float corner = std::clamp(
+            nxui::Appearance::get().radius(radius) - thickness * 0.5f, 0.f, half);
+        const float straight = half - corner;              // half of each flat side
+        const float arcLen = corner * tau * 0.25f;
+        const float perimeter = 8.f * straight + 4.f * arcLen;
+        // Clockwise from the top centre, like the clock-style ring it replaces.
+        auto pointAt = [&](float s) -> nxui::Vec2 {
+            s = std::fmod(std::max(0.f, s), std::max(perimeter, 1e-3f));
+            // Each side is: half flat, corner, half flat. Side k turns the
+            // top-right quadrant vector by 90 degrees k times.
+            const float side = 2.f * straight + arcLen;
+            const int k = std::min(3, static_cast<int>(s / std::max(side, 1e-3f)));
+            float u = s - side * static_cast<float>(k);
+            float x, y;                                  // in the top-right quadrant
+            if (u <= straight) {
+                x = u; y = -half;
+            } else if (u <= straight + arcLen && corner > 0.f) {
+                const float a = startAngle + (u - straight) / corner;
+                x = straight + std::cos(a) * corner;
+                y = -straight + std::sin(a) * corner;
+            } else {
+                u -= straight + arcLen;
+                x = half; y = -straight + u;
+            }
+            // Rotate by k * 90 degrees clockwise (screen y points down).
+            for (int r = 0; r < k; ++r) {
+                const float nx = -y;
+                y = x;
+                x = nx;
+            }
+            return {center.x + x, center.y + y};
+        };
+        // Sample evenly, plus every point where the path changes from a flat
+        // side to a corner, so a square corner is drawn square instead of cut
+        // diagonally by a segment that spans it.
         constexpr int segments = 192;
-        const int activeSegments = std::max(1,
-            static_cast<int>(std::ceil(progress * segments)));
-        const float capR = thickness * 0.5f;
-        for (int i = 0; i < activeSegments; ++i) {
-            const float t0 = std::min(progress, static_cast<float>(i) / segments);
-            const float t1 = std::min(progress, static_cast<float>(i + 1) / segments);
-            const float a0 = startAngle + tau * t0;
-            const float a1 = startAngle + tau * t1;
-            const nxui::Vec2 p0{center.x + std::cos(a0) * radius,
-                                center.y + std::sin(a0) * radius};
-            const nxui::Vec2 p1{center.x + std::cos(a1) * radius,
-                                center.y + std::sin(a1) * radius};
-            ren.drawLine(p0, p1, activeColor, thickness);
-            ren.drawCircle(p0, capR, activeColor, 16);
+        const float length = perimeter * progress;
+        std::vector<float> stops;
+        stops.reserve(segments + 16);
+        for (int i = 0; i <= segments; ++i)
+            stops.push_back(length * static_cast<float>(i) / segments);
+        const float side = 2.f * straight + arcLen;
+        for (int k = 0; k < 4; ++k) {
+            const float base = side * static_cast<float>(k);
+            for (float edge : {straight, straight + arcLen, side}) {
+                if (base + edge < length)
+                    stops.push_back(base + edge);
+            }
         }
-        const float endAngle = startAngle + tau * progress;
-        ren.drawCircle({center.x, center.y - radius}, capR, activeColor, 16);
-        ren.drawCircle({center.x + std::cos(endAngle) * radius,
-                        center.y + std::sin(endAngle) * radius},
-                       capR, activeColor, 16);
+        std::sort(stops.begin(), stops.end());
+        const float capR = thickness * 0.5f;
+        // Round joints on a rounded path; on a square one the sharp corner is
+        // filled with a square, which is what the track outline draws there.
+        const bool roundJoints = corner > capR;
+        nxui::Vec2 prev = pointAt(stops.front());
+        for (std::size_t i = 1; i < stops.size(); ++i) {
+            if (stops[i] - stops[i - 1] < 0.01f)
+                continue;
+            const nxui::Vec2 next = pointAt(stops[i]);
+            ren.drawLine(prev, next, activeColor, thickness);
+            if (roundJoints)
+                ren.drawCircle(prev, capR, activeColor, 16);
+            else if (i > 1)
+                ren.drawRect({prev.x - capR, prev.y - capR, thickness, thickness}, activeColor);
+            prev = next;
+        }
+        if (roundJoints)
+            ren.drawCircle(prev, capR, activeColor, 16);
     }
 
     const nxui::Color glyph = nxui::Color::white().withAlpha(0.88f * opacity);

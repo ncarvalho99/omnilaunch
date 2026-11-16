@@ -148,9 +148,13 @@ private:
     bool m_snapSettling = false;
     std::future<void> m_snapWriteFuture;
     static constexpr int kSnapshotUploadsPerFrame = 8;
-    // A page of the 5x4 grid at most; 256x256 RGBA is 256 KiB each.
-    static constexpr std::size_t kSnapshotMaxEntries = 20;
-    static constexpr std::size_t kSnapshotCollectMax = 24;
+    // The shown page first, then its neighbours, two 5x4 pages at most;
+    // 256x256 RGBA is 256 KiB each, so the file stays under 10 MiB.
+    static constexpr std::size_t kSnapshotMaxEntries = 40;
+    static constexpr std::size_t kSnapshotCollectMax = 44;
+    // Textures kept in the pool before anything outside the window is evicted.
+    // 256 KiB each: 48 is 12 MiB of the 168 MiB image budget.
+    static constexpr int kResidentTextures = 48;
 
     struct PendingDecode {
         uint64_t titleId = 0;

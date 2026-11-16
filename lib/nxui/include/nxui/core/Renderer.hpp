@@ -458,6 +458,10 @@ private:
                      const Color& cTop, const Color& cBot);
 
 #ifdef NXUI_BACKEND_DEKO3D
+    // Solid window fill (Appearance::solidPanels), with the blurred backdrop
+    // under it when the colour is translucent.
+    void drawSolidPanel(int target, const Rect& dest, float radius, float alpha);
+    void sampleOffscreenRounded(int target, const Rect& dest, float radius, const Color& tint);
     bool loadShaders();
     void setupSampler();
     void updateProjection();

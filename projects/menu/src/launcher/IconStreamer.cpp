@@ -111,7 +111,7 @@ void saveDecoded(const std::string& path, const std::vector<uint8_t>& source, st
 constexpr const char* kSnapshotPath = "sdmc:/config/OmniLaunch/control_cache/decoded/visible.snap";
 constexpr std::uint32_t kSnapshotMagic = 0x4E535553; // "SUSN"
 constexpr std::uint32_t kSnapshotVersion = 1;
-constexpr std::uint32_t kSnapshotMaxFileEntries = 32;
+constexpr std::uint32_t kSnapshotMaxFileEntries = 48;
 constexpr std::uint64_t kArtworkKeySalt = 0x9E3779B97F4A7C15ULL;
 
 struct SnapshotHeader {
@@ -450,9 +450,22 @@ bool IconStreamer::needsVisibleLoads(int currentPage, int iconsPerPage) const {
                 window.push_back(((currentPage + step) % totalApps + totalApps) % totalApps);
         }
     }
-    if (window.empty())
+    if (window.empty()) {
         for (int i = begin; i < end; ++i)
             window.push_back(i);
+        // onPageChanged() also decodes the pages either side; keep the pump
+        // going until they are in, or they would wait for the next page turn.
+        if (iconsPerPage > 1) {
+            for (int neighbour : {currentPage + 1, currentPage - 1}) {
+                if (neighbour < 0 || neighbour >= totalPages)
+                    continue;
+                const int from = neighbour * iconsPerPage;
+                const int to = std::min(totalApps, from + iconsPerPage);
+                for (int i = from; i < to; ++i)
+                    window.push_back(i);
+            }
+        }
+    }
     int wantedMissing = 0;
     int noData = 0;
     bool needs = false;
@@ -587,6 +600,7 @@ void IconStreamer::consumeSnapshotLoad() {
             m_snapStored.emplace_back(entry.titleId, entry.key);
             m_snapMap[entry.titleId] = std::move(entry);
         }
+        std::sort(m_snapStored.begin(), m_snapStored.end());
     }
     m_snapLoadResult.reset();
 }
@@ -696,6 +710,9 @@ void IconStreamer::maybeWriteSnapshot(const std::vector<int>& window) {
         }
         list.emplace_back(titleId, shown->second);
     }
+    // The same icons seen from the neighbouring page are the same snapshot:
+    // compare as a set, so turning pages does not rewrite the file.
+    std::sort(list.begin(), list.end());
     // Not while the file is still being read, and never the same page twice.
     if (list.empty() || list == m_snapStored || m_snapLoadFuture.valid()) {
         m_snapSettling = false;
@@ -781,6 +798,17 @@ void IconStreamer::onPageChanged(int currentPage, int iconsPerPage,
 
     // 1. Evict textures outside the local page window. This keeps GPU memory
     //    bounded while preserving quick navigation to nearby pages.
+    //
+    //    Only once the pool holds more than kResidentTextures. A view switch
+    //    (Minus) changes the shape of the window -- the line keeps a ring of
+    //    icons, the grid whole pages -- so evicting at once dropped icons the
+    //    next view needed again, and every cycle showed spinners while they were
+    //    decoded anew (issue #4). A small library now stays resident.
+    int loaded = 0;
+    for (const auto& slot : m_pool)
+        if (slot && slot->appIndex >= 0)
+            ++loaded;
+    const bool evict = loaded > kResidentTextures;
     for (int i = 0; i < (int)m_pool.size(); ++i) {
         if (!m_pool[i])
             continue;
@@ -789,7 +817,7 @@ void IconStreamer::onPageChanged(int currentPage, int iconsPerPage,
         if (app < 0 || app == m_pinnedIndex)
             continue;
 
-        if (!wanted(app)) {
+        if (evict && !wanted(app)) {
             if (app < (int)m_titleIds.size())
                 forgetSnapshotTitle(m_titleIds[(size_t)app]);
             if (app < (int)allIcons.size())
@@ -983,10 +1011,22 @@ void IconStreamer::onPageChanged(int currentPage, int iconsPerPage,
     } else {
         for (int appIndex = visibleStartApp; appIndex < visibleEndApp; ++appIndex)
             loadOrder.push_back(appIndex);
+        // Then the pages either side, so the next page is decoded before it is
+        // reached instead of showing its spinners on arrival (issue #4).
+        for (int neighbour : {currentPage + 1, currentPage - 1}) {
+            if (neighbour < 0 || neighbour >= totalPages)
+                continue;
+            const int from = neighbour * iconsPerPage;
+            const int to = std::min(totalApps, from + iconsPerPage);
+            for (int appIndex = from; appIndex < to; ++appIndex)
+                loadOrder.push_back(appIndex);
+        }
     }
 
-    // Snapshot bookkeeping: the window it would save is the visible page (in
-    // the line, the focused icon and the ones drawn beside it).
+    // Snapshot bookkeeping: the window it would save is the visible page and
+    // the next one (in the line, the focused icon and the ones drawn beside
+    // it). The file held only the page last seen, so after a restart the other
+    // page of a two-page library always started on spinners.
     {
         std::vector<int> snapWindow;
         if (iconsPerPage == 1) {

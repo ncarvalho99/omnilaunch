@@ -284,6 +284,7 @@ protected:
     bool      m_backdropCacheValid = false;
     float     m_cachedPreBlurRadius = -1.f;
     int       m_cachedBlurIterations = -1;
+    bool      m_cachedBlurSkipped = false;
 
     int rawIndexFromFocusable(int focIdx) const;
     int focusableCount() const;

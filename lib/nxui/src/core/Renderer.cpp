@@ -825,12 +825,30 @@ void Renderer::drawOffscreen(int target, const Rect& dest, const Color& tint) {
 
 void Renderer::drawOffscreenRounded(int target, const Rect& dest, float radius, const Color& tint) {
     // Solid windows: the frosted capture becomes the player's flat colour, so
-    // the panel reads no texture at all.
+    // an opaque panel reads no texture at all.
     if (Appearance::get().solidPanels) {
-        const Color& pc = Appearance::get().panelColor;
-        drawRoundedRect(dest, pc.withAlpha(pc.a * tint.a), radius);
+        drawSolidPanel(target, dest, radius, tint.a);
         return;
     }
+    sampleOffscreenRounded(target, dest, radius, tint);
+}
+
+// A solid window in the player's colour. Below full opacity the backdrop the
+// panel would have sampled as glass is drawn under the colour first: for an
+// overlay that is its blurred cache, so the glass sharpness setting softens
+// what shows through, instead of the scene showing through perfectly sharp.
+// The per-frame scene capture (OFF_SCENE) is never sampled here: it is the
+// unblurred scene, which is already on screen behind the panel.
+void Renderer::drawSolidPanel(int target, const Rect& dest, float radius, float alpha) {
+    const Color& pc = Appearance::get().panelColor;
+    if (!Appearance::get().solidOpaque() && target != GpuDevice::OFF_SCENE
+        && target >= 0 && target < GpuDevice::NUM_OFFSCREEN
+        && (!GpuDevice::offscreenIsOverlay(target) || m_gpu.overlayOffscreenReady()))
+        sampleOffscreenRounded(target, dest, radius, Color::white().withAlpha(alpha));
+    drawRoundedRect(dest, pc.withAlpha(pc.a * alpha), radius);
+}
+
+void Renderer::sampleOffscreenRounded(int target, const Rect& dest, float radius, const Color& tint) {
     radius = Appearance::get().radius(radius);
     if (GpuDevice::offscreenIsOverlay(target) && !m_gpu.overlayOffscreenReady())
         return;
@@ -859,10 +877,10 @@ void Renderer::drawLiquidGlass(int target, const Rect& panelRect, float radius,
                                const Color& tint, float opacity, float shade) {
     if (opacity <= 0.01f) return;
     // Solid windows: one flat fill instead of the refraction shader. No
-    // backdrop is sampled, so an opaque panel is the cheapest draw there is.
+    // backdrop is sampled when it is opaque, so that is the cheapest draw
+    // there is; a translucent one shows the blurred backdrop under it.
     if (Appearance::get().solidPanels) {
-        const Color& pc = Appearance::get().panelColor;
-        drawRoundedRect(panelRect, pc.withAlpha(pc.a * opacity), radius);
+        drawSolidPanel(target, panelRect, radius, opacity);
         return;
     }
     if (target < 0 || target >= GpuDevice::NUM_OFFSCREEN) return;

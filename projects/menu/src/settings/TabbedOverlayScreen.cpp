@@ -550,9 +550,13 @@ void TabbedOverlayScreen::onRender(nxui::Renderer& ren) {
     if (m_tabContent) m_tabContent->setRect(contentRect(p));
 
     const auto& tuning = settings::debug::settingsGlassTuning();
+    // The blur is skipped behind an opaque solid colour, so moving the opacity
+    // slider below 100 % needs a blurred copy that was never made.
+    const bool blurSkipped = nxui::Appearance::get().solidOpaque();
     bool needsBackdropRefresh = !m_backdropCacheValid
         || std::abs(m_cachedPreBlurRadius - tuning.preBlurRadius) > 0.001f
-        || m_cachedBlurIterations != tuning.blurIterations;
+        || m_cachedBlurIterations != tuning.blurIterations
+        || m_cachedBlurSkipped != blurSkipped;
 
     // Capturing while the scene is hidden captures a frame with no scene in
     // it — just the panel over the frozen copy — and the glass then samples
@@ -568,9 +572,10 @@ void TabbedOverlayScreen::onRender(nxui::Renderer& ren) {
             // shows, and it has to look like the scene, not like the glass.
             ren.copyOffscreen(nxui::GpuDevice::OFF_SHARP_A,
                               nxui::GpuDevice::OFF_SCENE_FROZEN);
-            // Solid windows never sample the blurred copy: skip its passes.
+            // Opaque solid windows never sample the blurred copy: skip its
+            // passes. A translucent solid colour shows it under the colour.
             if (tuning.blurIterations > 0 && tuning.preBlurRadius > 0.001f
-                && !nxui::Appearance::get().solidPanels) {
+                && !blurSkipped) {
                 // Same spread as before, bought with fewer passes: the radius is
                 // kept at the renderer's 2.5 texel limit and the pass count is
                 // what applyBlur would have used, capped.
@@ -586,6 +591,7 @@ void TabbedOverlayScreen::onRender(nxui::Renderer& ren) {
             m_backdropCacheValid = true;
             m_cachedPreBlurRadius = tuning.preBlurRadius;
             m_cachedBlurIterations = tuning.blurIterations;
+            m_cachedBlurSkipped = blurSkipped;
         }
     }
     const uint64_t traceAfterBackdrop = traceRender ? armGetSystemTick() : 0;

@@ -1,6 +1,7 @@
 #include "PlazaScreenSwapButton.hpp"
 #include "core/IconPack.hpp"
 #include <nxui/core/Input.hpp>
+#include <nxui/Appearance.hpp>
 #include <cmath>
 #include <algorithm>
 
@@ -60,9 +61,13 @@ void PlazaScreenSwapButton::onRender(nxui::Renderer& ren) {
 
     // Background glass pill
     const float r = cornerRadius();
+    // The player's solid window colour reaches this top button too.
+    const auto& look = nxui::Appearance::get();
     nxui::Color bgCol = m_plazaActive
         ? nxui::Color(0.12f, 0.40f, 0.85f, 0.45f * alpha)
-        : nxui::Color(0.06f, 0.10f, 0.18f, 0.38f * alpha);
+        : look.solidPanels
+            ? look.panelColor.withAlpha(look.panelColor.a * alpha)
+            : nxui::Color(0.06f, 0.10f, 0.18f, 0.38f * alpha);
 
     ren.drawRoundedRect(m_rect, bgCol, r);
 

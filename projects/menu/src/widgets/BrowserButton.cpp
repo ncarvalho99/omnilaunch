@@ -1,4 +1,5 @@
 #include "BrowserButton.hpp"
+#include <nxui/Appearance.hpp>
 
 namespace widgets {
 
@@ -45,7 +46,14 @@ void BrowserButton::onRender(nxui::Renderer& ren) {
     if (m_metroStyle) {
         ren.drawRoundedRect(m_rect, nxui::Color(0.f, 0.47f, 0.84f, 0.90f * alpha), 4.f);
     } else {
-        ren.drawRoundedRect(m_rect, nxui::Color(0.06f, 0.10f, 0.18f, 0.38f * alpha), cornerRadius());
+        // The player's solid window colour reaches these top buttons too; they
+        // draw their own pill instead of going through GlassPanel.
+        const auto& look = nxui::Appearance::get();
+        ren.drawRoundedRect(m_rect,
+                            look.solidPanels
+                                ? look.panelColor.withAlpha(look.panelColor.a * alpha)
+                                : nxui::Color(0.06f, 0.10f, 0.18f, 0.38f * alpha),
+                            cornerRadius());
         // Focus is drawn by the shared SelectionCursor.
         ren.drawRoundedRectOutline(m_rect, nxui::Color(1.f, 1.f, 1.f, 0.32f * alpha), cornerRadius(), 1.2f);
     }

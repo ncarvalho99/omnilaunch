@@ -26,6 +26,11 @@ struct Appearance {
         return instance;
     }
 
+    // An opaque solid window hides everything behind it, so nothing behind it
+    // needs blurring. A translucent one keeps the blurred backdrop under its
+    // colour, so the glass sharpness setting still applies to it.
+    bool solidOpaque() const { return solidPanels && panelColor.a >= 0.995f; }
+
     float radius(float r) const {
         if (radiusExempt > 0 || radiusScale >= 0.999f || r <= 0.f)
             return r;

@@ -1,6 +1,7 @@
 #include "MediaCenterButton.hpp"
 #include "core/IconPack.hpp"
 #include <nxui/core/Input.hpp>
+#include <nxui/Appearance.hpp>
 #include <cmath>
 #include <algorithm>
 
@@ -55,20 +56,18 @@ void MediaCenterButton::onRender(nxui::Renderer& ren) {
     const float r = cornerRadius();
     const float pulse = 0.5f + 0.5f * std::sin(m_animTime * 3.0f);
 
-    // Background glass pill
-    nxui::Color bgCol = m_playing
-        ? nxui::Color(0.08f, 0.35f, 0.55f, (0.35f + 0.10f * pulse) * alpha)
+    // Background pill, the same as the browser and WaraWara buttons beside it:
+    // the theme's translucent pill, or the player's solid window colour. While
+    // music plays the whole button used to turn a pulsing blue, which read as
+    // a haze over it; playing is now the small dot below.
+    const auto& look = nxui::Appearance::get();
+    const nxui::Color bgCol = look.solidPanels
+        ? look.panelColor.withAlpha(look.panelColor.a * alpha)
         : nxui::Color(0.06f, 0.10f, 0.18f, 0.38f * alpha);
-
     ren.drawRoundedRect(m_rect, bgCol, r);
 
-    // Outline
     // Focus is drawn by the shared SelectionCursor; no second (gold) ring here.
-    nxui::Color borderCol = m_playing
-        ? nxui::Color(0.30f, 0.75f, 0.95f, (0.55f + 0.20f * pulse) * alpha)
-        : nxui::Color(1.0f, 1.0f, 1.0f, 0.32f * alpha);
-
-    ren.drawRoundedRectOutline(m_rect, borderCol, r, 1.2f);
+    ren.drawRoundedRectOutline(m_rect, nxui::Color(1.0f, 1.0f, 1.0f, 0.32f * alpha), r, 1.2f);
 
     if (!m_iconLoaded || m_iconGen != iconpack::generation()) {
         m_iconLoaded = true;
@@ -83,20 +82,24 @@ void MediaCenterButton::onRender(nxui::Renderer& ren) {
         constexpr float iconW = 32.0f;
         constexpr float iconH = 32.0f;
         const nxui::Rect iconRect{cx - iconW * 0.5f, cy - iconH * 0.5f, iconW, iconH};
-        nxui::Color tint = m_playing
-            ? nxui::Color(0.40f, 0.85f, 1.0f, alpha)
-            : (isFocused() ? nxui::Color(1.0f, 0.95f, 0.65f, alpha) : nxui::Color(1.0f, 1.0f, 1.0f, 0.95f * alpha));
+        nxui::Color tint = isFocused() ? nxui::Color(1.0f, 0.95f, 0.65f, alpha)
+                                       : nxui::Color(1.0f, 1.0f, 1.0f, 0.95f * alpha);
         ren.drawTexture(&m_iconTex, iconRect, tint);
     } else {
         // Fallback procedural note
-        nxui::Color iconCol = m_playing
-            ? nxui::Color(0.35f, 0.85f, 1.0f, alpha)
-            : (isFocused() ? nxui::Color(1.0f, 0.95f, 0.60f, alpha) : nxui::Color(1.0f, 1.0f, 1.0f, 0.90f * alpha));
+        nxui::Color iconCol = isFocused() ? nxui::Color(1.0f, 0.95f, 0.60f, alpha)
+                                          : nxui::Color(1.0f, 1.0f, 1.0f, 0.90f * alpha);
         ren.drawCircle({cx - 7.0f, cy + 4.0f}, 4.2f, iconCol);
         ren.drawCircle({cx + 6.5f, cy + 1.5f}, 4.2f, iconCol);
         ren.drawRect({cx - 4.2f, cy - 9.0f, 2.4f, 13.0f}, iconCol);
         ren.drawRect({cx + 9.3f, cy - 11.5f, 2.4f, 13.0f}, iconCol);
         ren.drawRect({cx - 4.2f, cy - 11.5f, 15.9f, 3.8f}, iconCol);
+    }
+    if (m_playing) {
+        // Small accent dot in the corner, where the browser button shows its
+        // "not downloaded" dot: music is playing.
+        ren.drawCircle({m_rect.right() - 9.f, m_rect.y + 9.f}, 4.f,
+                       nxui::Color(0.30f, 0.75f, 0.95f, (0.75f + 0.25f * pulse) * alpha));
     }
 }
 
