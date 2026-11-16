@@ -45,6 +45,61 @@ std::atomic_uint g_discoveryPollCount = 0;
 Thread g_thread;
 alignas(0x1000) u8 g_threadStack[32 * 1024];
 
+// nifm's global wireless communication flag (off = Airplane mode). A short-lived
+// nifm:s session, as in InternetTab: the libnx nifm wrapper is held as nifm:u.
+class NifmSystemSession {
+public:
+    ~NifmSystemSession() {
+        serviceClose(&m_general);
+        serviceClose(&m_static);
+    }
+
+    Result open() {
+        Result rc = smGetService(&m_static, "nifm:s");
+        if (R_SUCCEEDED(rc))
+            rc = serviceConvertToDomain(&m_static);
+        if (R_SUCCEEDED(rc)) {
+            const u64 reserved = 0;
+            serviceAssumeDomain(&m_static);
+            rc = serviceDispatchIn(&m_static, 5, reserved,
+                .in_send_pid = true,
+                .out_num_objects = 1,
+                .out_objects = &m_general,
+            );
+        }
+        return rc;
+    }
+
+    Service& general() { return m_general; }
+
+private:
+    Service m_static{};
+    Service m_general{};
+};
+
+Result getWirelessCommunication(bool* enabled) {
+    NifmSystemSession session;
+    Result rc = session.open();
+    if (R_FAILED(rc))
+        return rc;
+    u8 value = 0;
+    serviceAssumeDomain(&session.general());
+    rc = serviceDispatchOut(&session.general(), 17, value);
+    if (R_SUCCEEDED(rc))
+        *enabled = (value & 1) != 0;
+    return rc;
+}
+
+Result setWirelessCommunication(bool enabled) {
+    NifmSystemSession session;
+    Result rc = session.open();
+    if (R_FAILED(rc))
+        return rc;
+    const u8 value = enabled ? 1 : 0;
+    serviceAssumeDomain(&session.general());
+    return serviceDispatchIn(&session.general(), 16, value);
+}
+
 bool UpdateList(std::vector<BtmAudioDevice>& dst, const std::vector<BtmAudioDevice>& src, std::atomic_bool& changed) {
     const bool listChanged = src.size() != dst.size()
         || (!dst.empty() && memcmp(dst.data(), src.data(), sizeof(BtmAudioDevice) * dst.size()) != 0);
@@ -325,10 +380,24 @@ Result SetRadioEnabled(bool enabled) {
     if (!enabled && g_discovering)
         StopDiscovery();
 
+    // btm's DisableRadio is the system's Airplane mode switch and turns nifm's
+    // wireless communication off with it. Read it first so Bluetooth off leaves
+    // Airplane mode and Wi-Fi as they were (HomeNX 3ec7d2c).
+    bool wirelessBefore = false;
+    const bool wirelessKnown = !enabled && R_SUCCEEDED(getWirelessCommunication(&wirelessBefore));
+
     const Result runtimeRc = enabled ? btmsysEnableRadio() : btmsysDisableRadio();
     const Result configuredRc = setsysSetBluetoothEnableFlag(enabled);
-    DebugLog::log("[bt] Radio -> %d runtime=0x%x configured=0x%x",
-                  enabled ? 1 : 0, runtimeRc, configuredRc);
+
+    Result restoreRc = 0;
+    bool wirelessAfter = false;
+    const bool afterKnown = wirelessKnown && R_SUCCEEDED(getWirelessCommunication(&wirelessAfter));
+    if (wirelessKnown && wirelessBefore && (!afterKnown || !wirelessAfter))
+        restoreRc = setWirelessCommunication(true);
+    DebugLog::log("[bt] Radio -> %d runtime=0x%x configured=0x%x wireless before=%d after=%d restore=0x%x",
+                  enabled ? 1 : 0, runtimeRc, configuredRc,
+                  wirelessKnown ? int(wirelessBefore) : -1,
+                  afterKnown ? int(wirelessAfter) : -1, restoreRc);
     return R_FAILED(runtimeRc) ? runtimeRc : configuredRc;
 }
 

@@ -479,20 +479,11 @@ void collectManifestAssets(const nlohmann::json& root, std::vector<std::string>&
         if (hasParentTraversal(path))
             return false;
 
-        const bool hasAssetExtension = hasKnownAssetExtension(path);
-        const bool hasDirectory = path.find('/') != std::string::npos;
-        if (hasAssetExtension)
-            return true;
-        if (!hasDirectory)
-            return false;
-
-        static constexpr const char* kPathKeys[] = {
-            "path", "file", "src", "image", "font", "regular", "normal", "ui",
-            "small", "secondary", "caption", "cover", "screenshot", "background"
-        };
-        return std::any_of(std::begin(kPathKeys), std::end(kPathKeys), [&](const char* pathKey) {
-            return key == pathKey;
-        });
+        // Only concrete files are downloadable. A directory such as
+        // theme.icons.path ("assets/icons") answers 404 when fetched as a raw
+        // file, and that aborted the whole install (PoloNX 0b23dfc).
+        (void)key;
+        return hasKnownAssetExtension(path);
     };
 
     std::function<void(const nlohmann::json&, const std::string&)> collectRecursive =
