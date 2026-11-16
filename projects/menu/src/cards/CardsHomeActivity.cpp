@@ -936,14 +936,9 @@ void CardsHomeActivity::onUpdate(float dt) {
         }
         if (want == 0) {
             // Whatever the sort, land on the last-opened title.
-            std::uint64_t best = 0;
-            for (int i = 0; i < m_catalog.count(); ++i) {
-                const std::uint64_t at = m_core.config().lastOpenedAt(m_catalog.at(i).app.titleId);
-                if (at > best) {
-                    best = at;
-                    want = m_catalog.at(i).app.titleId;
-                }
-            }
+            const int land = landingIndex();
+            if (land >= 0)
+                want = m_catalog.at(land).app.titleId;
         }
         int index = want != 0 ? m_catalog.indexOf(want) : -1;
         // The title to land on may live on the Media page (E1).
@@ -1251,9 +1246,27 @@ void CardsHomeActivity::requestPageSnapshot(int page) {
     m_snapCache.load(m_core.threadPool(), page);
 }
 
+// Card of the current page with the latest last-opened mark, or -1: where a
+// frontend switch or a cold start lands (onUpdate, first catalogue).
+int CardsHomeActivity::landingIndex() const {
+    int index = -1;
+    std::uint64_t best = 0;
+    for (int i = 0; i < m_catalog.count(); ++i) {
+        const std::uint64_t at = m_core.config().lastOpenedAt(m_catalog.at(i).app.titleId);
+        if (at > best) {
+            best = at;
+            index = i;
+        }
+    }
+    return index;
+}
+
 // Saved images of the page go on their cards as soon as both the read and the
-// catalogue are in, and the window shown is offered back for saving.
-void CardsHomeActivity::pumpPageSnapshot(int first, int last) {
+// catalogue are in, and the window shown is offered back for saving. The
+// window the page will open on next (landFirst..landLast, empty when < 0) is
+// saved with it: a snapshot of only the cards last looked at left the
+// landing cards as square icons after a switch back from Classic.
+void CardsHomeActivity::pumpPageSnapshot(int first, int last, int landFirst, int landLast) {
     const int page = m_catalog.page();
     if (page != m_snapPage)
         requestPageSnapshot(page); // every way of changing page lands here
@@ -1293,8 +1306,19 @@ void CardsHomeActivity::pumpPageSnapshot(int first, int last) {
         return;
     std::vector<SnapItem> items;
     bool complete = true;
-    const int lo = std::max(0, first), hi = std::min(m_catalog.count() - 1, last);
-    for (int i = lo; i <= hi && complete; ++i) {
+    // Landing cards first: their covers are uploaded first on the next read.
+    std::vector<int> order;
+    const auto addRange = [&](int a, int b) {
+        for (int i = std::max(0, a); i <= std::min(m_catalog.count() - 1, b); ++i)
+            if (std::find(order.begin(), order.end(), i) == order.end())
+                order.push_back(i);
+    };
+    if (landFirst >= 0)
+        addRange(landFirst, landLast);
+    addRange(first, last);
+    for (int i : order) {
+        if (!complete)
+            break;
         const auto& card = m_catalog.at(i);
         if (card.icon && card.iconFresh && card.iconSnap)
             items.push_back(*card.iconSnap);
@@ -1315,14 +1339,31 @@ void CardsHomeActivity::pumpPageSnapshot(int first, int last) {
 void CardsHomeActivity::ensureVisibleIcons() {
     const int first = static_cast<int>(std::floor(m_scroll)) - 1;
     const int last = static_cast<int>(std::ceil(m_scroll)) + 5;
-    pumpPageSnapshot(first, last); // before the decodes, so saved images show first
+    // The landing window is decoded and saved too, on pages whose images all
+    // stay resident anyway (no extra eviction pressure).
+    int landFirst = -1, landLast = -1;
+    if (m_catalog.count() <= kKeepAllCoversUpTo && !m_catalog.loading()) {
+        const int land = landingIndex();
+        if (land >= 0) {
+            landFirst = std::max(0, land - 1);
+            landLast = land + 5;
+        }
+    }
+    pumpPageSnapshot(first, last, landFirst, landLast); // before the decodes, so saved images show first
     switchu::menu::frame_probe::mark("cards-snapshot");
     m_catalog.pumpIcons(app().gpu(), app().renderer(), m_core.threadPool(), first, last, 4, 2);
+    if (landFirst >= 0) // queues decodes only; the visible window keeps upload priority
+        m_catalog.pumpIcons(app().gpu(), app().renderer(), m_core.threadPool(), landFirst, landLast, 4, 0);
     switchu::menu::frame_probe::mark("cards-icon-upload");
     std::vector<std::uint64_t> wanted, keep;
     for (int i = std::max(0, first); i <= std::min(m_catalog.count() - 1, last); ++i)
         if (!m_catalog.at(i).system)
             wanted.push_back(m_catalog.at(i).app.titleId);
+    if (landFirst >= 0)
+        for (int i = landFirst; i <= std::min(m_catalog.count() - 1, landLast); ++i)
+            if (!m_catalog.at(i).system &&
+                std::find(wanted.begin(), wanted.end(), m_catalog.at(i).app.titleId) == wanted.end())
+                wanted.push_back(m_catalog.at(i).app.titleId);
     // A small catalogue keeps every cover it has decoded (about 1 MB each).
     // Dropping those beyond three cards meant that scrolling to the end and
     // back showed each card with its icon until its cover was decoded again.

@@ -206,7 +206,8 @@ private:
     std::uint64_t m_deferredPageFocus = 0; // HOME focus waiting on asynchronous NRO metadata
     int m_snapPage = -1;               // page m_snapItems / the read belong to
     void requestPageSnapshot(int page);
-    void pumpPageSnapshot(int first, int last);
+    void pumpPageSnapshot(int first, int last, int landFirst, int landLast);
+    int landingIndex() const;
     StatusSnapshot m_status;
     std::unique_ptr<nxui::Texture> m_avatar;
     float m_statusTimer = 0.f;
