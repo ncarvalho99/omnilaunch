@@ -1280,7 +1280,13 @@ void CardsHomeActivity::ensureVisibleIcons() {
     for (int i = std::max(0, first); i <= std::min(m_catalog.count() - 1, last); ++i)
         if (!m_catalog.at(i).system)
             wanted.push_back(m_catalog.at(i).app.titleId);
-    for (int i = std::max(0, first - 3); i <= std::min(m_catalog.count() - 1, last + 3); ++i)
+    // A small catalogue keeps every cover it has decoded (about 1 MB each).
+    // Dropping those beyond three cards meant that scrolling to the end and
+    // back showed each card with its icon until its cover was decoded again.
+    const bool keepAll = m_catalog.count() <= kKeepAllCoversUpTo;
+    const int keepLo = keepAll ? 0 : std::max(0, first - 3);
+    const int keepHi = keepAll ? m_catalog.count() - 1 : std::min(m_catalog.count() - 1, last + 3);
+    for (int i = keepLo; i <= keepHi; ++i)
         if (!m_catalog.at(i).system)
             keep.push_back(m_catalog.at(i).app.titleId);
     const std::uint64_t bg = pages::isSystemId(m_bgId) ? 0 : m_bgId;

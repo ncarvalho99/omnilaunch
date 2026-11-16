@@ -775,6 +775,31 @@ void IconStreamer::maybeWriteSnapshot(const std::vector<int>& window) {
         }
         list.emplace_back(titleId, shown->second);
     }
+    // The file also keeps the other icons already decoded this session, most
+    // recent first. Holding only the page last looked at meant that leaving
+    // from another page (the widgets page, a folder) replaced it with a
+    // handful of icons, and the next start or frontend switch opened on the
+    // remembered page with spinners on every icon.
+    if (!list.empty()) {
+        for (auto it = m_snapCollectOrder.rbegin();
+             it != m_snapCollectOrder.rend() && list.size() < kSnapshotMaxEntries; ++it) {
+            const uint64_t titleId = *it;
+            if (std::find(ids.begin(), ids.end(), titleId) != ids.end())
+                continue;
+            const auto collected = m_snapCollect.find(titleId);
+            const auto shown = m_shownKey.find(titleId);
+            if (collected == m_snapCollect.end() || shown == m_shownKey.end()
+                || collected->second.key != shown->second || m_snapVerify.count(titleId))
+                continue;
+            // Titles outside the current model stay: inside a folder they are
+            // the root icons the folder hides, and an unknown one is skipped
+            // when the file is read.
+            if (std::find(m_failedTitleIds.begin(), m_failedTitleIds.end(), titleId)
+                != m_failedTitleIds.end())
+                continue;
+            list.emplace_back(titleId, shown->second);
+        }
+    }
     // The same icons seen from the neighbouring page are the same snapshot:
     // compare as a set, so turning pages does not rewrite the file.
     std::sort(list.begin(), list.end());

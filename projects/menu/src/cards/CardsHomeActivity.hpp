@@ -209,6 +209,7 @@ private:
     StatusSnapshot m_status;
     std::unique_ptr<nxui::Texture> m_avatar;
     float m_statusTimer = 0.f;
+    static constexpr int kKeepAllCoversUpTo = 48;
     // Focus zone: the card row, the top bar (UP from the row) or the panel
     // (DOWN from the row: 0 = Play/Resume pill, 1 = "..." options circle).
     bool m_topZone = false;
