@@ -186,6 +186,17 @@ private:
     // Indices of free pool slots.
     std::vector<int> m_freeSlots;
 
+    // Textures of titles that left the model (a folder opened or closed),
+    // kept so they come back without a decode. Bounded, oldest freed first.
+    struct ParkedTexture {
+        int slot = -1;
+        bool customArtwork = false;
+    };
+    std::unordered_map<uint64_t, ParkedTexture> m_parked;
+    std::vector<uint64_t> m_parkedOrder;
+    static constexpr std::size_t kParkedTextures = 40;
+    void dropParked(uint64_t titleId);
+
     int m_lastPage = -1;
     int m_lastIconsPerPage = -1;
     int m_pinnedIndex = -1;

@@ -272,6 +272,8 @@ void IconStreamer::clear() {
     m_shownKey.clear();
     m_snapSettling = false;
     m_pool.clear();
+    m_parked.clear();
+    m_parkedOrder.clear();
     m_compressed.clear();
     m_titleIds.clear();
     m_appToSlot.clear();
@@ -350,18 +352,38 @@ void IconStreamer::reconcileTitleIds(const std::vector<uint64_t>& titleIds) {
     }
 
     std::vector<int> newAppToSlot(titleIds.size(), -1);
+    std::vector<bool> newCustomArtwork(titleIds.size(), false);
+    std::unordered_map<int, bool> parkedSlot;
+    for (const auto& [titleId, parked] : m_parked)
+        parkedSlot.emplace(parked.slot, true);
     m_freeSlots.clear();
     for (int slotIndex = 0; slotIndex < (int)m_pool.size(); ++slotIndex) {
         auto& slot = m_pool[(size_t)slotIndex];
         if (!slot || slot->appIndex < 0 || slot->appIndex >= (int)oldTitleIds.size()) {
             if (slot)
                 slot->appIndex = -1;
-            m_freeSlots.push_back(slotIndex);
+            if (!slot || !parkedSlot.count(slotIndex))
+                m_freeSlots.push_back(slotIndex);
             continue;
         }
 
         const uint64_t titleId = oldTitleIds[(size_t)slot->appIndex];
         auto next = newIndexByTitle.find(titleId);
+        if (titleId != 0 && next == newIndexByTitle.end() && slot->texture.valid()) {
+            // Not in the new model, but likely back soon: opening a folder
+            // replaces the root grid with its contents and closing it brings
+            // the root back. Keep the texture, so the icons return as they
+            // were instead of on spinners while they are decoded again.
+            const bool custom = slot->appIndex < (int)m_customArtwork.size()
+                && m_customArtwork[(size_t)slot->appIndex];
+            slot->appIndex = -1;
+            m_parked[titleId] = {slotIndex, custom};
+            m_parkedOrder.erase(std::remove(m_parkedOrder.begin(), m_parkedOrder.end(), titleId),
+                                m_parkedOrder.end());
+            m_parkedOrder.push_back(titleId);
+            parkedSlot.emplace(slotIndex, true);
+            continue;
+        }
         if (titleId == 0 || next == newIndexByTitle.end() ||
             newAppToSlot[(size_t)next->second] >= 0) {
             slot->appIndex = -1;
@@ -373,8 +395,41 @@ void IconStreamer::reconcileTitleIds(const std::vector<uint64_t>& titleIds) {
         newAppToSlot[(size_t)next->second] = slotIndex;
     }
 
+    // Titles coming back get their kept texture again.
+    for (int i = 0; i < (int)titleIds.size(); ++i) {
+        const uint64_t titleId = titleIds[(size_t)i];
+        auto parked = titleId != 0 ? m_parked.find(titleId) : m_parked.end();
+        if (parked == m_parked.end())
+            continue;
+        const int slotIndex = parked->second.slot;
+        const bool custom = parked->second.customArtwork;
+        m_parked.erase(parked);
+        m_parkedOrder.erase(std::remove(m_parkedOrder.begin(), m_parkedOrder.end(), titleId),
+                            m_parkedOrder.end());
+        if (newAppToSlot[(size_t)i] >= 0 || slotIndex < 0 || slotIndex >= (int)m_pool.size()
+            || !m_pool[(size_t)slotIndex] || m_pool[(size_t)slotIndex]->appIndex >= 0) {
+            if (slotIndex >= 0 && slotIndex < (int)m_pool.size() && m_pool[(size_t)slotIndex]
+                && m_pool[(size_t)slotIndex]->appIndex < 0)
+                m_freeSlots.push_back(slotIndex);
+            continue;
+        }
+        m_pool[(size_t)slotIndex]->appIndex = i;
+        newAppToSlot[(size_t)i] = slotIndex;
+        newCustomArtwork[(size_t)i] = custom;
+    }
+
+    // Bounded: the oldest kept textures become free slots again.
+    while (m_parkedOrder.size() > kParkedTextures) {
+        const uint64_t oldest = m_parkedOrder.front();
+        m_parkedOrder.erase(m_parkedOrder.begin());
+        auto parked = m_parked.find(oldest);
+        if (parked == m_parked.end())
+            continue;
+        m_freeSlots.push_back(parked->second.slot);
+        m_parked.erase(parked);
+    }
+
     std::vector<std::vector<uint8_t>> newCompressed(titleIds.size());
-    std::vector<bool> newCustomArtwork(titleIds.size(), false);
     for (int oldIndex = 0; oldIndex < (int)oldTitleIds.size(); ++oldIndex) {
         auto next = newIndexByTitle.find(oldTitleIds[(size_t)oldIndex]);
         if (next != newIndexByTitle.end()) {
@@ -407,6 +462,16 @@ void IconStreamer::reconcileTitleIds(const std::vector<uint64_t>& titleIds) {
     }
     m_lastPage = -1;
     m_lastIconsPerPage = -1;
+}
+
+void IconStreamer::dropParked(uint64_t titleId) {
+    auto parked = m_parked.find(titleId);
+    if (parked == m_parked.end())
+        return;
+    m_freeSlots.push_back(parked->second.slot);
+    m_parked.erase(parked);
+    m_parkedOrder.erase(std::remove(m_parkedOrder.begin(), m_parkedOrder.end(), titleId),
+                        m_parkedOrder.end());
 }
 
 void IconStreamer::reconcileCatalog(IconStreamer&& catalog) {
@@ -1167,6 +1232,8 @@ void IconStreamer::forceReload(int currentPage, int iconsPerPage,
     // Clear the Texture objects themselves (GPU memory + descriptor slots)
     // because a forceReload typically follows a full GPU reset.
     m_pool.clear();
+    m_parked.clear();
+    m_parkedOrder.clear();
     m_freeSlots.clear();
     cancelPending();
     m_pendingDecodes.clear();
@@ -1196,6 +1263,7 @@ void IconStreamer::reloadTitle(
         std::remove(m_failedTitleIds.begin(), m_failedTitleIds.end(), titleId),
         m_failedTitleIds.end());
     forgetSnapshotTitle(titleId);
+    dropParked(titleId);
     m_snapMap.erase(titleId);
     m_snapCollect.erase(titleId);
     if (appIndex < static_cast<int>(m_compressed.size()))
