@@ -1007,12 +1007,19 @@ void CardsHomeActivity::onUpdate(float dt) {
     pollPlaytime();
     switchu::menu::frame_probe::mark("cards-profile-playtime");
     pollNetCheck();
+    switchu::menu::frame_probe::mark("svc-netcheck");
     pollArtJobs();
+    switchu::menu::frame_probe::mark("svc-artjobs");
     pollHomebrewUpdates();
+    switchu::menu::frame_probe::mark("svc-hbupdates");
     pollSelfUpdate();
+    switchu::menu::frame_probe::mark("svc-selfupdate");
     pollBrowserDownload();
+    switchu::menu::frame_probe::mark("svc-browser");
     m_core.nextendo().update(m_core, m_core.net().online());
+    switchu::menu::frame_probe::mark("svc-nextendo");
     m_core.discord().update(m_core);
+    switchu::menu::frame_probe::mark("svc-discord");
     discord::Alert discordAlert;
     if (m_core.discord().takeAlert(discordAlert)) {
         showToast(discordAlert.title + ": " + discordAlert.text);
