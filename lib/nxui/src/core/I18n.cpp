@@ -1,6 +1,8 @@
 #include <nxui/core/I18n.hpp>
 #include <switch.h>
 #include <fstream>
+#include <mutex>
+#include <unordered_map>
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -285,6 +287,21 @@ std::string I18n::buildLanguagePath(const std::string& normalizedTag) const {
 
 bool I18n::loadJsonMapFromFile(const std::string& path,
                                std::unordered_map<std::string, std::string>& out) const {
+    // Parsed maps are kept per path for the process: the menu initialises
+    // I18n again on every frontend switch, and reading and parsing the same
+    // 100 KB files off the card each time was part of that switch's frame.
+    // The language files only change with a menu update, which restarts it.
+    static std::mutex cacheMutex;
+    static std::unordered_map<std::string, std::unordered_map<std::string, std::string>> cache;
+    {
+        std::lock_guard<std::mutex> lk(cacheMutex);
+        auto it = cache.find(path);
+        if (it != cache.end()) {
+            out = it->second;
+            return true;
+        }
+    }
+
     std::ifstream f(path);
     if (!f.is_open()) return false;
 
@@ -293,7 +310,11 @@ bool I18n::loadJsonMapFromFile(const std::string& path,
 
     out.clear();
     JsonFlatParser parser(src, out);
-    return parser.parse();
+    if (!parser.parse())
+        return false;
+    std::lock_guard<std::mutex> lk(cacheMutex);
+    cache.emplace(path, out);
+    return true;
 }
 
 static std::vector<std::string> scanI18nLanguageTags(const std::string& basePath) {

@@ -934,6 +934,9 @@ void WiiUMenuApp::onDestroy() {
 #endif
     // Before C5b the scrape was cancelled and joined by this Activity's
     // destructor; keep stopping it when the frontend leaves.
+    // The activity log scan walks ~2000 pdm events; a switch made right after
+    // it started waited ~0.5 s for it in waitForIdle below.
+    m_activityLogManager.cancel();
     m_steamGridDb.cancelAndWait();
     // The transform captures this frontend; the Core keeps the loader.
     m_appLoader.setPendingTransform({});
@@ -2702,6 +2705,7 @@ void WiiUMenuApp::startActivityPrefetch() {
                 installed.emplace_back(entry.titleId, entry.title);
         }
     }
+    m_activityLogManager.resetCancel();
     m_threadPool.submit([this, installed = std::move(installed)]() {
         m_activityLogManager.refresh(installed);
     });

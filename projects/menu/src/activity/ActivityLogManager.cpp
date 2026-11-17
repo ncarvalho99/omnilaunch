@@ -312,6 +312,8 @@ void ActivityLogManager::refresh(const std::vector<std::pair<std::uint64_t, std:
     }
 
     queryPdmStatistics(installedTitles);
+    if (m_cancel.load())
+        return;
     queryPdmAppletEvents(titleNames);
 
     // Reconcile daily event totals against authoritative PDM statistics.
@@ -511,6 +513,8 @@ void ActivityLogManager::queryPdmStatistics(const std::vector<std::pair<std::uin
                           (unsigned long long)titleId, name.c_str());
             continue;
         }
+        if (m_cancel.load())
+            break; // the frontend is leaving
         std::memset(&stats, 0, sizeof(stats));
         const Result qrc = pdmqryQueryPlayStatisticsByApplicationId(titleId, true, &stats);
         if (R_SUCCEEDED(qrc)) {
@@ -589,7 +593,7 @@ void ActivityLogManager::queryPdmAppletEvents(const std::unordered_map<std::uint
         DebugLog::log("[activity] scanning applet events from index %d to %d", cur, end_entry);
         s32 totalParsed = 0;
         s32 sessionsCount = 0;
-        while (cur <= end_entry) {
+        while (cur <= end_entry && !m_cancel.load()) {
             s32 count = std::min(kChunkSize, end_entry - cur + 1);
             s32 total_out = 0;
             const Result eqRc = pdmqryQueryAppletEvent(cur, true, events.data(), count, &total_out);

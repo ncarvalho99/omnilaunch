@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -48,6 +49,11 @@ public:
     ~ActivityLogManager() = default;
 
     void refresh(const std::vector<std::pair<std::uint64_t, std::string>>& installedTitles);
+    // Asks a refresh running on a worker to stop at its next pdm query, so a
+    // frontend leaving does not wait for the whole scan. resetCancel() before
+    // starting a new one. The data of a cancelled refresh is incomplete.
+    void cancel() { m_cancel.store(true); }
+    void resetCancel() { m_cancel.store(false); }
 
     const std::vector<TitlePlayStats>& allTimeRankings() const { return m_allTimeRankings; }
     const TitlePlayStats* findTitleStats(std::uint64_t titleId) const;
@@ -73,6 +79,7 @@ private:
     std::vector<TitlePlayStats> m_allTimeRankings;
     std::unordered_map<std::uint64_t, TitlePlayStats> m_statsByTitle;
     std::unordered_map<int, DailyLogDay> m_dailyRecords;
+    std::atomic<bool> m_cancel{false};
 };
 
 } // namespace switchu::activity

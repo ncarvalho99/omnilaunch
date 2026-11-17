@@ -1355,7 +1355,9 @@ void CardsHomeActivity::pumpPageSnapshot(int first, int last, int landFirst, int
     // Not while leaving: onDestroy waits for the write, and one started in the
     // switch fade held the switch to Classic for ~1.1 s (a 23-image page).
     // The page is saved again the next time it settles.
-    if (m_switchQueued || m_switchFade >= 0.f || m_leaving)
+    // activityChangePending: the switch was requested earlier this same frame
+    // (updateFrontendSwitch runs first and has already cleared the fade).
+    if (m_switchQueued || m_switchFade >= 0.f || m_leaving || app().activityChangePending())
         return;
     std::vector<SnapItem> items;
     bool complete = true;

@@ -1006,6 +1006,7 @@ void WiiUMenuApp::openActivityLog(std::uint64_t initialTitleId) {
                 }
             }
         }
+        m_activityLogManager.resetCancel();
         m_activityLogManager.refresh(installed);
     }
 
