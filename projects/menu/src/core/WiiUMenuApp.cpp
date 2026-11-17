@@ -738,9 +738,12 @@ bool WiiUMenuApp::onCreate() {
     DebugLog::log("[init-diag] layout/folders/widgets %lums", initElapsedMs());
 
     nxui::I18n::instance().initialize(std::string(SD_ASSETS) + "/i18n", "en-US");
+    DebugLog::log("[init-diag] i18n initialize %lums", initElapsedMs());
     applyUiLanguage();
+    DebugLog::log("[init-diag] ui language %lums", initElapsedMs());
     m_homeCore.audioServices().configureAccessibility(
         m_config, nxui::I18n::instance().activeLanguageTag());
+    DebugLog::log("[init-diag] accessibility %lums", initElapsedMs());
 
     if (m_config.soundPreset.rfind("package:", 0) != 0 &&
         m_config.soundPreset != kBuiltInSoundPreset)
@@ -7847,6 +7850,7 @@ void WiiUMenuApp::onUpdate(float dt) {
             m_deferredVideoWallpaperPath.clear();
         }
     }
+    switchu::menu::frame_probe::mark("video-deferred");
 
     // Update metadata failed cooldown timers
     {

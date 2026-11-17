@@ -67,6 +67,10 @@ public:
 
 private:
     bool openInternal(const std::string& path, bool loop, bool audio);
+    // Worker side of open(): container probe and decoder setup, then decodeLoop().
+    void workerMain();
+    bool openStreams();
+    static int interruptCallback(void* self);
     void decodeLoop();
     void doSeek(double seconds);
     void clockSet(double seconds);

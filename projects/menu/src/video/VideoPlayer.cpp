@@ -285,7 +285,7 @@ void VideoPlayer::doSeek(double seconds) {
 
 #if defined(__SWITCH__)
 void VideoPlayer::decodeTrampoline(void* self) {
-    static_cast<VideoPlayer*>(self)->decodeLoop();
+    static_cast<VideoPlayer*>(self)->workerMain();
 }
 #endif
 
@@ -301,6 +301,28 @@ bool VideoPlayer::open(const std::string& path, bool loop, bool audio) {
     return false;
 }
 
+int VideoPlayer::interruptCallback(void* self) {
+    // Lets close() cut short a container read or probe that is still running
+    // on the worker (a slow card can hold avformat_find_stream_info for >1 s).
+    return static_cast<VideoPlayer*>(self)->m_stop.load(std::memory_order_acquire) ? 1 : 0;
+}
+
+void VideoPlayer::workerMain() {
+    const auto start = std::chrono::steady_clock::now();
+    if (!openStreams()) {
+        // close() on the render thread frees whatever was allocated, through
+        // the same path a decoder that gives up takes (see tick()).
+        if (!m_stop.load(std::memory_order_acquire))
+            m_failed.store(true, std::memory_order_release);
+        return;
+    }
+    DebugLog::log("[video] opened %s (%dx%d, %.2fs, hw=%d) in %llu ms on the worker",
+                  m_path.c_str(), m_width, m_height, m_duration, m_hwDeviceCtx ? 1 : 0,
+                  static_cast<unsigned long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                      std::chrono::steady_clock::now() - start).count()));
+    decodeLoop();
+}
+
 bool VideoPlayer::openInternal(const std::string& path, bool loop, bool audio) {
     close();
     m_failed.store(false);
@@ -311,26 +333,65 @@ bool VideoPlayer::openInternal(const std::string& path, bool loop, bool audio) {
     m_audio = audio;
     m_opened = false;
     m_ended.store(false);
+    m_readyBuf.store(-1);
+    m_stop.store(false);
+    m_paused.store(false);
+    m_seekReq.store(false);
 
+    // The container open, stream probe and decoder setup read the card and
+    // took up to 1.6 s of the render thread on a return from a game (it showed
+    // as the `fonts-list-plaza` step). They now run at the start of the decode
+    // worker; until its first frame the still/poster stays on screen, and a
+    // file it refuses is reported through m_failed exactly like a decoder that
+    // gives up, so tick() closes it and remembers the path.
+#if defined(__SWITCH__)
+    // Priority 0x3B (background priority, matching sLaunch) pinned to Core 2 so the
+    // video worker never interrupts or preempts the main UI render loop on Core 0.
+    Result rc = threadCreate(&m_thread, &VideoPlayer::decodeTrampoline, this,
+                             m_threadStack, sizeof(m_threadStack), 0x3B, 2);
+    if (R_FAILED(rc)) {
+        rc = threadCreate(&m_thread, &VideoPlayer::decodeTrampoline, this,
+                          m_threadStack, sizeof(m_threadStack), 0x3B, -2);
+    }
+    if (R_FAILED(rc)) {
+        DebugLog::log("[video] threadCreate failed: 0x%x", rc);
+        close();
+        return false;
+    }
+    m_threadCreated = true;
+    threadStart(&m_thread);
+#else
+    m_thread = std::thread(&VideoPlayer::workerMain, this);
+#endif
+
+    m_opened = true;
+    DebugLog::log("[video] opening %s on the worker", m_path.c_str());
+    return true;
+}
+
+bool VideoPlayer::openStreams() {
     // Force "file:" protocol so FFmpeg does not misinterpret "sdmc:/" as a protocol name
     const std::string url = "file:" + m_path;
 
+    m_fmt = avformat_alloc_context();
+    if (!m_fmt)
+        return false;
+    m_fmt->interrupt_callback.callback = &VideoPlayer::interruptCallback;
+    m_fmt->interrupt_callback.opaque = this;
     if (avformat_open_input(&m_fmt, url.c_str(), nullptr, nullptr) < 0) {
+        // avformat_open_input frees the context and nulls m_fmt on failure.
         DebugLog::log("[video] failed to open input: %s", url.c_str());
-        close();
         return false;
     }
 
     if (avformat_find_stream_info(m_fmt, nullptr) < 0) {
         DebugLog::log("[video] failed to find stream info");
-        close();
         return false;
     }
 
     m_streamIdx = pickVideoStream(m_fmt);
     if (m_streamIdx < 0) {
         DebugLog::log("[video] no video stream found");
-        close();
         return false;
     }
 
@@ -338,27 +399,21 @@ bool VideoPlayer::openInternal(const std::string& path, bool loop, bool audio) {
 
     if (const char* why = wallpaperStreamRejection(stream)) {
         DebugLog::log("[video] rejected theme %s", why);
-        close();
         return false;
     }
 
     const AVCodec* codec = avcodec_find_decoder(stream->codecpar->codec_id);
     if (!codec) {
         DebugLog::log("[video] codec decoder not found");
-        close();
         return false;
     }
 
     m_dec = avcodec_alloc_context3(codec);
-    if (!m_dec) {
-        close();
+    if (!m_dec)
         return false;
-    }
 
-    if (avcodec_parameters_to_context(m_dec, stream->codecpar) < 0) {
-        close();
+    if (avcodec_parameters_to_context(m_dec, stream->codecpar) < 0)
         return false;
-    }
 
 #if defined(SWITCHU_HAS_NVTEGRA)
     // Hardware NVDEC accelerator via averne/FFmpeg nvtegra backend
@@ -373,16 +428,13 @@ bool VideoPlayer::openInternal(const std::string& path, bool loop, bool audio) {
 
     if (avcodec_open2(m_dec, codec, nullptr) < 0) {
         DebugLog::log("[video] failed to open codec");
-        close();
         return false;
     }
 
     int targetW = m_dec->width;
     int targetH = m_dec->height;
-    if (targetW <= 0 || targetH <= 0) {
-        close();
+    if (targetW <= 0 || targetH <= 0)
         return false;
-    }
 
     // Downscale / scale video wallpapers to 1280x720 to match native Switch resolution
     // and guarantee 32-byte row alignment for the Maxwell 2D copy engine (1280*4 = 5120 = 160*32).
@@ -408,37 +460,10 @@ bool VideoPlayer::openInternal(const std::string& path, bool loop, bool audio) {
         b.width = m_width;
         b.height = m_height;
     }
-    m_readyBuf.store(-1);
 
-    m_stop.store(false);
-    m_paused.store(false);
-    m_seekReq.store(false);
+    // Playback starts when the stream is ready, not when it was requested.
     clockSet(0.0);
-
-#if defined(__SWITCH__)
-    // Priority 0x3B (background priority, matching sLaunch) pinned to Core 2 so the
-    // video worker never interrupts or preempts the main UI render loop on Core 0.
-    Result rc = threadCreate(&m_thread, &VideoPlayer::decodeTrampoline, this,
-                             m_threadStack, sizeof(m_threadStack), 0x3B, 2);
-    if (R_FAILED(rc)) {
-        rc = threadCreate(&m_thread, &VideoPlayer::decodeTrampoline, this,
-                          m_threadStack, sizeof(m_threadStack), 0x3B, -2);
-    }
-    if (R_FAILED(rc)) {
-        DebugLog::log("[video] threadCreate failed: 0x%x", rc);
-        close();
-        return false;
-    }
-    m_threadCreated = true;
-    threadStart(&m_thread);
-#else
-    m_thread = std::thread(&VideoPlayer::decodeLoop, this);
-#endif
-
-    m_opened = true;
-    DebugLog::log("[video] opened %s (%dx%d, %.2fs, hw=%d)",
-                  m_path.c_str(), m_width, m_height, m_duration, m_hwDeviceCtx ? 1 : 0);
-    return true;
+    return !m_stop.load(std::memory_order_acquire);
 }
 
 void VideoPlayer::close() {
