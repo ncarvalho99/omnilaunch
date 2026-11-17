@@ -136,23 +136,13 @@ bool NetService::ensureRuntime() {
 }
 
 NetState NetService::state() {
-    // Diagnostic: this is polled from the render thread every frame, so a
-    // slow lock, runtime start or nifm IPC here is a frame stall.
-    const std::uint64_t waitStart = nowMs();
     std::lock_guard<std::mutex> lk(m_mutex);
     const std::uint64_t now = nowMs();
-    const std::uint64_t lockMs = now - waitStart;
-    if (m_stateTick != 0 && now - m_stateTick < 1000) {
-        if (lockMs >= 20)
-            DebugLog::log("[net-diag] state lock wait %llums (cached)", static_cast<unsigned long long>(lockMs));
+    if (m_stateTick != 0 && now - m_stateTick < 1000)
         return m_state;
-    }
     m_stateTick = now;
     NetState next = NetState::Unknown;
-    const bool hadRuntime = m_runtime;
-    const bool runtime = ensureRuntime();
-    const std::uint64_t afterRuntime = nowMs();
-    if (runtime) {
+    if (ensureRuntime()) {
         NifmInternetConnectionStatus status = NifmInternetConnectionStatus_ConnectingUnknown1;
         u32 strength = 0;
         NifmInternetConnectionType type{};
@@ -163,12 +153,6 @@ NetState NetService::state() {
         else
             next = NetState::Connecting;
     }
-    const std::uint64_t end = nowMs();
-    if (end - waitStart >= 20)
-        DebugLog::log("[net-diag] state lock=%llums runtime=%llums%s nifm=%llums",
-                      static_cast<unsigned long long>(lockMs),
-                      static_cast<unsigned long long>(afterRuntime - now), hadRuntime ? "" : "(start)",
-                      static_cast<unsigned long long>(end - afterRuntime));
     if (next != m_state)
         DebugLog::log("[net] state %s -> %s", netStateName(m_state), netStateName(next));
     m_state = next;

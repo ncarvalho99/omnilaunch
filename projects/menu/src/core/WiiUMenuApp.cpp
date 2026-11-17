@@ -706,7 +706,6 @@ bool WiiUMenuApp::onCreate() {
     }
     applyGlassSharpness(m_config.glassSharpness);
     applyAppearanceOverrides(false);
-    DebugLog::log("[init-diag] pre-layout %lums", initElapsedMs());
     loadMenuLayout();
     // The menu is recreated on every return from a game, so this is also the
     // moment the session just played has to reach the grid. The first frame
@@ -734,23 +733,11 @@ bool WiiUMenuApp::onCreate() {
     // Catalog I/O is independent of font/GPU setup. Start it now so SD reads
     // and metadata parsing overlap with i18n, audio, and resource creation.
     m_appLoader.startAsync(m_threadPool);
-    DebugLog::log("[init-diag] layout/folders/widgets %lums", initElapsedMs());
 
     nxui::I18n::instance().initialize(std::string(SD_ASSETS) + "/i18n", "en-US");
-    DebugLog::log("[init-diag] i18n initialize %lums", initElapsedMs());
-    {
-        const auto& it = nxui::I18n::instance().lastInitTiming();
-        DebugLog::log("[init-diag] i18n split fallback=%lluus detect=%lluus active=%lluus notify=%lluus listeners=%u cache_hits=%u entries=%u lang=%s",
-                      static_cast<unsigned long long>(it.fallbackUs), static_cast<unsigned long long>(it.detectUs),
-                      static_cast<unsigned long long>(it.activeUs), static_cast<unsigned long long>(it.notifyUs),
-                      it.listeners, it.cacheHits, it.entries,
-                      nxui::I18n::instance().activeLanguageTag().c_str());
-    }
     applyUiLanguage();
-    DebugLog::log("[init-diag] ui language %lums", initElapsedMs());
     m_homeCore.audioServices().configureAccessibility(
         m_config, nxui::I18n::instance().activeLanguageTag());
-    DebugLog::log("[init-diag] accessibility %lums", initElapsedMs());
 
     if (m_config.soundPreset.rfind("package:", 0) != 0 &&
         m_config.soundPreset != kBuiltInSoundPreset)
@@ -762,7 +749,6 @@ bool WiiUMenuApp::onCreate() {
     } else {
         m_homeCore.startBluetoothAsync();
     }
-    DebugLog::log("[init-diag] i18n/audio/bluetooth %lums", initElapsedMs());
     DebugLog::log("[init] Theme Shop HTTP runtime deferred until first request");
 
     DebugLog::log("[init] Config loaded (theme=%s, musicVol=%.2f, sfxVol=%.2f)",
@@ -1072,12 +1058,9 @@ void WiiUMenuApp::loadResources() {
     // it from the retained fork loadResources(), so those textures stayed
     // invalid: renderPageArrows() bails on !texture.valid(), which is why the
     // ZL/ZR page arrows never appeared on hardware.
-    DebugLog::log("[init-diag] fonts loaded");
     loadStaticTextures();
-    DebugLog::log("[init-diag] static textures loaded");
 
     m_appLoader.finalize(m_model, m_iconStreamer);
-    DebugLog::log("[init-diag] catalogue finalized");
     // AppListLoader owns the initial native-icon setup.  Install the optional
     // Gallery lookup immediately afterwards so custom covers work after a
     // cold start too, not only after a sort or refresh rebuild.
@@ -6290,11 +6273,7 @@ std::shared_ptr<GlossyIcon> WiiUMenuApp::makeIcon(const AppEntry& entry) {
 }
 
 void WiiUMenuApp::buildGrid() {
-    // Diagnostic: where the 1.0-1.5 s of a frontend switch to Classic goes.
-    const uint64_t bgStart = armGetSystemTick();
-    auto bgMs = [bgStart]() { return static_cast<unsigned long>(armTicksToNs(armGetSystemTick() - bgStart) / 1000000ULL); };
     reloadThemePresets();
-    DebugLog::log("[init-diag] presets %lums", bgMs());
     applyAutoThemeConfig();
 
     m_activePresetName = m_config.themePreset;
@@ -6339,7 +6318,6 @@ void WiiUMenuApp::buildGrid() {
     m_gameArtworkBackdrop->setRect({0, 0, 1280, 720});
     m_gameArtworkBackdrop->setArtworkOpacityScale(m_config.steamGridDbOpacity);
     applyThemeResources(m_effectivePreset);
-    DebugLog::log("[init-diag] theme resources %lums", bgMs());
     // A start-up still prefetch the theme did not ask for is not kept.
     WaraWaraBackground::dropPrefetchedStill();
 
@@ -6430,9 +6408,7 @@ void WiiUMenuApp::buildGrid() {
     m_battery->setForceLiquidGlass(true);
     m_battery->setBlurEnabled(false);
 
-    DebugLog::log("[init-diag] grid + icons %lums", bgMs());
     buildUserAvatarBar(!m_fastReturnRequested);
-    DebugLog::log("[init-diag] avatar bar %lums", bgMs());
 
     m_titlePill = std::make_shared<TitlePillWidget>();
     const float initPillY = (m_appLayoutMode == AppLayoutMode::Deck) ? 275.f
@@ -6731,7 +6707,6 @@ void WiiUMenuApp::buildGrid() {
     };
 
     m_sidebarActions = sidebarActions;
-    DebugLog::log("[init-diag] widgets/focus/leave session %lums", bgMs());
     m_sidebar.setColumnScale(static_cast<float>(std::clamp(m_config.sidebarScalePercent, 80, 130)) / 100.f);
     m_sidebar.setThreadPool(&m_threadPool);
     m_sidebar.build(app().gpu(), app().renderer(), SD_ASSETS, m_sidebarActions, m_config.sidebarOrder);
@@ -6750,10 +6725,8 @@ void WiiUMenuApp::buildGrid() {
         m_activityPrefetchWait = 0.f;
     }
 
-    DebugLog::log("[init-diag] sidebar %lums", bgMs());
     wireGlobalActions();
     applyTheme();
-    DebugLog::log("[init-diag] applyTheme %lums", bgMs());
 
     auto& root = rootBox();
     root.clearChildren();

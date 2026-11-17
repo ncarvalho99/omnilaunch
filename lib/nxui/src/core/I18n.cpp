@@ -160,10 +160,6 @@ I18n& I18n::instance() {
     return inst;
 }
 
-static uint64_t i18nNowUs() {
-    return armTicksToNs(armGetSystemTick()) / 1000ULL;
-}
-
 // Background language work runs off core 0 (the render thread's core), as
 // the menu's worker pool does.
 static void i18nLeaveRenderCore(s32 core) {
@@ -257,9 +253,6 @@ const I18n::Map& I18n::fallbackMap() const {
 }
 
 bool I18n::initialize(const std::string& basePath, const std::string& fallbackTag) {
-    m_initTiming = {};
-    m_cacheHits = 0;
-    const uint64_t t0 = i18nNowUs();
     std::string nextFallback = normalizeTag(fallbackTag);
     if (nextFallback.empty()) nextFallback = "en-US";
     if (basePath != m_basePath || nextFallback != m_fallbackTag)
@@ -267,16 +260,7 @@ bool I18n::initialize(const std::string& basePath, const std::string& fallbackTa
     m_basePath = basePath;
     m_fallbackTag = nextFallback;
     startFallbackLoad();
-    const uint64_t t1 = i18nNowUs();
-    const std::string detected = systemLanguageTag();
-    const uint64_t t2 = i18nNowUs();
-    m_initTiming.fallbackUs = t1 - t0;
-    m_initTiming.detectUs = t2 - t1;
-
-    const bool ok = setLanguage(detected);
-    m_initTiming.cacheHits = m_cacheHits;
-    m_initTiming.entries = m_activeMap ? static_cast<uint32_t>(m_activeMap->size()) : 0;
-    return ok;
+    return setLanguage(systemLanguageTag());
 }
 
 bool I18n::setLanguageAuto() {
@@ -293,26 +277,18 @@ bool I18n::setLanguage(const std::string& tag) {
 
     normalized = closestShippedTag(m_basePath, normalized);
 
-    const uint64_t loadStart = i18nNowUs();
-    bool hit = false;
     // A parse prefetch() or the fallback load started is waited for here.
-    std::shared_ptr<const Map> nextMap = loadJsonMapFromFile(buildLanguagePath(normalized), &hit);
+    std::shared_ptr<const Map> nextMap = loadJsonMapFromFile(buildLanguagePath(normalized));
     if (!nextMap) {
         normalized = m_fallbackTag;
-        hit = false;
-        nextMap = loadJsonMapFromFile(buildLanguagePath(normalized), &hit);
+        nextMap = loadJsonMapFromFile(buildLanguagePath(normalized));
     }
-    if (hit) ++m_cacheHits;
 
     m_activeTag = normalized;
     m_activeMap = std::move(nextMap);
-    const uint64_t loadEnd = i18nNowUs();
-    m_initTiming.activeUs = loadEnd - loadStart;
 
     if (m_activeTag != previousTag)
         notifyLanguageChanged();
-    m_initTiming.notifyUs = i18nNowUs() - loadEnd;
-    m_initTiming.listeners = static_cast<uint32_t>(m_languageListeners.size());
 
     return (m_activeMap && !m_activeMap->empty()) || m_fallbackFuture.valid();
 }
@@ -404,7 +380,7 @@ std::string I18n::buildLanguagePath(const std::string& normalizedTag) const {
     return m_basePath + "/" + normalizedTag + ".json";
 }
 
-std::shared_ptr<const I18n::Map> I18n::loadJsonMapFromFile(const std::string& path, bool* cacheHit) {
+std::shared_ptr<const I18n::Map> I18n::loadJsonMapFromFile(const std::string& path) {
     // Parsed maps are kept per path for the process: the menu initialises
     // I18n again on every frontend switch, and reading and parsing the same
     // 100 KB files off the card each time was part of that switch's frame.
@@ -427,7 +403,6 @@ std::shared_ptr<const I18n::Map> I18n::loadJsonMapFromFile(const std::string& pa
     }
     if (existing.valid()) {
         // Waited for outside the lock: the parse holding it may still run.
-        if (cacheHit) *cacheHit = true;
         return existing.get();
     }
 

@@ -49,18 +49,6 @@ public:
     // change is still seen on the next start.
     const std::string& systemLanguageTag();
 
-    // Temporary start-up timing of the last initialize() (microseconds).
-    struct InitTiming {
-        uint64_t fallbackUs = 0;   // starting the background fallback (en-US) load
-        uint64_t detectUs = 0;     // system language query
-        uint64_t activeUs = 0;     // active language map load
-        uint64_t notifyUs = 0;     // language-changed listeners
-        uint32_t listeners = 0;
-        uint32_t cacheHits = 0;    // maps served from the process cache
-        uint32_t entries = 0;      // keys in the active map
-    };
-    const InitTiming& lastInitTiming() const { return m_initTiming; }
-
 private:
     I18n() = default;
 
@@ -73,8 +61,7 @@ private:
 
     // Parsed maps are shared per path for the process; null when the file is
     // missing or does not parse.
-    static std::shared_ptr<const Map> loadJsonMapFromFile(const std::string& path,
-                                                          bool* cacheHit = nullptr);
+    static std::shared_ptr<const Map> loadJsonMapFromFile(const std::string& path);
     const Map& fallbackMap() const;
     void startFallbackLoad();
     void notifyLanguageChanged();
@@ -92,8 +79,6 @@ private:
     std::shared_ptr<const Map> m_activeMap;
     std::unordered_map<int, LanguageChangedCb> m_languageListeners;
     int m_nextListenerId = 1;
-    InitTiming m_initTiming;
-    uint32_t m_cacheHits = 0;
 };
 
 } // namespace nxui
