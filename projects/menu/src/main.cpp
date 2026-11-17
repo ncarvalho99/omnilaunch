@@ -18,6 +18,7 @@
 #include <fmt/format.h>
 #include <switchu/file_log.hpp>
 #include <switchu/time_budget.hpp>
+#include <switchu/legacy_migration.hpp>
 #ifdef SWITCHU_MENU
 #include <nxui/core/GpuDevice.hpp>
 #include "settings/SystemPrefs.hpp"
@@ -208,52 +209,15 @@ extern "C" void __appInit(void) {
         static constexpr const char* kMigratedMarker = "sdmc:/config/OmniLaunch/.migrated";
         std::error_code markerEc;
         if (!std::filesystem::exists(kMigratedMarker, markerEc)) {
-            auto mergeDir = [](const std::filesystem::path& src, const std::filesystem::path& dst, auto& self) -> void {
-                std::error_code ec;
-                std::filesystem::create_directories(dst, ec);
-                for (const auto& item : std::filesystem::directory_iterator(src, ec)) {
-                    const auto target = dst / item.path().filename();
-                    if (item.is_directory()) {
-                        self(item.path(), target, self);
-                    } else if (!std::filesystem::exists(target, ec)) {
-                        std::filesystem::rename(item.path(), target, ec);
-                    }
-                }
-            };
-
-            std::error_code migEc;
-            if (std::filesystem::exists("sdmc:/config/SwitchU", migEc)) {
-                if (!std::filesystem::exists("sdmc:/config/OmniLaunch", migEc)) {
-                    std::filesystem::rename("sdmc:/config/SwitchU", "sdmc:/config/OmniLaunch", migEc);
-                } else {
-                    mergeDir("sdmc:/config/SwitchU", "sdmc:/config/OmniLaunch", mergeDir);
-                    std::filesystem::remove_all("sdmc:/config/SwitchU", migEc);
-                }
-            }
-            migEc.clear();
-            if (std::filesystem::exists("sdmc:/switch/SwitchU", migEc)) {
-                if (!std::filesystem::exists("sdmc:/switch/OmniLaunch", migEc)) {
-                    std::filesystem::rename("sdmc:/switch/SwitchU", "sdmc:/switch/OmniLaunch", migEc);
-                } else {
-                    mergeDir("sdmc:/switch/SwitchU", "sdmc:/switch/OmniLaunch", mergeDir);
-                    std::filesystem::remove_all("sdmc:/switch/SwitchU", migEc);
-                }
-            }
-            migEc.clear();
-            if (std::filesystem::exists("sdmc:/switch/SwitchU-Manager", migEc)) {
-                if (std::filesystem::exists("sdmc:/switch/OmniLaunch-Manager/OmniLaunch-Manager.nro", migEc)) {
-                    std::filesystem::remove_all("sdmc:/switch/SwitchU-Manager", migEc);
-                }
-            }
-
-            // Only mark the migration done when no legacy folder is left. A
-            // partial failure (locked file, full card) must retry next boot
-            // instead of being frozen as "migrated".
-            std::error_code chkEc;
-            const bool legacyLeft =
-                std::filesystem::exists("sdmc:/config/SwitchU", chkEc) ||
-                std::filesystem::exists("sdmc:/switch/SwitchU", chkEc);
-            if (!legacyLeft) {
+            // Nothing that failed to move is deleted (switchu/legacy_migration.hpp):
+            // a conflict keeps both files, a failure is retried next start.
+            const auto cfg = switchu::legacy::migrateDirectory("sdmc:/config/SwitchU", "sdmc:/config/OmniLaunch");
+            const auto app = switchu::legacy::migrateDirectory("sdmc:/switch/SwitchU", "sdmc:/switch/OmniLaunch");
+            switchu::legacy::removeLegacyManager("sdmc:/switch/SwitchU-Manager", "SwitchU-Manager.nro",
+                                                 "sdmc:/switch/OmniLaunch-Manager/OmniLaunch-Manager.nro");
+            // Done once every file moved, or was kept on purpose as a conflict.
+            // A failed move (locked file, full card) retries next start.
+            if (cfg.failures == 0 && app.failures == 0) {
                 std::error_code dirEc;
                 std::filesystem::create_directories("sdmc:/config/OmniLaunch", dirEc);
                 FILE* fp = std::fopen(kMigratedMarker, "wb");

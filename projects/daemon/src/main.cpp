@@ -9,6 +9,7 @@
 #include <switchu/file_log.hpp>
 #include <switchu/time_budget.hpp>
 #include <switchu/sd_commit.hpp>
+#include <switchu/legacy_migration.hpp>
 #include "app_manager.hpp"
 #include "ecs.hpp"
 #include "update_apply.hpp"
@@ -197,47 +198,15 @@ extern "C" void __appInit(void) {
         rc = fsdevMountSdmc();
     }
 
-    // Seamless migration from legacy SwitchU to OmniLaunch directories
+    // Seamless migration from legacy SwitchU to OmniLaunch directories. Files
+    // that could not be moved, or that differ from an existing OmniLaunch file,
+    // stay in the legacy folder (switchu/legacy_migration.hpp).
     {
-        auto mergeDir = [](const std::filesystem::path& src, const std::filesystem::path& dst, auto& self) -> void {
-            std::error_code ec;
-            std::filesystem::create_directories(dst, ec);
-            for (const auto& item : std::filesystem::directory_iterator(src, ec)) {
-                const auto target = dst / item.path().filename();
-                if (item.is_directory()) {
-                    self(item.path(), target, self);
-                } else if (!std::filesystem::exists(target, ec)) {
-                    std::filesystem::rename(item.path(), target, ec);
-                }
-            }
-        };
-
-        std::error_code migEc;
-        if (std::filesystem::exists("sdmc:/config/SwitchU", migEc)) {
-            if (!std::filesystem::exists("sdmc:/config/OmniLaunch", migEc)) {
-                std::filesystem::rename("sdmc:/config/SwitchU", "sdmc:/config/OmniLaunch", migEc);
-            } else {
-                mergeDir("sdmc:/config/SwitchU", "sdmc:/config/OmniLaunch", mergeDir);
-                std::filesystem::remove_all("sdmc:/config/SwitchU", migEc);
-            }
-        }
-        migEc.clear();
-        if (std::filesystem::exists("sdmc:/switch/SwitchU", migEc)) {
-            if (!std::filesystem::exists("sdmc:/switch/OmniLaunch", migEc)) {
-                std::filesystem::rename("sdmc:/switch/SwitchU", "sdmc:/switch/OmniLaunch", migEc);
-            } else {
-                mergeDir("sdmc:/switch/SwitchU", "sdmc:/switch/OmniLaunch", mergeDir);
-                std::filesystem::remove_all("sdmc:/switch/SwitchU", migEc);
-            }
-        }
-        migEc.clear();
-        if (std::filesystem::exists("sdmc:/switch/SwitchU-Manager", migEc)) {
-            if (std::filesystem::exists("sdmc:/switch/OmniLaunch-Manager/OmniLaunch-Manager.nro", migEc)) {
-                std::filesystem::remove_all("sdmc:/switch/SwitchU-Manager", migEc);
-            }
-        }
+        switchu::legacy::migrateDirectory("sdmc:/config/SwitchU", "sdmc:/config/OmniLaunch");
+        switchu::legacy::migrateDirectory("sdmc:/switch/SwitchU", "sdmc:/switch/OmniLaunch");
+        switchu::legacy::removeLegacyManager("sdmc:/switch/SwitchU-Manager", "SwitchU-Manager.nro",
+                                             "sdmc:/switch/OmniLaunch-Manager/OmniLaunch-Manager.nro");
     }
-
     switchu::FileLog::open("daemon");
     // Which build this is, in the log of the process itself. The menu prints
     // its own version on the About tab, and for a long time that was the only
@@ -1617,6 +1586,17 @@ static Result launchControllerRemapping() {
 
 static void logMenuReadyTrace(const smi::MenuReadyArgs& ready, uint64_t receiveTick) {
     const auto& launch = daemon::menu_la::launchTrace();
+    if (launch.menuReadyReceiveTick != 0) {
+        // Second MenuReady of this menu process: a live frontend switch. The
+        // launch timings above it belong to the start of the process.
+        daemon::menu_la::markSwitchCreateStart(ready.activity_create_start_tick);
+        switchu::FileLog::log(
+            "[trace-switch-ready] oncreate_us=%llu ready_ipc_us=%llu catalog=%u",
+            (unsigned long long)tickDeltaUs(ready.activity_create_start_tick, ready.activity_create_end_tick),
+            (unsigned long long)tickDeltaUs(ready.command_send_tick, receiveTick),
+            ready.catalog_count);
+        return;
+    }
     daemon::menu_la::markMenuReady(receiveTick);
     switchu::FileLog::log(
         "[trace-return-ready] reason=%u origin_to_holder_us=%llu prepare_us=%llu registration_us=%llu create_us=%llu holder_start_us=%llu holder_to_main_us=%llu ready_ipc_us=%llu origin_to_ready_us=%llu cores=%u/%u catalog=%u",
@@ -1645,6 +1625,17 @@ static void logMenuReadyTrace(const smi::MenuReadyArgs& ready, uint64_t receiveT
 static void logMenuFirstFrameTrace(const smi::MenuFirstFrameArgs& first,
                                    uint64_t receiveTick) {
     const auto& launch = daemon::menu_la::launchTrace();
+    if (launch.firstFrameTick != 0) {
+        switchu::FileLog::log(
+            "[trace-switch-frame] create_to_frame_us=%llu frame_ipc_us=%llu image_kib=%llu catalog=%u",
+            (unsigned long long)(launch.switchCreateStartTick
+                                     ? tickDeltaUs(launch.switchCreateStartTick, first.first_frame_tick) : 0),
+            (unsigned long long)tickDeltaUs(first.first_frame_tick, receiveTick),
+            (unsigned long long)(first.image_memory_bytes / 1024ULL),
+            first.catalog_count);
+        return;
+    }
+    daemon::menu_la::markFirstFrame(first.first_frame_tick ? first.first_frame_tick : receiveTick);
     switchu::FileLog::log(
         "[trace-return-frame] reason=%u origin_to_frame_us=%llu ready_to_frame_us=%llu input_to_frame_us=%llu frame_ipc_us=%llu image_kib=%llu core=%u catalog=%u",
         static_cast<unsigned>(launch.reason),

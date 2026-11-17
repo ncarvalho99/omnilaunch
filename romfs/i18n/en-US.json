@@ -817,7 +817,9 @@
     "mii_desc": "Create and edit Miis",
     "internet_desc": "Wi-Fi and the console network settings",
     "users_desc": "Choose or add a user",
-    "settings_desc": "OmniLaunch settings"
+    "settings_desc": "OmniLaunch settings",
+    "launch_failed_title": "Could not open the software",
+    "launch_failed_body": "The homebrew could not be started. Check that atmosphere/hbl.nsp is on the SD card and that the card has free space, then try again."
   },
   "widget": {
     "title": "Widget",

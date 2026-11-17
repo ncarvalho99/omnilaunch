@@ -393,12 +393,14 @@ bool CardsHomeActivity::onCreate() {
         m_fadeIn = 0.f;
     }
     m_core.setFrontendQuiesce([this] {
+        // Cancel the artwork requests before joining anything: a slow artwork
+        // server would otherwise hold the launch hand-off for every attempt.
+        cancelArtJobs();
         if (m_achievementsCancel) m_achievementsCancel->store(true);
         stopSpeedTest();
         stopHomebrewUpdates();
         waitSelfUpdate();
         stopBrowserDownload();
-        m_saveAllStop.store(true);
         if (m_saveAllFuture.valid())
             m_saveAllFuture.wait();
         if (m_singleArtFuture.valid())
@@ -698,7 +700,7 @@ void CardsHomeActivity::onDestroy() {
     stopBrowserDownload();
     if (m_detailsFuture.valid())
         m_detailsFuture.wait();
-    m_saveAllStop.store(true);
+    cancelArtJobs();
     if (m_saveAllFuture.valid())
         m_saveAllFuture.wait();
     if (m_singleArtFuture.valid())
@@ -1210,7 +1212,13 @@ void CardsHomeActivity::onUpdate(float dt) {
                 const std::string hbPath = m_leaveHomebrewPath;
                 m_leaveHomebrewPath.clear();
                 scheduleLeaveCapture([this, hbPath]() {
-                    m_core.launcher().launchNro(hbPath, 0, m_leaveUid, true);
+                    if (m_core.launcher().launchNro(hbPath, 0, m_leaveUid, true))
+                        return;
+                    // Failed before the hand-off: the menu stays, say why.
+                    m_launching = false;
+                    m_audio.setVolume(m_core.config().musicVolume);
+                    showToast(nxui::I18n::instance().tr("launcher.launch_failed_title",
+                                                        "Could not open the software"));
                 }, m_leaveTitleId);
             } else if (m_leaveIsResume) {
                 switchu::smi::LaunchTransitionTrace trace{};

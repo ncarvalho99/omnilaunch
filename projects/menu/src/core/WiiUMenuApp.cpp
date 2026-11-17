@@ -9113,7 +9113,8 @@ void WiiUMenuApp::openBrowser() {
             return;
         }
         DebugLog::log("[home] browser -> %s", path.c_str());
-        m_launcher.launchNro(path, 0, {}, true);
+        if (!m_launcher.launchNro(path, 0, {}, true))
+            showHomebrewLaunchFailed();
         return;
     }
     if (m_browserFetch.running())

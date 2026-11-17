@@ -533,6 +533,7 @@ private:
     void ensureLauncherScreen();
     void openSystemApplet(int tile);
     void launchHomebrewNro(const std::string& path, const std::string& title);
+    void showHomebrewLaunchFailed();
     void showHomebrewEntryOptions(const std::string& path, const std::string& title,
                                   const std::string& version);
     void startLauncherHomebrewScan();

@@ -384,13 +384,38 @@ static bool nroNamed(const char* path, const char* name) {
     return readHomebrew(path, app, false) && strcasecmp(app.name.c_str(), name) == 0;
 }
 
-static void writeSingleLine(const char* path, const std::string& line) {
+// Writes the bytes to a sibling temporary file, checks every write, flush,
+// close and the final size, and only then moves it over `path`. A failure
+// leaves no truncated file at `path` (it may leave none at all).
+static bool writeFileChecked(const std::string& path, const void* data, std::size_t size) {
     std::error_code ec;
     std::filesystem::create_directories(std::filesystem::path(path).parent_path(), ec);
-    if (FILE* f = std::fopen(path, "w")) {
-        std::fputs((line + "\n").c_str(), f);
-        std::fclose(f);
+    const std::string tmp = path + ".tmp";
+    std::remove(tmp.c_str());
+    FILE* f = std::fopen(tmp.c_str(), "wb");
+    if (!f)
+        return false;
+    bool ok = size == 0 || std::fwrite(data, 1, size, f) == size;
+    ok = (std::fflush(f) == 0) && ok;
+    ok = (std::fclose(f) == 0) && ok;
+    if (ok) {
+        std::error_code sizeEc;
+        ok = std::filesystem::file_size(tmp, sizeEc) == size && !sizeEc;
     }
+    if (ok) {
+        std::remove(path.c_str());
+        ok = std::rename(tmp.c_str(), path.c_str()) == 0;
+    }
+    if (!ok) {
+        std::remove(tmp.c_str());
+        DebugLog::log("[launcher] write failed: %s", path.c_str());
+    }
+    return ok;
+}
+
+static bool writeSingleLine(const char* path, const std::string& line) {
+    const std::string text = line + "\n";
+    return writeFileChecked(path, text.data(), text.size());
 }
 } // namespace
 
@@ -419,6 +444,9 @@ bool AppletLauncher::prepareHbl() {
     if (h.magic != 0x30534650 /* PFS0 */ || h.count > 16 || entriesEnd + h.strings > nsp.size()) return false;
     const std::size_t dataStart = entriesEnd + h.strings;
     std::filesystem::create_directories(kHblDir, ec);
+    // The stamp is what makes an extraction "done"; it goes first so an
+    // interrupted or failed extraction is never accepted later.
+    std::filesystem::remove(stampPath, ec);
     bool gotMain = false, gotNpdm = false;
     for (u32 i = 0; i < h.count; ++i) {
         Entry e;
@@ -431,11 +459,12 @@ bool AppletLauncher::prepareHbl() {
         std::vector<char> data(nsp.begin() + dataStart + e.offset,
                                nsp.begin() + dataStart + e.offset + e.size);
         if (n == "main.npdm" && !patchHblNpdmAsApplication(data)) return false;
-        std::ofstream(std::string(kHblDir) + "/" + n, std::ios::binary | std::ios::trunc)
-            .write(data.data(), static_cast<std::streamsize>(data.size()));
+        if (!writeFileChecked(std::string(kHblDir) + "/" + n, data.data(), data.size()))
+            return false;
         (n == "main" ? gotMain : gotNpdm) = true;
     }
-    if (gotMain && gotNpdm) std::ofstream(stampPath) << size;
+    if (gotMain && gotNpdm && !writeFileChecked(stampPath, size.data(), size.size()))
+        return false;
     DebugLog::log("[launcher] hbl unpacked main=%d npdm=%d", gotMain, gotNpdm);
     return gotMain && gotNpdm;
 }
@@ -570,6 +599,14 @@ void AppletLauncher::restoreUserHbmenu() {
 }
 bool AppletLauncher::launchNro(const std::string& path, uint64_t hostTitleId, AccountUid uid,
                                bool applicationOnly) {
+    // The daemon refuses a homebrew launch while an application runs or is
+    // suspended; refusing here first keeps the suspended homebrew's loader
+    // and hbl_running.txt untouched (nothing below may run in that state).
+    if (m_suspendedTitleId != 0 || m_appRunning) {
+        DebugLog::log("[launcher] homebrew launch refused: application running/suspended (0x%016llX)",
+                      static_cast<unsigned long long>(m_suspendedTitleId));
+        return false;
+    }
     if (!prepareHbl()) {
         DebugLog::log("[launcher] prepareHbl failed");
         return false;
@@ -578,18 +615,33 @@ bool AppletLauncher::launchNro(const std::string& path, uint64_t hostTitleId, Ac
         DebugLog::log("[launcher] installLoader failed");
         return false;
     }
-    writeSingleLine(kLoaderNext, path);
+    // Every file the loader and the next menu read must be on the card before
+    // the hand-off. A failed write stops here, with the player's hbmenu put
+    // back, instead of closing the menu into hbmenu or a half-written target.
     std::error_code ec;
+    const auto abandon = [this](const char* what) {
+        std::error_code rmEc;
+        std::filesystem::remove(kLoaderNext, rmEc);
+        std::filesystem::remove(kRunningNro, rmEc);
+        restoreUserHbmenu();
+        switchu::commitSdCard("homebrew launch abandoned");
+        DebugLog::log("[launcher] homebrew launch abandoned: %s", what);
+        return false;
+    };
+    if (!writeSingleLine(kLoaderNext, path))
+        return abandon("launch target not written");
     std::filesystem::remove(kChained, ec);
     if (applicationOnly) {
-        if (FILE* f = std::fopen(kApplicationOnly, "w")) std::fclose(f);
+        if (!writeFileChecked(kApplicationOnly, "", 0))
+            return abandon("application-only marker not written");
     } else {
         std::filesystem::remove(kApplicationOnly, ec);
     }
     // Written before the hand-off so the next menu (after HOME) knows the
     // suspended host game is this homebrew. Cleared at the next startup with
     // nothing suspended, so a failed launch leaves nothing behind.
-    writeSingleLine(kRunningNro, path);
+    if (!writeSingleLine(kRunningNro, path))
+        return abandon("running homebrew not written");
     m_runningHomebrew = path;
     quiesceForPower("launch-nro");
     const Result rc = switchu::menu::smi_cmd::launchHomebrewApp(uid, hostTitleId);
@@ -599,7 +651,8 @@ bool AppletLauncher::launchNro(const std::string& path, uint64_t hostTitleId, Ac
         if (m_cb.requestExit) m_cb.requestExit();
         return true;
     }
-    return false;
+    m_runningHomebrew.clear();
+    return abandon("launch command not sent to the daemon");
 }
 
 #else

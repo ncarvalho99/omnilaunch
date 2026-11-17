@@ -82,7 +82,9 @@ float CardsArt::backgroundAge(std::uint64_t titleId, float now) const {
 }
 
 void CardsArt::request(nxui::ThreadPool& pool, std::uint64_t titleId, int kind) {
-    if (m_jobs.size() >= 16) return; // rapid navigation cannot grow the worker queue indefinitely
+    // Rapid navigation cannot grow the worker queue indefinitely; cancelled
+    // decodes still finishing count against the same budget.
+    if (m_jobs.size() + m_retired.size() >= 16) return;
     auto& slot = (kind == 2 ? m_logos : kind == 1 ? m_backgrounds : m_covers)[titleId];
     // A snapshot cover is decoded again from its source, and replaced.
     if ((slot.tex && slot.fresh) || slot.requested || slot.missing)
@@ -126,6 +128,15 @@ void CardsArt::request(nxui::ThreadPool& pool, std::uint64_t titleId, int kind) 
 void CardsArt::pump(nxui::GpuDevice& gpu, nxui::Renderer& ren, nxui::ThreadPool& pool,
                     const std::vector<std::uint64_t>& wanted, const std::vector<std::uint64_t>& keep,
                     std::uint64_t focused, float now, int uploadBudget) {
+    // Cancelled decodes are collected once they end, never waited for here.
+    for (auto it = m_retired.begin(); it != m_retired.end();) {
+        if (!it->valid() || it->wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+            try { if (it->valid()) it->get(); } catch (...) {}
+            it = m_retired.erase(it);
+        } else {
+            ++it;
+        }
+    }
     // Uploads. A future is consumed only when its result is uploaded now.
     for (auto it = m_jobs.begin(); it != m_jobs.end();) {
         if (!it->future.valid() ||
@@ -258,6 +269,23 @@ void CardsArt::releaseAll() {
     for (auto& j : m_jobs)
         if (j.future.valid())
             j.future.wait();
+    for (auto& f : m_retired)
+        if (f.valid())
+            f.wait();
+    m_jobs.clear();
+    m_retired.clear();
+    m_covers.clear();
+    m_backgrounds.clear();
+    m_logos.clear();
+}
+
+void CardsArt::invalidate() {
+    for (auto& j : m_jobs) {
+        if (j.cancelled)
+            j.cancelled->store(true);
+        if (j.future.valid())
+            m_retired.push_back(std::move(j.future));
+    }
     m_jobs.clear();
     m_covers.clear();
     m_backgrounds.clear();

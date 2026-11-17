@@ -51,7 +51,13 @@ public:
 
     void setConfig(const AppConfig* config) { m_config = config; }
     const nxui::Texture* logo(std::uint64_t titleId) const;
+    /// Teardown: cancels and waits for every decode, then drops all textures.
     void releaseAll();
+    /// Live refresh (art downloaded, art settings changed): drops all textures
+    /// and cancels the decodes without waiting. A decode already running keeps
+    /// its own buffers and is collected by pump() once it ends; its result is
+    /// discarded.
+    void invalidate();
 
     /// Path helpers (also used for "has a cover" decisions). Empty if none.
     static std::string coverPath(std::uint64_t titleId);
@@ -83,6 +89,7 @@ private:
     std::unordered_map<std::uint64_t, Slot> m_logos;
     const AppConfig* m_config = nullptr;
     std::vector<Job> m_jobs;
+    std::vector<std::future<void>> m_retired; // cancelled by invalidate(), not yet finished
 };
 
 } // namespace cards

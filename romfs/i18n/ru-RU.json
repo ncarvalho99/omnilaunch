@@ -808,7 +808,9 @@
     "mii_desc": "Создание и изменение Mii",
     "internet_desc": "Wi-Fi и сетевые настройки консоли",
     "users_desc": "Выбрать или добавить пользователя",
-    "settings_desc": "Настройки OmniLaunch"
+    "settings_desc": "Настройки OmniLaunch",
+    "launch_failed_title": "Не удалось открыть программу",
+    "launch_failed_body": "Не удалось запустить homebrew. Проверьте, что atmosphere/hbl.nsp есть на SD-карте и на карте есть свободное место, и попробуйте снова."
   },
   "widget": {
     "title": "Виджет",

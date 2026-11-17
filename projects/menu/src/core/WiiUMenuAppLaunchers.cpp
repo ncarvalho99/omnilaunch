@@ -116,6 +116,25 @@ void WiiUMenuApp::startLauncherHomebrewScan() {
     }
 }
 
+// A homebrew launch that failed before the hand-off (loader or HBL missing,
+// card write failed, launch command refused) leaves the menu up: say so.
+void WiiUMenuApp::showHomebrewLaunchFailed() {
+#ifdef SWITCHU_MENU
+    if (!m_dialog)
+        return;
+    auto& i18n = nxui::I18n::instance();
+    m_audio.playSfx(Sfx::ModalShow);
+    m_dialogReturnFocus = focusManager().current();
+    m_dialog->show(i18n.tr("launcher.launch_failed_title", "Could not open the software"),
+                   i18n.tr("launcher.launch_failed_body",
+                           "The homebrew could not be started. Check that atmosphere/hbl.nsp is on the "
+                           "SD card and that the card has free space, then try again."),
+                   {{i18n.tr("button.ok", "OK"), []() {}, true}});
+    raiseOverlay(m_dialog);
+    focusManager().setFocus(m_dialog.get());
+#endif
+}
+
 void WiiUMenuApp::launchHomebrewNro(const std::string& path, const std::string& title) {
 #ifdef SWITCHU_MENU
     auto& i18n = nxui::I18n::instance();
@@ -138,7 +157,8 @@ void WiiUMenuApp::launchHomebrewNro(const std::string& path, const std::string& 
     DebugLog::log("[launcher-tile] homebrew -> %s", path.c_str());
     if (m_launcherScreen) m_launcherScreen->hide();
     // Same path as the BrowseNX button: the NRO host borrows a game.
-    m_launcher.launchNro(path, 0, {}, true);
+    if (!m_launcher.launchNro(path, 0, {}, true))
+        showHomebrewLaunchFailed();
 #else
     (void)path;
     (void)title;

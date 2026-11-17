@@ -477,6 +477,11 @@ private:
     std::atomic<int> m_saveAllTotal{0};
     std::atomic<int> m_saveAllSaved{0};
     std::atomic<bool> m_saveAllStop{false};
+    // Cancels browse/apply/single-title art requests (quiesce, onDestroy)
+    // before they are joined; see artCancelToken().
+    std::shared_ptr<std::atomic<bool>> m_artCancel;
+    std::shared_ptr<std::atomic<bool>> artCancelToken();
+    void cancelArtJobs();
     void pollArtJobs();
     Details m_details;
     std::uint64_t m_detailsWanted = 0;

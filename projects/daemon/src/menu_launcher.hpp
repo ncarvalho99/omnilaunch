@@ -38,6 +38,10 @@ struct MenuLaunchTrace {
     uint64_t holderStartCallTick = 0;
     uint64_t holderStartEndTick = 0;
     uint64_t menuReadyReceiveTick = 0;
+    // A live frontend switch re-sends MenuReady/MenuFirstFrame inside the same
+    // menu process. Those are timed from the switch, not from this launch.
+    uint64_t firstFrameTick = 0;
+    uint64_t switchCreateStartTick = 0;
 };
 
 static MenuLaunchTrace g_launchTrace{};
@@ -47,6 +51,8 @@ inline uint64_t lastFinishedTick() { return g_lastFinishedTick; }
 inline uint32_t startSerial() { return g_startSerial; }
 inline bool closingSeenAtExit() { return g_closingSeenAtExit; }
 inline void markMenuReady(uint64_t tick) { g_launchTrace.menuReadyReceiveTick = tick; }
+inline void markFirstFrame(uint64_t tick) { g_launchTrace.firstFrameTick = tick; }
+inline void markSwitchCreateStart(uint64_t tick) { g_launchTrace.switchCreateStartTick = tick; }
 
 inline bool hasHolder() {
     return g_holderCreated;

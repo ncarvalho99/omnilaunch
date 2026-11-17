@@ -1130,7 +1130,7 @@ void CardsHomeActivity::openCardOptions() {
                     v.erase(std::remove(v.begin(), v.end(), titleId), v.end());
                 else
                     v.push_back(titleId);
-                m_art.releaseAll();
+                m_art.invalidate();
                 saveConfig("cards icon image");
             });
     } else {
@@ -2828,7 +2828,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
             auto& c = m_core.config().cards;
             c.boxArt = !c.boxArt;
             saveConfig("cards boxArt");
-            m_art.releaseAll();
+            m_art.invalidate();
         };
         s.rows.push_back(std::move(cardPics));
 
@@ -2842,7 +2842,7 @@ std::vector<CardsSheet::Section> CardsHomeActivity::settingsSections() {
             auto& c = m_core.config().cards;
             c.titlePics = !c.titlePics;
             saveConfig("cards titlePics");
-            m_art.releaseAll();
+            m_art.invalidate();
         };
         titlePics.detail = i18n.tr("cards.art_title_pictures_desc", "Show game logo on background instead of text");
         s.rows.push_back(std::move(titlePics));
@@ -3045,7 +3045,7 @@ void CardsHomeActivity::openArtSheet(std::uint64_t titleId) {
     card.onChange = [this, titleId, contains, set](int) {
         auto& v = m_core.config().cards.iconTitles;
         set(v, titleId, !contains(v, titleId));
-        m_art.releaseAll();
+        m_art.invalidate();
         saveConfig("cards card image");
     };
     Row background;
@@ -3063,7 +3063,7 @@ void CardsHomeActivity::openArtSheet(std::uint64_t titleId) {
         const int next = (current + d + 3) % 3;
         set(c.plainBackgroundTitles, titleId, next == 2);
         set(c.coverBackgroundTitles, titleId, next == 1);
-        m_art.releaseAll();
+        m_art.invalidate();
         saveConfig("cards background image");
     };
     Row title;
@@ -3076,7 +3076,7 @@ void CardsHomeActivity::openArtSheet(std::uint64_t titleId) {
     title.onChange = [this, titleId, contains, set](int) {
         auto& v = m_core.config().cards.logoTitles;
         set(v, titleId, !contains(v, titleId));
-        m_art.releaseAll();
+        m_art.invalidate();
         saveConfig("cards title image");
     };
 
@@ -3327,7 +3327,9 @@ void CardsHomeActivity::openTitlePicker(std::uint64_t titleId, const std::string
     const std::string apiKey = m_core.config().steamGridDbApiKey;
     auto promise = std::make_shared<std::promise<SteamGridDbManager::BrowseResult>>();
     m_browseFuture = promise->get_future();
-    m_core.threadPool().submit([this, titleId, title, q, kind, apiKey, promise]() {
+    auto cancel = artCancelToken();
+    m_core.threadPool().submit([this, titleId, title, q, kind, apiKey, promise, cancel]() {
+        themeshop::http::ThreadCancelGuard guard(cancel.get());
         try {
             promise->set_value(CardsArtSources::browseAll(m_core.net(), apiKey,
                                                           titleId, title, q, kind));
@@ -3354,9 +3356,12 @@ void CardsHomeActivity::applyPickerCandidate(const SteamGridDbManager::BrowseRes
     showToast(tr.tr("cards.art_downloading", "Downloading artwork..."));
     auto promise = std::make_shared<std::promise<bool>>();
     m_applyFuture = promise->get_future();
-    m_core.threadPool().submit([this, browse, candidate, promise]() {
+    auto cancel = artCancelToken();
+    m_core.threadPool().submit([this, browse, candidate, promise, cancel]() {
+        themeshop::http::ThreadCancelGuard guard(cancel.get());
         try {
-            promise->set_value(CardsArtSources::applyCandidate(m_core.net(), browse, candidate));
+            promise->set_value(CardsArtSources::applyCandidate(m_core.net(), browse, candidate,
+                                                               cancel.get()));
         } catch (...) {
             promise->set_exception(std::current_exception());
         }
@@ -3384,11 +3389,13 @@ void CardsHomeActivity::downloadSingleTitleArt(std::uint64_t titleId, const std:
 
     auto promise = std::make_shared<std::promise<CardsArtSources::SingleTitleResult>>();
     m_singleArtFuture = promise->get_future();
-    m_core.threadPool().submit([this, titleId, title, apiKey, boxArt, titlePics, promise]() {
+    auto cancel = artCancelToken();
+    m_core.threadPool().submit([this, titleId, title, apiKey, boxArt, titlePics, promise, cancel]() {
+        themeshop::http::ThreadCancelGuard guard(cancel.get());
         try {
             promise->set_value(CardsArtSources::downloadTitleArt(m_core.net(), apiKey,
                                                                  titleId, title, boxArt,
-                                                                 titlePics));
+                                                                 titlePics, false, cancel.get()));
         } catch (...) {
             promise->set_exception(std::current_exception());
         }
@@ -3416,6 +3423,7 @@ void CardsHomeActivity::startSaveAll(bool forceAll) {
     auto promise = std::make_shared<std::promise<int>>();
     m_saveAllFuture = promise->get_future();
     m_core.threadPool().submit([this, apps, forceAll, apiKey, boxArt, titlePics, promise]() {
+        themeshop::http::ThreadCancelGuard guard(&m_saveAllStop);
         try {
             CardsArtSources::runSaveAll(m_core.net(), apiKey,
                                         apps, boxArt, titlePics, forceAll,
@@ -3426,6 +3434,21 @@ void CardsHomeActivity::startSaveAll(bool forceAll) {
             promise->set_exception(std::current_exception());
         }
     });
+}
+
+// One flag per batch of art jobs: cancelArtJobs() sets it, and the next job
+// after that gets a fresh one, so work started after waking from sleep is not
+// born cancelled.
+std::shared_ptr<std::atomic<bool>> CardsHomeActivity::artCancelToken() {
+    if (!m_artCancel || m_artCancel->load(std::memory_order_acquire))
+        m_artCancel = std::make_shared<std::atomic<bool>>(false);
+    return m_artCancel;
+}
+
+void CardsHomeActivity::cancelArtJobs() {
+    if (m_artCancel)
+        m_artCancel->store(true, std::memory_order_release);
+    m_saveAllStop.store(true);
 }
 
 bool CardsHomeActivity::saveAllRunning() const {
@@ -3456,7 +3479,7 @@ void CardsHomeActivity::pollArtJobs() {
             ok = m_applyFuture.get();
         } catch (...) {
         }
-        m_art.releaseAll();
+        m_art.invalidate();
         showToast(ok ? tr.tr("cards.art_downloaded", "Artwork updated")
                      : tr.tr("cards.art_download_failed", "Could not download artwork"));
     }
@@ -3467,7 +3490,7 @@ void CardsHomeActivity::pollArtJobs() {
             res = m_singleArtFuture.get();
         } catch (...) {
         }
-        m_art.releaseAll();
+        m_art.invalidate();
         if (res.cover || res.hero || res.logo) {
             showToast(tr.tr("cards.art_downloaded", "Artwork updated"));
         } else {
@@ -3481,7 +3504,7 @@ void CardsHomeActivity::pollArtJobs() {
             savedCount = m_saveAllFuture.get();
         } catch (...) {
         }
-        m_art.releaseAll();
+        m_art.invalidate();
         if (savedCount > 0) {
             showToast(tr.tr("cards.art_save_all_done", "All pictures saved"));
         } else {

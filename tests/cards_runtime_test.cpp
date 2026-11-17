@@ -99,6 +99,24 @@ int main() {
     assert(art.cover(item.titleId)==cover);
     art.releaseAll();
     assert(!art.cover(item.titleId));
+    // A live refresh (invalidate) must not wait for a decode stuck behind a
+    // busy worker; the cancelled job is collected later by pump().
+    {
+        std::promise<void> busyRelease;
+        auto busyGate = busyRelease.get_future().share();
+        auto busy = pool.submit([busyGate] { busyGate.wait(); });
+        art.pump(gpu,ren,pool,{4242},{4242},0,500.f,1);
+        auto refresh=std::async(std::launch::async,[&] { art.invalidate(); });
+        const bool quick=refresh.wait_for(std::chrono::milliseconds(200))==std::future_status::ready;
+        busyRelease.set_value();
+        refresh.get();
+        busy.get();
+        assert(quick);
+        pool.waitForIdle();
+        art.pump(gpu,ren,pool,{}, {},0,501.f,1);
+        assert(!art.cover(4242));
+        art.releaseAll();
+    }
     pool.shutdown();
     std::cout << "production Cards page retention, budget, invalidation PASS\n";
 }

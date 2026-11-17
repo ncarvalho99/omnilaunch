@@ -34,6 +34,8 @@ g++ -std=c++20 -Wall -Wextra -pthread -Iprojects/menu/src -idirafter lib/nxui/in
 /tmp/home_status_test
 g++ -std=c++20 -Wall -Wextra -pthread -DSWITCHU_MENU -Itests/cards_runtime_stubs -Iprojects/menu/src -Iprojects/common/include -I"${J%/nlohmann/json.hpp}" -idirafter lib/nxui/include tests/cards_runtime_test.cpp projects/menu/src/cards/CardsCatalog.cpp projects/menu/src/cards/CardsArt.cpp projects/menu/src/cards/CardsSnapshot.cpp projects/menu/src/cards/CardsPages.cpp tests/cards_sheet_stubs/nxui_i18n_stub.cpp -o /tmp/cards_runtime_test
 (cd /tmp && ./cards_runtime_test)
+g++ -std=c++20 -Wall -Wextra -Iprojects/common/include tests/legacy_migration_test.cpp -o /tmp/legacy_migration_test
+/tmp/legacy_migration_test
 
 '@
 $script = $script.Replace("`r", "")
