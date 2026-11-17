@@ -1043,6 +1043,7 @@ private:
     float m_activityPrefetchWait = 0.f;
     void startActivityPrefetch();
     int  m_deferredInitialAssetFrames = 0;
+    bool m_deferredSidebarAssets = false;
     std::string m_deferredVideoWallpaperPath;
     int  m_deferredVideoWallpaperFrames = 0;
     bool m_mtpStarted = false;

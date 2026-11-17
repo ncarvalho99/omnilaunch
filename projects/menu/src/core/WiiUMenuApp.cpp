@@ -8327,20 +8327,27 @@ void WiiUMenuApp::onUpdate(float dt) {
     if (m_deferredInitialAssetFrames > 0) {
         --m_deferredInitialAssetFrames;
         if (m_deferredInitialAssetFrames == 0) {
-            DebugLog::log("[init] deferred initial icon/sidebar uploads start");
+            // Icons this frame, the sidebar the next one: together they held
+            // the frame right after the first one for 145-205 ms.
+            DebugLog::log("[init] deferred initial icon uploads start");
             pumpIconStreamer();
-            m_sidebar.reloadAssets(app().gpu(), app().renderer(), SD_ASSETS,
-                                   resolveThemeAssetPath(m_effectivePreset,
-                                                         m_effectivePreset.icons.basePath));
-            if (m_appLayoutMode == AppLayoutMode::Xmb) {
-                updateGridXmbContext();
-            } else if (m_appLayoutMode == AppLayoutMode::List) {
-                updateGridListContext();
-            } else if (m_appLayoutMode == AppLayoutMode::Metro) {
-                updateGridMetroContext();
-            }
-            DebugLog::log("[init] deferred initial icon/sidebar uploads done");
+            switchu::menu::frame_probe::mark("deferred-icons");
+            m_deferredSidebarAssets = true;
         }
+    } else if (m_deferredSidebarAssets) {
+        m_deferredSidebarAssets = false;
+        m_sidebar.reloadAssets(app().gpu(), app().renderer(), SD_ASSETS,
+                               resolveThemeAssetPath(m_effectivePreset,
+                                                     m_effectivePreset.icons.basePath));
+        switchu::menu::frame_probe::mark("deferred-sidebar");
+        if (m_appLayoutMode == AppLayoutMode::Xmb) {
+            updateGridXmbContext();
+        } else if (m_appLayoutMode == AppLayoutMode::List) {
+            updateGridListContext();
+        } else if (m_appLayoutMode == AppLayoutMode::Metro) {
+            updateGridMetroContext();
+        }
+        DebugLog::log("[init] deferred initial sidebar uploads done");
     }
 
     if (m_deferredBluetoothInitFrames > 0) {
