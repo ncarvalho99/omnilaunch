@@ -1,5 +1,6 @@
 #include "WaraWaraBackground.hpp"
 #include "core/DebugLog.hpp"
+#include "core/BackgroundThread.hpp"
 #include <nxui/Appearance.hpp>
 #include <algorithm>
 #include <chrono>
@@ -226,13 +227,15 @@ void WaraWaraBackground::prefetchStill(const std::string& path) {
         // block on the decode nor keep 8 MB of pixels for the whole process.
         auto promise = std::make_shared<std::promise<nxui::DecodedImage>>();
         std::future<nxui::DecodedImage> future = promise->get_future();
-        std::thread([promise, path]() {
+        // Never std::thread::detach(): libnx has no pthread_detach, it throws,
+        // the joinable temporary then terminates the menu (crash 2168-0002).
+        runInBackground([promise, path]() {
 #ifdef __SWITCH__
             // Off core 0, where the render thread runs.
             svcSetThreadCoreMask(CUR_THREAD_HANDLE, 2, UINT64_C(1) << 2);
 #endif
             promise->set_value(nxui::Texture::decodeFile(path, 0));
-        }).detach();
+        });
         s.future = std::move(future);
         s.path = path;
         DebugLog::log("[background] still prefetch started: %s", path.c_str());
