@@ -409,11 +409,6 @@ int main(int argc, char* argv[]) {
         if (!homeCore.config().safeMode() && homeCore.config().tutorialCompleted
             && homeCore.config().homeStyle == home::HomeStyle::Classic)
             WaraWaraBackground::prefetchStill(WaraWaraBackground::stillHint());
-        // Classic's icon snapshot (~140 ms of reading): loadResources() waited
-        // for it at the catalogue step.
-        if (!homeCore.config().safeMode() && homeCore.config().tutorialCompleted
-            && homeCore.config().homeStyle == home::HomeStyle::Classic)
-            IconStreamer::prefetchSnapshot();
         iconpack::setActive(homeCore.config().iconPack);
         // Classic's sidebar icons, decoded while either frontend starts, so
         // the first switch to Classic does not wait on the card for them.

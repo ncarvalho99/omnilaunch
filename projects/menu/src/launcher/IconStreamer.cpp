@@ -11,9 +11,6 @@
 #include <mutex>
 #include <system_error>
 #include <unordered_map>
-#ifdef __SWITCH__
-#include <switch.h>
-#endif
 
 namespace {
 
@@ -627,59 +624,14 @@ void IconStreamer::startBurst(float seconds) {
         std::chrono::milliseconds(static_cast<int>(seconds * 1000.f));
 }
 
-namespace {
-// Main thread only: the read started by IconStreamer::prefetchSnapshot().
-struct SnapshotPrefetch {
-    std::shared_ptr<std::vector<IconStreamer::SnapshotEntry>> result;
-    std::future<void> future;
-};
-SnapshotPrefetch& snapshotPrefetch() {
-    static SnapshotPrefetch s;
-    return s;
-}
-} // namespace
-
-void IconStreamer::prefetchSnapshot() {
-    auto& s = snapshotPrefetch();
-    if (s.future.valid())
-        return;
-    auto result = std::make_shared<std::vector<SnapshotEntry>>();
-    try {
-        s.future = std::async(std::launch::async, [result]() {
-#ifdef __SWITCH__
-            // Off core 0, where the render thread runs.
-            svcSetThreadCoreMask(CUR_THREAD_HANDLE, 1, UINT64_C(1) << 1);
-#endif
-            const auto start = std::chrono::steady_clock::now();
-            *result = readSnapshot();
-            DebugLog::log("[streamer] snapshot read (prefetch): %zu icon(s) in %lldms", result->size(),
-                          static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
-                              std::chrono::steady_clock::now() - start).count()));
-        });
-        s.result = std::move(result);
-    } catch (...) {
-        s = SnapshotPrefetch{};
-    }
-}
-
 void IconStreamer::beginSnapshotLoad() {
-    if (m_snapLoadFuture.valid())
-        return;
-    // Normal decodes wait for it at most this long; it is one sequential read
-    // of a few MiB queued ahead of the catalogue load.
-    m_snapLoadDeadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(600);
-    if (auto& pre = snapshotPrefetch(); pre.future.valid()) {
-        // Already reading since main(), on its own thread: the pool's two
-        // workers stay free for the catalogue load.
-        m_snapLoadResult = std::move(pre.result);
-        m_snapLoadFuture = std::move(pre.future);
-        pre = SnapshotPrefetch{};
-        return;
-    }
-    if (!m_threadPool)
+    if (!m_threadPool || m_snapLoadFuture.valid())
         return;
     auto result = std::make_shared<std::vector<SnapshotEntry>>();
     m_snapLoadResult = result;
+    // Normal decodes wait for it at most this long; it is one sequential read
+    // of a few MiB queued ahead of the catalogue load.
+    m_snapLoadDeadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(600);
     try {
         m_snapLoadFuture = m_threadPool->submit([result]() {
             const auto start = std::chrono::steady_clock::now();

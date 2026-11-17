@@ -77,9 +77,6 @@ public:
     // in the first frames, then still decodes each one normally and replaces
     // any that changed. Call once, before the first page is pumped.
     void beginSnapshotLoad();
-    // Starts that read in main(), on its own thread, before any frontend
-    // exists; the next beginSnapshotLoad() takes it over. Main thread only.
-    static void prefetchSnapshot();
     // True while a complete page waits a moment before it is saved; the owner
     // keeps pumping onPageChanged until this clears.
     bool snapshotPending() const { return m_snapSettling; }
