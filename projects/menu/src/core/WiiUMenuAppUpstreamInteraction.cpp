@@ -1708,7 +1708,6 @@ void WiiUMenuApp::handleSystemAction(SysAction a) {
 #if 1 // Upstream 1.2 cursor follows dynamic layout and route transitions.
 void WiiUMenuApp::updateCursor() {
     if (m_lockScreen.isLocked() ||
-        (m_plazaScreen && m_plazaScreen->isActive()) ||
         (m_gameGallery && m_gameGallery->isActive()) ||
         (m_gameMods && m_gameMods->isActive()) ||
         (m_gameDetails && m_gameDetails->isActive()) ||

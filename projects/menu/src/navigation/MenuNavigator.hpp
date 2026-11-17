@@ -12,7 +12,6 @@ enum class Route : std::uint8_t {
     FolderOptions,
     ControllerTest,
     ActivityLog,
-    WaraWaraPlaza,
     AutoTheme,
 };
 

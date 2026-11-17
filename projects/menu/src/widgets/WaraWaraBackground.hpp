@@ -6,7 +6,6 @@
 #include <nxui/core/ThreadPool.hpp>
 #include <nxui/core/Types.hpp>
 #include <nxui/core/Font.hpp>
-#include "warawara/MiiFigure.hpp"
 #include "video/VideoPlayer.hpp"
 #include <atomic>
 #include <cstdint>
@@ -144,12 +143,6 @@ public:
         m_frameSpeedScale = v < 0.f ? 0.f : (v > 3.f ? 3.f : v);
     }
 
-    // Ambient Mii Support
-    void setAmbientAvatars(const std::vector<warawara::MiiAvatarData>& avatars,
-                           nxui::Font* font = nullptr,
-                           nxui::Font* smallFont = nullptr);
-    void setAmbientMiisEnabled(bool enabled) { m_ambientMiisEnabled = enabled; }
-    bool ambientMiisEnabled() const { return m_ambientMiisEnabled; }
 
 protected:
     void onUpdate(float dt) override;
@@ -235,10 +228,6 @@ private:
     size_t m_pendingFrameStride = 1;
     size_t m_pendingFrameSourceCount = 0;
 
-    bool m_ambientMiisEnabled = false;
-    std::vector<std::unique_ptr<warawara::MiiFigure>> m_ambientMiis;
-    nxui::Font* m_ambientFont = nullptr;
-    nxui::Font* m_ambientSmallFont = nullptr;
     bool m_motionPaused = false;
 };
 

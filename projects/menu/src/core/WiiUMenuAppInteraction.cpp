@@ -92,7 +92,6 @@ void WiiUMenuApp::raiseOverlay(const std::shared_ptr<nxui::Widget>& overlay) {
 
 bool WiiUMenuApp::isCurrentFocusableWidget(nxui::Widget* w) const {
     if (!w) return false;
-    if (m_plazaScreen && m_plazaScreen.get() == w) return false;
     // m_dialog stayed focused-but-unchecked here: the homebrew "Mark as game
     // port" button has closeOnPress=false, so the dialog is still the current
     // focus when its handler opens the text-entry confirm step. Cancelling
@@ -220,8 +219,6 @@ void WiiUMenuApp::closeActiveOverlays(bool preserveDialog) {
         m_gameDetails->hide();
     if (m_activityLog && m_activityLog->isActive())
         m_activityLog->hide();
-    if (m_plazaScreen && m_plazaScreen->isActive())
-        closeWaraWaraPlaza();
     if (m_steamGridDbPicker && m_steamGridDbPicker->isActive())
         m_steamGridDbPicker->hide();
     if (m_mediaCenterScreen && m_mediaCenterScreen->isActive())
@@ -276,7 +273,6 @@ nxui::Widget* WiiUMenuApp::focusRoot() {
     if (m_gameGallery && m_gameGallery->isActive()) return m_gameGallery.get();
     if (m_gameDetails && m_gameDetails->isActive()) return m_gameDetails.get();
     if (m_activityLog && m_activityLog->isActive()) return m_activityLog.get();
-    if (m_plazaScreen && m_plazaScreen->isActive()) return m_plazaScreen.get();
     // Opened from the Theme Shop (PoloNX #106), so it has to win over it.
     if (m_autoThemeScreen && m_autoThemeScreen->isActive()) return m_autoThemeScreen.get();
     if (m_themeShop && m_themeShop->isActive()) return m_themeShop.get();

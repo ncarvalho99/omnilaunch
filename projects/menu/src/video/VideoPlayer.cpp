@@ -340,7 +340,7 @@ bool VideoPlayer::openInternal(const std::string& path, bool loop, bool audio) {
 
     // The container open, stream probe and decoder setup read the card and
     // took up to 1.6 s of the render thread on a return from a game (it showed
-    // as the `fonts-list-plaza` step). They now run at the start of the decode
+    // as the `fonts-list` step). They now run at the start of the decode
     // worker; until its first frame the still/poster stays on screen, and a
     // file it refuses is reported through m_failed exactly like a decoder that
     // gives up, so tick() closes it and remembers the path.

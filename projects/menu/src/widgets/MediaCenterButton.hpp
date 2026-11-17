@@ -12,7 +12,7 @@
 namespace widgets {
 
 /// Top header button widget for opening the SwitchU Multimedia Center.
-/// Sits beside the WaraWara Plaza screen swap button.
+/// Sits in the top centre cluster beside the browser button.
 class MediaCenterButton : public nxui::GlassWidget {
 public:
     MediaCenterButton();

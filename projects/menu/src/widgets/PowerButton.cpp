@@ -30,7 +30,7 @@ void PowerButton::onRender(nxui::Renderer& ren) {
         }
     }
 
-    // Same Metro tile chrome as the neighbouring Media Center / Plaza buttons.
+    // Same Metro tile chrome as the neighbouring Media Center / browser buttons.
     ren.drawRoundedRect(m_rect, nxui::Color(0.f, 0.47f, 0.84f, 0.90f * alpha), 4.f);
 
     if (m_iconTex.valid()) {

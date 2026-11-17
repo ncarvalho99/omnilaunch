@@ -54,11 +54,6 @@
 #include "cheats/GameCheatsScreen.hpp"
 #include "activity/ActivityLogScreen.hpp"
 #include "activity/ActivityLogManager.hpp"
-#include "warawara/MiiAvatarManager.hpp"
-#include "warawara/PlazaDialogueEngine.hpp"
-#include "warawara/AnimalesePlayer.hpp"
-#include "warawara/WaraWaraPlazaScreen.hpp"
-#include "warawara/PlazaScreenSwapButton.hpp"
 #include "widgets/MediaCenterButton.hpp"
 #include "widgets/BrowserButton.hpp"
 #include "home/AppFetch.hpp"
@@ -140,7 +135,6 @@ private:
 
     void loadResources();
     void loadStaticTextures();
-    void ensureWaraWaraServices();
     void ensureXmbTextures();
     void applyIconPack(const std::string& packId);
     void ensureMetroTextures();
@@ -515,10 +509,6 @@ private:
     void createControllerTest();
     void createGameGallery();
     void createGameDetails();
-    void createWaraWaraPlaza();
-    void openWaraWaraPlaza();
-    void closeWaraWaraPlaza();
-    void toggleWaraWaraPlaza();
     void toggleMediaCenter();
     // BrowseNX beside the music button: first press downloads it (progress
     // dialog with Cancel), later presses open it.
@@ -551,7 +541,6 @@ private:
     home::AppFetch m_launcherFetch;
     bool m_launcherShowsHomebrew = false;
     void syncMediaCenterState();
-    void refreshPlazaCommunities();
     void reloadThemePresets(bool forceFullScan = false);
     // rescanPresets=false reuses the preset list when a full scan already ran
     // (opening the shop); installs, deletes and applies keep the full rescan.
@@ -632,12 +621,6 @@ private:
     bool isMetroLayout() const {
         return m_appLayoutMode == AppLayoutMode::Metro;
     }
-    warawara::MiiAvatarManager& miiAvatarManager() { return m_miiAvatarManager; }
-    const warawara::MiiAvatarManager& miiAvatarManager() const { return m_miiAvatarManager; }
-    warawara::PlazaDialogueEngine& plazaDialogueEngine() { return m_plazaDialogueEngine; }
-    const warawara::PlazaDialogueEngine& plazaDialogueEngine() const { return m_plazaDialogueEngine; }
-    warawara::AnimalesePlayer& animalesePlayer() { return m_animalesePlayer; }
-    const warawara::AnimalesePlayer& animalesePlayer() const { return m_animalesePlayer; }
 
 #ifdef SWITCHU_MENU
     void refreshAppList();
@@ -729,20 +712,13 @@ private:
     std::shared_ptr<TextEntryScreen>      m_textEntry;
     std::shared_ptr<ActivityLogScreen>    m_activityLog;
     switchu::activity::ActivityLogManager m_activityLogManager;
-    warawara::MiiAvatarManager            m_miiAvatarManager;
-    warawara::PlazaDialogueEngine         m_plazaDialogueEngine;
-    warawara::AnimalesePlayer             m_animalesePlayer;
-    std::shared_ptr<warawara::WaraWaraPlazaScreen>   m_plazaScreen;
     std::shared_ptr<nxui::Box>                       m_topCenterCluster;
-    std::shared_ptr<warawara::PlazaScreenSwapButton> m_screenSwapButton;
     std::shared_ptr<widgets::MediaCenterButton>      m_mediaCenterButton;
     std::shared_ptr<widgets::BrowserButton>          m_browserButton;
     std::shared_ptr<widgets::PowerButton>            m_powerButton;
     std::function<void()>                            m_showPowerDialog;
     std::shared_ptr<media::MusicPlayerOverlay>       m_mediaCenterScreen; // the shared music player
-    int m_plazaIconPumpIndex = 0;
     nxui::Widget* m_activityLogReturnFocus = nullptr;
-    nxui::Widget* m_plazaReturnFocus = nullptr;
     nxui::Widget* m_mediaCenterReturnFocus = nullptr;
 
     nxui::Texture m_gameCardTex;
@@ -922,7 +898,6 @@ private:
         std::unique_ptr<nxui::Texture> icon;
     };
     std::unordered_map<std::uint64_t, GameArtworkTextures> m_gameArtwork;
-    std::unordered_map<std::uint64_t, nxui::Texture> m_plazaCommunityTextures;
     struct GameArtworkDecodeState {
         std::uint64_t titleId = 0;
         steamgriddb::artwork::DecodedImage hero;

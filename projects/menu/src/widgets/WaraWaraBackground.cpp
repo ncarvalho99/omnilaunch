@@ -680,12 +680,6 @@ void WaraWaraBackground::onUpdate(float dt) {
         }
         s.rotation += s.rotSpeed * dt;
     }
-
-    if (m_ambientMiisEnabled && !m_ambientMiis.empty()) {
-        for (auto& mii : m_ambientMiis) {
-            mii->update(dt);
-        }
-    }
 }
 
 nxui::Rect WaraWaraBackground::backgroundImageRect() const {
@@ -813,19 +807,9 @@ void WaraWaraBackground::renderLayer(nxui::Renderer& ren, bool intoOffscreen) {
             drawShapeWithSymmetry(ren, s);
     }
 
-    if (m_ambientMiisEnabled && !m_ambientMiis.empty()) {
-        const nxui::Renderer::DrawTagScope tag{ren, "bg.ambientMii"};
-        for (const auto& mii : m_ambientMiis) {
-            mii->render(ren, m_ambientFont, m_ambientSmallFont);
-        }
-    }
-
-    // The background owns the shape field and the ambient Miis, so it reports
-    // those two counts; the Plaza screen reports its own population and does
-    // not overwrite them.
+    // The background owns the shape field, so it reports that count.
     if (ren.drawJournalEnabled())
-        ren.setBackgroundCounts((uint32_t)m_ambientMiis.size(),
-                                (uint32_t)m_shapes.size());
+        ren.setBackgroundCounts(0, (uint32_t)m_shapes.size());
 
     ren.flush();
 }
@@ -902,46 +886,5 @@ void WaraWaraBackground::drawRoundedShape(nxui::Renderer& ren, const Shape& s, c
         ren.drawRoundedRect(nxui::Rect{s.pos.x - h, s.pos.y - h, h * 2.f, h * 2.f}, c, radius);
         break;
     }
-    }
-}
-
-void WaraWaraBackground::setAmbientAvatars(const std::vector<warawara::MiiAvatarData>& avatars,
-                                          nxui::Font* font,
-                                          nxui::Font* smallFont) {
-    m_ambientFont = font;
-    m_ambientSmallFont = smallFont;
-    m_ambientMiis.clear();
-
-    if (avatars.empty()) {
-        return;
-    }
-
-    // Spawn 6 roaming ambient Miis behind the main grid
-    const size_t count = std::min<size_t>(8, std::max<size_t>(4, avatars.size()));
-    m_ambientMiis.reserve(count);
-
-    for (size_t i = 0; i < count; ++i) {
-        const auto& av = avatars[i % avatars.size()];
-        auto mii = std::make_unique<warawara::MiiFigure>(av);
-
-        // Place along the lower half of the screen
-        float x = 80.0f + static_cast<float>(i) * (1120.0f / static_cast<float>(count));
-        float y = 520.0f + static_cast<float>(i % 3) * 35.0f;
-        mii->setPosition({x, y});
-
-        // Ambient scale: slightly smaller (0.84f) so they sit gently in the background
-        mii->setScale(0.84f);
-
-        // Gentle ambient shadow and subtle nickname pill
-        auto cfg = mii->config();
-        cfg.wanderBounds = nxui::Rect{60.0f, 490.0f, 1160.0f, 140.0f};
-        cfg.walkSpeed = 38.0f; // Slower, calmer stroll
-        cfg.showNamePill = true;
-        mii->setConfig(cfg);
-
-        mii->setAutonomous(true);
-        mii->idle(1.0f + static_cast<float>(i) * 0.7f);
-
-        m_ambientMiis.push_back(std::move(mii));
     }
 }

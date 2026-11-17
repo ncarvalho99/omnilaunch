@@ -394,7 +394,6 @@ WiiUMenuApp::WiiUMenuApp(home::HomeCore& core)
 #endif
 }
 WiiUMenuApp::~WiiUMenuApp() {
-    m_animalesePlayer.clear();
     rootBox().clearChildren();
 }
 
@@ -1047,7 +1046,6 @@ void WiiUMenuApp::onDestroy() {
     // process-lifetime services finalized by HomeCore (Services/ProcessExit).
     if (m_layoutDirty)
         saveMenuLayout();
-    m_animalesePlayer.clear();
     // Stop only this view's speech; the engine and mixer belong to HomeCore.
     m_accessibility.cancelAnnouncement();
 }
@@ -1582,8 +1580,6 @@ void WiiUMenuApp::wireUserAvatarNavigation() {
             right = m_userAvatarButtons[i + 1].get();
         else if (m_bell)
             right = m_bell.get();
-        else if (m_screenSwapButton)
-            right = m_screenSwapButton.get();
         else if (m_mediaCenterButton)
             right = m_mediaCenterButton.get();
         else if ((carousel || xmb || list) && !m_sidebar.rightButtons().empty())
@@ -1599,9 +1595,7 @@ void WiiUMenuApp::wireUserAvatarNavigation() {
     if (m_bell) {
         nxui::Widget* left = m_userAvatarButtons.empty() ? nullptr : m_userAvatarButtons.back().get();
         nxui::Widget* right = nullptr;
-        if (m_screenSwapButton)
-            right = m_screenSwapButton.get();
-        else if (m_mediaCenterButton)
+        if (m_mediaCenterButton)
             right = m_mediaCenterButton.get();
         else if ((carousel || xmb || list) && !m_sidebar.rightButtons().empty())
             right = m_sidebar.rightButtons().front().get();
@@ -1614,26 +1608,10 @@ void WiiUMenuApp::wireUserAvatarNavigation() {
         m_bell->removeAction(static_cast<uint64_t>(nxui::Button::RStickD));
         m_bell->addDirectionAction(nxui::FocusDirection::DOWN, returnToGrid);
     }
-    if (m_screenSwapButton) {
-        nxui::Widget* left = m_userAvatarButtons.empty() ? nullptr : m_userAvatarButtons.back().get();
-        nxui::Widget* right = nullptr;
-        if (m_mediaCenterButton)
-            right = m_mediaCenterButton.get();
-        else if ((carousel || xmb || list) && !m_sidebar.rightButtons().empty())
-            right = m_sidebar.rightButtons().front().get();
-
-        m_screenSwapButton->setCustomNavigation(nxui::FocusDirection::LEFT, left);
-        m_screenSwapButton->setCustomNavigation(nxui::FocusDirection::RIGHT, right);
-        m_screenSwapButton->setCustomNavigation(nxui::FocusDirection::DOWN, nullptr);
-        m_screenSwapButton->removeAction(static_cast<uint64_t>(nxui::Button::DDown));
-        m_screenSwapButton->removeAction(static_cast<uint64_t>(nxui::Button::LStickD));
-        m_screenSwapButton->removeAction(static_cast<uint64_t>(nxui::Button::RStickD));
-        m_screenSwapButton->addDirectionAction(nxui::FocusDirection::DOWN, returnToGrid);
-    }
     if (m_mediaCenterButton) {
         nxui::Widget* left = nullptr;
-        if (m_screenSwapButton)
-            left = m_screenSwapButton.get();
+        if (m_bell)
+            left = m_bell.get();
         else if (!m_userAvatarButtons.empty())
             left = m_userAvatarButtons.back().get();
 
@@ -2798,8 +2776,6 @@ void WiiUMenuApp::updateGridXmbContext() {
 
     if (!m_userAvatarButtons.empty()) {
         ctx.upTarget = m_userAvatarButtons[m_userAvatarButtons.size() / 2].get();
-    } else if (m_screenSwapButton) {
-        ctx.upTarget = m_screenSwapButton.get();
     } else if (m_mediaCenterButton) {
         ctx.upTarget = m_mediaCenterButton.get();
     }
@@ -2944,10 +2920,10 @@ void WiiUMenuApp::applyMetroPowerButton(bool isMetro) {
         m_grid->setMetroUpTarget(isMetro ? static_cast<nxui::Widget*>(m_browserButton ? static_cast<nxui::Widget*>(m_browserButton.get()) : m_mediaCenterButton.get()) : nullptr);
     if (m_topCenterCluster) {
         if (isMetro) {
-            m_topCenterCluster->setRect({712.f, 18.f, 252.f, 48.f});
+            m_topCenterCluster->setRect({778.f, 18.f, 186.f, 48.f}); // media + browser + power, right edge 964
             m_topCenterCluster->layout();
         } else {
-            m_topCenterCluster->setSize(186.f, 48.f);
+            m_topCenterCluster->setSize(120.f, 48.f); // media + browser
             m_topCenterCluster->layout();
             if (m_topHud) layoutTopHud();
         }
@@ -3356,7 +3332,6 @@ void WiiUMenuApp::applyDisplayModel(GridModel model, std::uint64_t focusId, bool
     if (m_pageIndicator) m_pageIndicator->setVisible(m_appLayoutMode != AppLayoutMode::Xmb && m_appLayoutMode != AppLayoutMode::List && m_appLayoutMode != AppLayoutMode::Cards && !isMetro);
     const bool hidePill = (m_openFolderId == 0) && (m_appLayoutMode == AppLayoutMode::Xmb || m_appLayoutMode == AppLayoutMode::List || m_appLayoutMode == AppLayoutMode::Cards || isMetro);
     if (m_titlePill && hidePill) m_titlePill->setVisible(false);
-    if (m_screenSwapButton) m_screenSwapButton->setMetroStyle(isMetro);
     if (m_mediaCenterButton) m_mediaCenterButton->setMetroStyle(isMetro);
     if (m_browserButton) m_browserButton->setMetroStyle(isMetro);
     applyMetroPowerButton(isMetro);
@@ -5144,11 +5119,9 @@ void WiiUMenuApp::configureDynamicLineNavigation() {
             ? static_cast<nxui::Widget*>(m_browserButton.get())
             : m_mediaCenterButton
             ? static_cast<nxui::Widget*>(m_mediaCenterButton.get())
-            : (m_screenSwapButton
-                ? static_cast<nxui::Widget*>(m_screenSwapButton.get())
-                : (!m_userAvatarButtons.empty()
-                    ? static_cast<nxui::Widget*>(m_userAvatarButtons.back().get())
-                    : nullptr));
+            : (!m_userAvatarButtons.empty()
+                ? static_cast<nxui::Widget*>(m_userAvatarButtons.back().get())
+                : nullptr);
         for (std::size_t i = 0; i < m_sidebar.rightButtons().size(); ++i) {
             auto& btn = m_sidebar.rightButtons()[i];
             if (!btn) continue;
@@ -5231,16 +5204,6 @@ void WiiUMenuApp::setAppLayoutMode(AppLayoutMode mode) {
                                 : 630.f;
         m_titlePill->setTargetY(targetPillY, false);
     }
-    if (m_background)
-        m_background->setAmbientMiisEnabled(
-            m_appLayoutMode != AppLayoutMode::Flow &&
-            m_appLayoutMode != AppLayoutMode::Shelf &&
-            m_appLayoutMode != AppLayoutMode::Deck &&
-            m_appLayoutMode != AppLayoutMode::Cover &&
-            m_appLayoutMode != AppLayoutMode::Cards &&
-            m_appLayoutMode != AppLayoutMode::Xmb &&
-            m_appLayoutMode != AppLayoutMode::List &&
-            m_appLayoutMode != AppLayoutMode::Metro);
     if (m_themeShop)
         m_themeShop->setLayoutModeState(m_appLayoutMode);
 
@@ -5254,7 +5217,6 @@ void WiiUMenuApp::setAppLayoutMode(AppLayoutMode mode) {
     if (m_pageIndicator) m_pageIndicator->setVisible(m_appLayoutMode != AppLayoutMode::Xmb && m_appLayoutMode != AppLayoutMode::List && m_appLayoutMode != AppLayoutMode::Cards && !isMetro);
     const bool hidePill = (m_openFolderId == 0) && (m_appLayoutMode == AppLayoutMode::Xmb || m_appLayoutMode == AppLayoutMode::List || m_appLayoutMode == AppLayoutMode::Cards || isMetro);
     if (m_titlePill && hidePill) m_titlePill->setVisible(false);
-    if (m_screenSwapButton) m_screenSwapButton->setMetroStyle(isMetro);
     if (m_mediaCenterButton) m_mediaCenterButton->setMetroStyle(isMetro);
     if (m_browserButton) m_browserButton->setMetroStyle(isMetro);
     applyMetroPowerButton(isMetro);
@@ -6407,16 +6369,6 @@ void WiiUMenuApp::buildGrid() {
     m_grid->setItemScale(static_cast<float>(std::clamp(m_config.iconScalePercent, 80, 130)) / 100.f);
     m_grid->setRect({kGridRectX, kGridRectY, kGridRectW, kGridRectH});
     m_grid->setThreadPool(&m_threadPool);
-    if (m_background)
-        m_background->setAmbientMiisEnabled(
-            m_appLayoutMode != AppLayoutMode::Flow &&
-            m_appLayoutMode != AppLayoutMode::Shelf &&
-            m_appLayoutMode != AppLayoutMode::Deck &&
-            m_appLayoutMode != AppLayoutMode::Cover &&
-            m_appLayoutMode != AppLayoutMode::Cards &&
-            m_appLayoutMode != AppLayoutMode::Xmb &&
-            m_appLayoutMode != AppLayoutMode::List &&
-            m_appLayoutMode != AppLayoutMode::Metro);
     // buildGrid() creates the grid and calls setup() directly, without going
     // through applyDisplayModel(), which is the only other place that sets this.
     // The grid therefore stayed in its default page mode after a restart while
@@ -6864,17 +6816,7 @@ void WiiUMenuApp::buildGrid() {
     m_topCenterCluster->setMarginTop(18.f);
     m_topCenterCluster->setShrink(0.f);
     m_topCenterCluster->setGap(12.f);
-    m_topCenterCluster->setSize(186.f, 48.f);
-
-    m_screenSwapButton = std::make_shared<warawara::PlazaScreenSwapButton>();
-    m_screenSwapButton->setSize(54.f, 48.f);
-    m_screenSwapButton->setMarginTop(0.f);
-    m_screenSwapButton->setShrink(0.f);
-    m_screenSwapButton->onActivate([this]() {
-        m_audio.playSfx(Sfx::Activate);
-        toggleWaraWaraPlaza();
-    });
-    m_topCenterCluster->addChild(m_screenSwapButton);
+    m_topCenterCluster->setSize(120.f, 48.f); // media + browser
 
     m_mediaCenterButton = std::make_shared<widgets::MediaCenterButton>();
     m_mediaCenterButton->setSize(54.f, 48.f);
@@ -6949,7 +6891,6 @@ void WiiUMenuApp::buildGrid() {
     if (m_pageIndicator) m_pageIndicator->setVisible(m_appLayoutMode != AppLayoutMode::Xmb && m_appLayoutMode != AppLayoutMode::List && m_appLayoutMode != AppLayoutMode::Cards && !isMetro);
     const bool hidePill = (m_openFolderId == 0) && (m_appLayoutMode == AppLayoutMode::Xmb || m_appLayoutMode == AppLayoutMode::List || m_appLayoutMode == AppLayoutMode::Cards || isMetro);
     if (m_titlePill && hidePill) m_titlePill->setVisible(false);
-    if (m_screenSwapButton) m_screenSwapButton->setMetroStyle(isMetro);
     if (m_mediaCenterButton) m_mediaCenterButton->setMetroStyle(isMetro);
     if (m_browserButton) m_browserButton->setMetroStyle(isMetro);
     applyMetroPowerButton(isMetro);
@@ -7090,11 +7031,6 @@ void WiiUMenuApp::buildGrid() {
         m_contextMenuReturnFocus = nullptr;
     });
     m_overlayLayer->addChild(m_contextMenu);
-    // WaraWara Plaza is created on first open in openWaraWaraPlaza()
-    // Miis are exclusively rendered in WaraWara Plaza, not on the home screen background.
-    if (m_background) {
-        m_background->setAmbientMiisEnabled(false);
-    }
     m_overlayLayer->addChild(m_dialog);
     m_overlayLayer->addChild(m_progressDialog);
     m_overlayLayer->addChild(m_launchAnim);
@@ -7762,7 +7698,6 @@ void WiiUMenuApp::onUpdate(float dt) {
             m_titlePill->setVisible(true);
         }
     }
-    m_animalesePlayer.update(dt);
     m_audio.update();
     switchu::menu::frame_probe::mark("audio");
 
@@ -7957,16 +7892,7 @@ void WiiUMenuApp::onUpdate(float dt) {
     // full grid page. It therefore only ever scheduled the first fifteen icons,
     // and everything past them -- the homebrew at the end of the line -- stayed on
     // its loading spinner until the focus callback happened to reach it.
-    if (m_plazaScreen && m_plazaScreen->isActive()) {
-        // Plaza communities are populated before startup icon decodes finish.
-        // Refreshing here pumps the one-title streamer windows and publishes
-        // each completed GPU texture through setData() without rebuilding the
-        // pedestals or Miis. The call is deliberately limited to the active
-        // Plaza and ten entries; after all are loaded it is pointer-only work.
-        refreshPlazaCommunities();
-    }
-
-    switchu::menu::frame_probe::mark("fonts-list-plaza");
+    switchu::menu::frame_probe::mark("fonts-list");
     if (m_grid && m_deferredInitialAssetFrames == 0
         && !(m_launchAnim && m_launchAnim->isPlaying())) {
         // Per-frame top-up. This is the path that repairs the icons after a
@@ -8251,9 +8177,8 @@ void WiiUMenuApp::onUpdate(float dt) {
         const bool modsUp = m_gameMods && m_gameMods->isFullyVisible();
         const bool cheatsUp = m_gameCheats && m_gameCheats->isFullyVisible();
         const bool detailsUp = m_gameDetails && m_gameDetails->isFullyVisible();
-        const bool plazaUp = m_plazaScreen && m_plazaScreen->isFullyVisible();
-        const bool hideScene = ((settingsUp || themeShopUp || galleryUp || modsUp || cheatsUp || detailsUp) &&
-                                app().renderer().holdOffscreenCapture()) || plazaUp;
+        const bool hideScene = (settingsUp || themeShopUp || galleryUp || modsUp || cheatsUp || detailsUp) &&
+                               app().renderer().holdOffscreenCapture();
         m_probeSceneHidden = hideScene;
         // Each overlay is told only about itself: the one that is not up must
         // not start drawing the frozen backdrop as its base.
@@ -8708,10 +8633,6 @@ void WiiUMenuApp::onUpdate(float dt) {
         toggleAppLayoutMode();
     }
 
-    if (!lockScreenUp && m_plazaScreen && m_plazaScreen->isActive()) {
-        m_plazaScreen->handleInput(app().input(), dt);
-    }
-
     if (!lockScreenUp && m_mediaCenterScreen && m_mediaCenterScreen->isActive()) {
         m_mediaCenterScreen->handleInput(app().input(), dt);
     }
@@ -8887,17 +8808,12 @@ void WiiUMenuApp::onUpdate(float dt) {
         if (!lockScreenUp && m_quickSettings && m_quickSettings->isActive())
             m_quickSettings->handleTouch(app().input());
 
-        if (!lockScreenUp && m_screenSwapButton)
-            m_screenSwapButton->handleTouch(app().input());
-
         if (!lockScreenUp && m_mediaCenterButton)
             m_mediaCenterButton->handleTouch(app().input());
 
         if (!lockScreenUp && m_mediaCenterScreen && m_mediaCenterScreen->isActive())
             m_mediaCenterScreen->handleTouch(app().input());
 
-        if (!lockScreenUp && m_plazaScreen && m_plazaScreen->isActive())
-            m_plazaScreen->handleTouch(app().input());
     }
 
     if (m_dialogWasActive && !dialogActiveNow) {
@@ -8914,9 +8830,6 @@ void WiiUMenuApp::onUpdate(float dt) {
 
     if (!debugTouchBlocked && !lockScreenUp && m_quickSettings && m_quickSettings->isActive())
         m_quickSettings->handleTouch(app().input());
-
-    if (!debugTouchBlocked && !lockScreenUp && m_screenSwapButton)
-        m_screenSwapButton->handleTouch(app().input());
 
     if (!debugTouchBlocked && !lockScreenUp && m_mediaCenterButton)
         m_mediaCenterButton->handleTouch(app().input());
@@ -8935,9 +8848,6 @@ void WiiUMenuApp::onUpdate(float dt) {
 
     if (!debugTouchBlocked && !lockScreenUp && m_mediaCenterScreen && m_mediaCenterScreen->isActive())
         m_mediaCenterScreen->handleTouch(app().input());
-
-    if (!debugTouchBlocked && !lockScreenUp && m_plazaScreen && m_plazaScreen->isActive())
-        m_plazaScreen->handleTouch(app().input());
 
     if (!(m_userSelect && m_userSelect->isActive())
         && !(m_dialog && m_dialog->isActive())
@@ -9266,15 +9176,6 @@ std::vector<WiiUMenuApp::ActionHint> WiiUMenuApp::buildActionHints() {
 
     if (m_launchAnim && m_launchAnim->isPlaying())
         return hints;
-
-    if (m_plazaScreen && m_plazaScreen->isActive()) {
-        add(dpadGlyph(), i18n.tr("hint.navigate", "Select"));
-        add(buttonGlyph(nxui::Button::L) + buttonGlyph(nxui::Button::R), "Rotate");
-        add(buttonGlyph(nxui::Button::ZL) + buttonGlyph(nxui::Button::ZR), "Zoom");
-        add(buttonGlyph(nxui::Button::A), i18n.tr("hint.select", "Open Game"));
-        add(buttonGlyph(nxui::Button::B), i18n.tr("hint.back", "Return"));
-        return hints;
-    }
 
     if (m_quickSettings && m_quickSettings->isActive()) {
         add(dpadGlyph(), i18n.tr("hint.navigate", "Navigate"));
@@ -10201,7 +10102,6 @@ bool WiiUMenuApp::flipPage(int dir) {
 }
 
 void WiiUMenuApp::renderPageArrows(nxui::Renderer& ren) {
-    if (m_plazaScreen && m_plazaScreen->isActive()) return;
     if (m_navigator.route() != switchu::navigation::Route::Home) return;
     if (focusRoot() != &rootBox()) return;
     if (m_appLayoutMode == AppLayoutMode::Xmb || m_appLayoutMode == AppLayoutMode::List || m_appLayoutMode == AppLayoutMode::Metro || m_appLayoutMode == AppLayoutMode::Cards) return;
