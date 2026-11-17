@@ -2179,12 +2179,16 @@ static std::vector<uint64_t> homebrewHostCandidates(uint64_t preferred) {
             // Only a game that can start now can carry hbl. An archived game,
             // one still downloading or one needing an update was tried first
             // when it had the lowest id, and the homebrew never opened.
+            // View bit 9 is not "needs update": it is set on every installed
+            // game of the test console, including one launched a minute
+            // earlier, and as a filter it left no host at all. The launch
+            // version check is what refuses a game that needs its update.
             if (!switchu::ns::viewHasFlag(flags, switchu::ns::AppViewFlag_CanLaunch) ||
                 !switchu::ns::viewHasFlag(flags, switchu::ns::AppViewFlag_HasMainContents) ||
                 switchu::ns::viewHasFlag(flags, switchu::ns::AppViewFlag_IsDownloading) ||
-                switchu::ns::viewHasFlag(flags, switchu::ns::AppViewFlag_NeedsUpdate) ||
                 switchu::ns::viewHasFlag(flags, switchu::ns::AppViewFlag_IsGameCard) ||
-                switchu::ns::viewHasFlag(flags, switchu::ns::AppViewFlag_NeedsVerify)) {
+                switchu::ns::viewHasFlag(flags, switchu::ns::AppViewFlag_NeedsVerify) ||
+                switchu::ns::applicationNeedsUpdate(tid)) {
                 switchu::FileLog::log("[action] homebrew host 0x%016llX skipped (flags=0x%X)",
                                       (unsigned long long)tid, flags);
                 continue;
