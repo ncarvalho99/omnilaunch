@@ -118,6 +118,7 @@ private:
     std::atomic<bool> m_trackFinished{false};
     bool  m_initialized = false;
     Mix_Music* m_activeMusic = nullptr;
+    std::string m_activeMusicPath; // file m_activeMusic was loaded from
 
     std::mutex m_sfxMutex;
     std::unordered_map<int, Mix_Chunk*> m_sfx;

@@ -125,6 +125,7 @@ void AudioManager::shutdown() {
         Mix_FreeMusic(m_activeMusic);
         m_activeMusic = nullptr;
     }
+    m_activeMusicPath.clear();
     m_tracks.clear();
     m_shuffleOrder.clear();
     m_current = -1;
@@ -232,6 +233,7 @@ void AudioManager::clearTracks() {
         Mix_FreeMusic(m_activeMusic);
         m_activeMusic = nullptr;
     }
+    m_activeMusicPath.clear();
     m_tracks.clear();
     m_shuffleOrder.clear();
     m_current = -1;
@@ -258,13 +260,22 @@ void AudioManager::playCurrentTrackLocked() {
 
     Mix_HookMusicFinished(nullptr);
     Mix_HaltMusic();
-    if (m_activeMusic) {
+    const auto& track = m_tracks[m_current];
+    // Replaying the track that is already loaded (repeat, or a one-track list
+    // restarted) reuses it. Loading an MP3 reads and indexes the whole file on
+    // this thread: a 200 ms frame at every loop of a repeated theme track.
+    const bool reuse = m_activeMusic && m_activeMusicPath == track.path;
+    if (m_activeMusic && !reuse) {
         Mix_FreeMusic(m_activeMusic);
         m_activeMusic = nullptr;
+        m_activeMusicPath.clear();
     }
 
-    const auto& track = m_tracks[m_current];
-    m_activeMusic = Mix_LoadMUS(track.path.c_str());
+    if (!reuse) {
+        m_activeMusic = Mix_LoadMUS(track.path.c_str());
+        if (m_activeMusic)
+            m_activeMusicPath = track.path;
+    }
     if (!m_activeMusic) {
         DebugLog::log("[audio] Failed to load %s: %s", track.path.c_str(), Mix_GetError());
         std::fprintf(stderr, "[Audio] Failed to load %s: %s\n", track.path.c_str(), Mix_GetError());
@@ -285,6 +296,9 @@ void AudioManager::playCurrentTrackLocked() {
     if (Mix_FadeInMusic(m_activeMusic, loops, 250) < 0) {
         Mix_PlayMusic(m_activeMusic, loops);
     }
+    // A reused stream may still sit where it ended: start it from the top.
+    if (reuse)
+        Mix_RewindMusic();
     m_playing.store(true);
     m_paused.store(false);
     m_trackFinished.store(false);
