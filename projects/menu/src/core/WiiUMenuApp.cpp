@@ -1,6 +1,7 @@
 #include "WiiUMenuApp.hpp"
 #include "core/FrameProbe.hpp"
 #include "core/IconPack.hpp"
+#include "core/DecodedAssetCache.hpp"
 #include "launcher/HekateReboot.hpp"
 #include "services/NtpClient.hpp"
 #include <cctype>
@@ -706,6 +707,7 @@ bool WiiUMenuApp::onCreate() {
     }
     applyGlassSharpness(m_config.glassSharpness);
     applyAppearanceOverrides(false);
+    DebugLog::log("[init-diag] pre-layout %lums", initElapsedMs());
     loadMenuLayout();
     // The menu is recreated on every return from a game, so this is also the
     // moment the session just played has to reach the grid. The first frame
@@ -733,6 +735,7 @@ bool WiiUMenuApp::onCreate() {
     // Catalog I/O is independent of font/GPU setup. Start it now so SD reads
     // and metadata parsing overlap with i18n, audio, and resource creation.
     m_appLoader.startAsync(m_threadPool);
+    DebugLog::log("[init-diag] layout/folders/widgets %lums", initElapsedMs());
 
     nxui::I18n::instance().initialize(std::string(SD_ASSETS) + "/i18n", "en-US");
     applyUiLanguage();
@@ -749,6 +752,7 @@ bool WiiUMenuApp::onCreate() {
     } else {
         m_homeCore.startBluetooth();
     }
+    DebugLog::log("[init-diag] i18n/audio/bluetooth %lums", initElapsedMs());
     DebugLog::log("[init] Theme Shop HTTP runtime deferred until first request");
 
     DebugLog::log("[init] Config loaded (theme=%s, musicVol=%.2f, sfxVol=%.2f)",
@@ -1200,15 +1204,15 @@ void WiiUMenuApp::loadStaticTextures() {
     const std::string iconDir = std::string(SD_ASSETS) + "/icons/";
     auto icon = [&](const char* file) { return iconpack::resolve(file, iconDir + file); };
     std::string gameCardPath = icon("gamecard.png");
-    if (m_gameCardTex.loadFromFile(app().gpu(), app().renderer(), gameCardPath))
+    if (decoded_assets::load(m_gameCardTex, app().gpu(), app().renderer(), gameCardPath))
         m_loadedGameCardPath = gameCardPath;
 
-    m_arrowTexLeft.loadFromFile(app().gpu(), app().renderer(), icon("page_arrow_left.png"));
-    m_arrowTexRight.loadFromFile(app().gpu(), app().renderer(), icon("page_arrow_right.png"));
-    m_batteryConsoleTex.loadFromFile(app().gpu(), app().renderer(), icon("widget_battery_switch.png"));
-    m_batteryJoyconLeftTex.loadFromFile(app().gpu(), app().renderer(), icon("widget_battery_joycon_left.png"));
-    m_batteryJoyconRightTex.loadFromFile(app().gpu(), app().renderer(), icon("widget_battery_joycon_right.png"));
-    m_batteryControllerTex.loadFromFile(app().gpu(), app().renderer(), icon("widget_battery_controller.png"));
+    decoded_assets::load(m_arrowTexLeft, app().gpu(), app().renderer(), icon("page_arrow_left.png"));
+    decoded_assets::load(m_arrowTexRight, app().gpu(), app().renderer(), icon("page_arrow_right.png"));
+    decoded_assets::load(m_batteryConsoleTex, app().gpu(), app().renderer(), icon("widget_battery_switch.png"));
+    decoded_assets::load(m_batteryJoyconLeftTex, app().gpu(), app().renderer(), icon("widget_battery_joycon_left.png"));
+    decoded_assets::load(m_batteryJoyconRightTex, app().gpu(), app().renderer(), icon("widget_battery_joycon_right.png"));
+    decoded_assets::load(m_batteryControllerTex, app().gpu(), app().renderer(), icon("widget_battery_controller.png"));
 
     if (m_appLayoutMode == AppLayoutMode::Xmb) {
         ensureXmbTextures();
@@ -1222,16 +1226,16 @@ void WiiUMenuApp::ensureXmbTextures() {
     m_xmbIconGen = iconpack::generation();
     const std::string iconsBase = std::string(SD_ASSETS) + "/icons/";
     auto icon = [&](const char* file) { return iconpack::resolve(file, iconsBase + file); };
-    m_xmbAlbumTex.loadFromFile(app().gpu(), app().renderer(), icon("album.png"));
-    m_xmbSettingsTex.loadFromFile(app().gpu(), app().renderer(), icon("settings.png"));
-    m_xmbControllersTex.loadFromFile(app().gpu(), app().renderer(), icon("controller.png"));
-    m_xmbPowerTex.loadFromFile(app().gpu(), app().renderer(), icon("power.png"));
-    m_xmbThemesTex.loadFromFile(app().gpu(), app().renderer(), icon("themes.png"));
-    m_xmbMiiTex.loadFromFile(app().gpu(), app().renderer(), icon("mii_editor.png"));
-    m_xmbMediaCenterTex.loadFromFile(app().gpu(), app().renderer(), icon("media_center.png"));
-    m_xmbNetworkTex.loadFromFile(app().gpu(), app().renderer(), icon("network.png"));
-    m_xmbBrowserTex.loadFromFile(app().gpu(), app().renderer(), icon("browser.png"));
-    m_xmbHomebrewTex.loadFromFile(app().gpu(), app().renderer(), icon("homebrew.png"));
+    decoded_assets::load(m_xmbAlbumTex, app().gpu(), app().renderer(), icon("album.png"));
+    decoded_assets::load(m_xmbSettingsTex, app().gpu(), app().renderer(), icon("settings.png"));
+    decoded_assets::load(m_xmbControllersTex, app().gpu(), app().renderer(), icon("controller.png"));
+    decoded_assets::load(m_xmbPowerTex, app().gpu(), app().renderer(), icon("power.png"));
+    decoded_assets::load(m_xmbThemesTex, app().gpu(), app().renderer(), icon("themes.png"));
+    decoded_assets::load(m_xmbMiiTex, app().gpu(), app().renderer(), icon("mii_editor.png"));
+    decoded_assets::load(m_xmbMediaCenterTex, app().gpu(), app().renderer(), icon("media_center.png"));
+    decoded_assets::load(m_xmbNetworkTex, app().gpu(), app().renderer(), icon("network.png"));
+    decoded_assets::load(m_xmbBrowserTex, app().gpu(), app().renderer(), icon("browser.png"));
+    decoded_assets::load(m_xmbHomebrewTex, app().gpu(), app().renderer(), icon("homebrew.png"));
     DebugLog::log("[xmb-icons] album=%d settings=%d controllers=%d power=%d themes=%d mii=%d media=%d network=%d homebrew=%d",
                   m_xmbAlbumTex.valid() ? 1 : 0,
                   m_xmbSettingsTex.valid() ? 1 : 0,

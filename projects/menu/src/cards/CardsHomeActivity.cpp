@@ -654,6 +654,12 @@ bool CardsHomeActivity::onCreate() {
 
 void CardsHomeActivity::onDestroy() {
     DebugLog::log("[cards] activity destroy");
+    // Diagnostic: which wait holds the Cards -> Classic switch.
+    const std::uint64_t destroyStart = armGetSystemTick();
+    auto destroyMs = [destroyStart]() {
+        return static_cast<unsigned long>(armTicksToNs(armGetSystemTick() - destroyStart) / 1000000ULL);
+    };
+    unsigned long tStop = 0, tFutures = 0, tSnap = 0, tWall = 0, tCatalog = 0, tPool = 0;
     m_leaveCapturePending = false;
     m_leaveCaptureAfter = {};
     m_leavePreviewSuspendedTitleId = 0;
@@ -685,6 +691,7 @@ void CardsHomeActivity::onDestroy() {
         m_detailsPending.reset();
     if (m_netCheck.valid())
         m_netCheck.wait(); // the scope closed above cancels the request
+    tStop = destroyMs();
     stopSpeedTest();
     stopHomebrewUpdates();
     waitSelfUpdate();
@@ -704,16 +711,21 @@ void CardsHomeActivity::onDestroy() {
         m_picker->wait();
         m_picker.reset();
     }
+    tFutures = destroyMs();
     m_catalog.releaseAll();
     m_art.releaseAll();
     m_snapCache.wait(); // a page snapshot still being written finishes first
     m_snapItems.clear();
+    tSnap = destroyMs();
     waitWallpaper();
     m_wallImage.reset();
     m_wallPending.reset();
     m_wallTex.reset();
+    tWall = destroyMs();
     m_core.catalog().waitIdle();
+    tCatalog = destroyMs();
     m_core.threadPool().waitForIdle();
+    tPool = destroyMs();
 #ifdef SWITCHU_MENU
     closingTrace.worker_drain_done_tick = armGetSystemTick();
 #endif
@@ -741,6 +753,8 @@ void CardsHomeActivity::onDestroy() {
     m_avatar.reset();
     flushPerfLog();
     if (m_perfWrite.valid()) { try { m_perfWrite.get(); } catch (...) {} }
+    DebugLog::log("[switch-diag] cards destroy: http/playtime %lu, workers %lu, snapshot %lu, wallpaper %lu, catalog %lu, pool %lu, total %lums",
+                  tStop, tFutures, tSnap, tWall, tCatalog, tPool, destroyMs());
 }
 
 nxui::Widget* CardsHomeActivity::focusRoot() {

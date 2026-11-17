@@ -3,6 +3,7 @@
 #include <nxui/core/GpuDevice.hpp>
 #include <nxui/core/Renderer.hpp>
 #include <nxui/core/Texture.hpp>
+#include <nxui/core/ThreadPool.hpp>
 #include <nxui/core/Types.hpp>
 #include <nxui/core/Font.hpp>
 #include "warawara/MiiFigure.hpp"
@@ -10,6 +11,7 @@
 #include <atomic>
 #include <cstdint>
 #include <deque>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -69,6 +71,10 @@ public:
     const Config& config() const { return m_config; }
 
     bool loadImage(nxui::GpuDevice& gpu, nxui::Renderer& ren, const std::string& path);
+    // The still shown under a video wallpaper until its first frame: decoded
+    // on `pool` and uploaded by pumpImageSequence, or dropped if the video got
+    // there first. A 720p JPEG decode was ~100 ms of the Classic switch frame.
+    void requestStillAsync(nxui::ThreadPool& pool, const std::string& path);
     // A wallpaper that moves, without decoding anything while it runs.
     //
     // Real video was measured and ruled out: a 1080p still costs 365ms to
@@ -176,6 +182,12 @@ private:
     Config m_config;
     std::vector<Shape> m_shapes;
     nxui::Texture m_backgroundImage;
+    // Worker-owned until `done`; render thread only after that.
+    struct PendingStill {
+        nxui::DecodedImage image;
+        std::atomic<bool> done{false};
+    };
+    std::shared_ptr<PendingStill> m_pendingStill;
     switchu::video::VideoPlayer m_videoPlayer;
 
     // Declared before m_frames so that in member destruction order (reverse of

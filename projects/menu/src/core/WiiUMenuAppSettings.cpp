@@ -3221,9 +3221,20 @@ void WiiUMenuApp::applyThemeResources(const ThemePreset& preset) {
             std::string posterPath = desiredBackgroundImagePath;
             if (wantsVideo) {
                 if (!posterPath.empty()) {
-                    imageLoaded = m_background->loadImage(gpu, ren, posterPath);
-                    DebugLog::log("[theme-apply] loaded poster/still background for video theme: %s (ok=%d)",
-                                  safeLogPath(posterPath), imageLoaded ? 1 : 0);
+                    if (m_fastReturnRequested) {
+                        // The video waits a few frames on a return from a
+                        // game; the still covers them, so it stays synchronous.
+                        imageLoaded = m_background->loadImage(gpu, ren, posterPath);
+                        DebugLog::log("[theme-apply] loaded poster/still background for video theme: %s (ok=%d)",
+                                      safeLogPath(posterPath), imageLoaded ? 1 : 0);
+                    } else {
+                        // Only shown until the video's first frame: decoded on
+                        // a worker so the theme apply does not wait for the card.
+                        m_background->requestStillAsync(m_threadPool, posterPath);
+                        imageLoaded = true;
+                        DebugLog::log("[theme-apply] poster/still background for video theme requested async: %s",
+                                      safeLogPath(posterPath));
+                    }
                     if (imageLoaded) {
                         m_backgroundImageLoaded = true;
                         m_loadedBackgroundImagePath = posterPath;

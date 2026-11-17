@@ -2,6 +2,9 @@
 #include "core/WiiUMenuApp.hpp"
 #include "core/IconPack.hpp"
 #include "sidebar/SidebarManager.hpp"
+#include "core/DecodedAssetCache.hpp"
+#include <string>
+#include <vector>
 #include "core/DebugLog.hpp"
 #include "core/Config.hpp"
 #include "core/NsService.hpp"
@@ -423,8 +426,21 @@ int main(int argc, char* argv[]) {
         iconpack::setActive(homeCore.config().iconPack);
         // Classic's sidebar icons, decoded while either frontend starts, so
         // the first switch to Classic does not wait on the card for them.
-        if (!homeCore.config().safeMode())
+        if (!homeCore.config().safeMode()) {
             SidebarManager::prewarmIcons(homeCore.threadPool(), SD_ASSETS);
+            // The rest of Classic's small icons (WiiUMenuApp::loadStaticTextures
+            // and ensureXmbTextures), resolved exactly as they will be.
+            const std::string iconDir = std::string(SD_ASSETS) + "/icons/";
+            std::vector<std::string> paths;
+            for (const char* file : {"gamecard.png", "page_arrow_left.png", "page_arrow_right.png",
+                                     "widget_battery_switch.png", "widget_battery_joycon_left.png",
+                                     "widget_battery_joycon_right.png", "widget_battery_controller.png",
+                                     "album.png", "settings.png", "controller.png", "power.png",
+                                     "themes.png", "mii_editor.png", "media_center.png", "network.png",
+                                     "browser.png", "homebrew.png"})
+                paths.push_back(iconpack::resolve(file, iconDir + file));
+            decoded_assets::prewarm(homeCore.threadPool(), paths);
+        }
         app.setBeforeGpuShutdown([&homeCore] {
             homeCore.runShutdownPhase(home::ShutdownPhase::GpuResources);
         });

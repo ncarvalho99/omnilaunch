@@ -6,6 +6,7 @@
 #include <string>
 #include <unordered_map>
 #include <list>
+#include <memory>
 #include <vector>
 
 namespace nxui {
@@ -97,7 +98,8 @@ private:
     mutable std::vector<TTF_Font*> m_fallbackFonts; // per fallback face, opened on demand
     mutable std::vector<bool> m_fallbackTried;
     mutable std::unordered_map<std::uint32_t, std::int8_t> m_faceCache;
-    std::vector<std::uint8_t> m_fontData; // face bytes the TTF_Font reads from
+    // Face bytes the TTF_Font reads from; shared by path across Font objects.
+    std::shared_ptr<const std::vector<std::uint8_t>> m_fontData;
     static constexpr std::size_t kMeasureCacheMax = 4096;
     mutable std::unordered_map<std::string, Vec2> m_measureCache;
     int       m_ptSize = 0;

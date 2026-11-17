@@ -8,6 +8,9 @@
 #include <algorithm>
 #include <fstream>
 #include <iterator>
+#include <memory>
+#include <mutex>
+#include <unordered_map>
 
 namespace nxui {
 
@@ -260,19 +263,37 @@ bool Font::load(GpuDevice& gpu, Renderer& ren,
     // read its tables from the card (a few ms each): the stutter when a
     // window or tab showed text for the first time. Approach from HomeNX
     // lib/nxui/src/core/Font.cpp @ 0448cd4 (GPL-3.0, ad3333m).
-    std::ifstream in(path, std::ios::binary | std::ios::ate);
-    if (!in) {
-        std::fprintf(stderr, "[Font] open failed: %s\n", path.c_str());
-        return false;
+    //
+    // The bytes are shared by path for the life of the process: the menu
+    // re-creates its fonts on every Cards <-> Classic switch, and each read of
+    // the same file off the card was part of that switch's frame. Faces never
+    // write to them, so sharing read-only bytes between faces is safe.
+    std::shared_ptr<const std::vector<std::uint8_t>> data;
+    {
+        static std::mutex cacheMutex;
+        static std::unordered_map<std::string, std::shared_ptr<const std::vector<std::uint8_t>>> cache;
+        std::lock_guard<std::mutex> lk(cacheMutex);
+        auto it = cache.find(path);
+        if (it != cache.end()) {
+            data = it->second;
+        } else {
+            std::ifstream in(path, std::ios::binary | std::ios::ate);
+            if (!in) {
+                std::fprintf(stderr, "[Font] open failed: %s\n", path.c_str());
+                return false;
+            }
+            auto bytes = std::make_shared<std::vector<std::uint8_t>>(static_cast<std::size_t>(in.tellg()));
+            in.seekg(0);
+            in.read(reinterpret_cast<char*>(bytes->data()), static_cast<std::streamsize>(bytes->size()));
+            if (!in || bytes->empty()) {
+                std::fprintf(stderr, "[Font] read failed: %s\n", path.c_str());
+                return false;
+            }
+            data = bytes;
+            cache.emplace(path, data);
+        }
     }
-    std::vector<std::uint8_t> data(static_cast<std::size_t>(in.tellg()));
-    in.seekg(0);
-    in.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(data.size()));
-    if (!in || data.empty()) {
-        std::fprintf(stderr, "[Font] read failed: %s\n", path.c_str());
-        return false;
-    }
-    SDL_RWops* rw = SDL_RWFromConstMem(data.data(), static_cast<int>(data.size()));
+    SDL_RWops* rw = SDL_RWFromConstMem(data->data(), static_cast<int>(data->size()));
     const int rasterPt = static_cast<int>(ptSize * GpuDevice::renderScale() + 0.5f);
     TTF_Font* newFont = rw ? TTF_OpenFontRW(rw, 1, rasterPt) : nullptr;
     if (!newFont) {
@@ -304,7 +325,7 @@ void Font::adopt(GpuDevice& gpu, Renderer& ren, TTF_Font* newFont, int ptSize) {
     closeFallbacks(); // reopened at the new size when needed
     if (m_font)
         TTF_CloseFont(m_font);
-    m_fontData.clear(); // the closed face no longer reads it
+    m_fontData.reset(); // the closed face no longer reads it
     // Unhinted glyphs rasterize about ten times faster in this FreeType build
     // and look the same at UI sizes (HomeNX perf.log, build 176).
     TTF_SetFontHinting(newFont, TTF_HINTING_NONE);

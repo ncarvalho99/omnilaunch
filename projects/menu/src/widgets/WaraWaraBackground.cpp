@@ -141,8 +141,21 @@ void WaraWaraBackground::setConfig(const Config& config) {
     regenerate(0);
 }
 
+void WaraWaraBackground::requestStillAsync(nxui::ThreadPool& pool, const std::string& path) {
+    m_pendingStill.reset();
+    if (path.empty() || !pool.acceptingTasks())
+        return;
+    auto job = std::make_shared<PendingStill>();
+    m_pendingStill = job;
+    pool.submit([job, path]() {
+        job->image = nxui::Texture::decodeFile(path, 0);
+        job->done.store(true, std::memory_order_release);
+    });
+}
+
 bool WaraWaraBackground::loadImage(nxui::GpuDevice& gpu, nxui::Renderer& ren, const std::string& path) {
     m_arenaGpu = &gpu;
+    m_pendingStill.reset();
     if (path.empty()) {
         clearImage();
         return false;
@@ -349,6 +362,18 @@ bool WaraWaraBackground::loadImageSequence(nxui::GpuDevice& gpu, nxui::Renderer&
 }
 
 void WaraWaraBackground::pumpImageSequence(nxui::GpuDevice& gpu, nxui::Renderer& ren) {
+    if (m_pendingStill && m_pendingStill->done.load(std::memory_order_acquire)) {
+        auto job = std::move(m_pendingStill);
+        m_pendingStill.reset();
+        const bool videoShowing = m_videoPlayer.isOpened() && m_videoPlayer.texture() &&
+                                  m_videoPlayer.texture()->valid();
+        // Not needed once the video draws, and never over a sequence.
+        if (!videoShowing && m_frames.empty() && job->image.valid()) {
+            nxui::Texture still;
+            if (still.loadFromDecoded(gpu, ren, job->image))
+                m_backgroundImage = std::move(still);
+        }
+    }
     if (m_videoPlayer.isOpened()) {
         m_videoPlayer.tick(gpu, ren);
         if (m_backgroundImage.valid() && m_videoPlayer.texture() && m_videoPlayer.texture()->valid()) {
@@ -440,6 +465,7 @@ void WaraWaraBackground::clearImage() {
     stopFrameReader();
     m_videoPlayer.close();
     m_frameSequencePending = false;
+    m_pendingStill.reset();
     m_backgroundImage = nxui::Texture{};
     m_frames.clear();
     // Their memory lives in the arena, chunked 8 MB at a time (issue #2
