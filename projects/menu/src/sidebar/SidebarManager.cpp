@@ -337,34 +337,21 @@ void SidebarManager::loadAssets(nxui::GpuDevice& gpu, nxui::Renderer& ren,
     };
     if ((int)m_icons.size() != kSidebarIconCount)
         m_icons.resize(kSidebarIconCount);
-    if (m_pool && m_pool->acceptingTasks()) {
-        // Reading and decoding ten PNGs off the card held the Classic switch
-        // frame for ~470 ms. The worker does that part; pumpAssets() uploads.
-        // Until then a button draws nothing, under the switch fade.
-        std::vector<std::string> customPaths(kSidebarIconCount);
-        std::vector<std::string> fallbackPaths(kSidebarIconCount);
-        for (int i = 0; i < kSidebarIconCount; ++i) {
-            if (useCustomStaticIcons)
-                customPaths[i] = joinPath(customIconsBase, iconFiles[i]);
-            fallbackPaths[i] = defaultAssetPath(iconFiles[i]);
-        }
-        auto job = std::make_shared<IconDecode>();
+    // Reading and decoding ten PNGs off the card held the Classic switch frame
+    // for ~470 ms, and done on a worker the buttons sat empty for 1.5 s. The
+    // decoded icons are kept for the life of the process (and decoded once at
+    // start-up by prewarmIcons), so a Classic created again only uploads them.
+    std::shared_ptr<IconDecode> job =
+        (m_pool && m_pool->acceptingTasks())
+            ? requestIconDecode(*m_pool, assetsBase, customIconsBase)
+            : nullptr;
+    if (job) {
         job->generation = ++m_iconGeneration;
-        job->startTick = armGetSystemTick();
         m_iconDecode = job;
-        m_pool->submit([job, customPaths = std::move(customPaths),
-                        fallbackPaths = std::move(fallbackPaths)]() {
-            job->images.resize(fallbackPaths.size());
-            for (std::size_t i = 0; i < fallbackPaths.size(); ++i) {
-                nxui::DecodedImage image;
-                if (!customPaths[i].empty())
-                    image = nxui::Texture::decodeFile(customPaths[i], 128);
-                if (!image.valid())
-                    image = nxui::Texture::decodeFile(fallbackPaths[i], 128);
-                job->images[i] = std::move(image);
-            }
-            job->done.store(true, std::memory_order_release);
-        });
+        if (job->done.load(std::memory_order_acquire)) {
+            DebugLog::log("[sidebar-assets] decoded icons reused");
+            pumpAssets(gpu, ren);
+        }
     } else {
         m_iconDecode.reset();
         ++m_iconGeneration;
@@ -434,23 +421,95 @@ void SidebarManager::tryLoadAnimation(nxui::GpuDevice& gpu, nxui::Renderer& ren,
     }
 }
 
+namespace {
+// Decode order: the ten sidebar files plus the Mii Editor icon, which takes
+// slot 1 when Discord is not offered. Whichever a sidebar needs is picked at
+// upload, so one decode serves both.
+constexpr const char* kDecodeFiles[] = {
+    "sphaira.png", "discord.png", "news.png", "nextendo.png", "settings.png",
+    "toggle.png", "controller.png", "friends.png", "themes.png", "power.png",
+    "mii_editor.png",
+};
+constexpr int kDecodeMiiEditor = 10;
+}
+
+// The one decode the process keeps. Render thread only (the worker writes the
+// job it was handed, never this).
+std::shared_ptr<SidebarManager::IconDecode>& SidebarManager::iconCache() {
+    static std::shared_ptr<IconDecode> cache;
+    return cache;
+}
+
+std::shared_ptr<SidebarManager::IconDecode>
+SidebarManager::requestIconDecode(nxui::ThreadPool& pool, const std::string& assetsBase,
+                                  const std::string& customIconsBase) {
+    const std::uint32_t packGen = iconpack::generation();
+    auto& cache = iconCache();
+    if (cache && cache->assetsBase == assetsBase && cache->customBase == customIconsBase &&
+        cache->packGeneration == packGen)
+        return cache;
+    if (!pool.acceptingTasks())
+        return nullptr;
+
+    constexpr int count = static_cast<int>(sizeof(kDecodeFiles) / sizeof(kDecodeFiles[0]));
+    std::vector<std::string> customPaths(count);
+    std::vector<std::string> fallbackPaths(count);
+    const std::string defaultBase = joinPath(assetsBase, "icons");
+    for (int i = 0; i < count; ++i) {
+        if (!customIconsBase.empty())
+            customPaths[i] = joinPath(customIconsBase, kDecodeFiles[i]);
+        fallbackPaths[i] = joinPath(defaultBase, kDecodeFiles[i]);
+    }
+    auto job = std::make_shared<IconDecode>();
+    job->assetsBase = assetsBase;
+    job->customBase = customIconsBase;
+    job->packGeneration = packGen;
+    job->startTick = armGetSystemTick();
+    pool.submit([job, customPaths = std::move(customPaths),
+                 fallbackPaths = std::move(fallbackPaths)]() {
+        std::vector<nxui::DecodedImage> images(fallbackPaths.size());
+        for (std::size_t i = 0; i < fallbackPaths.size(); ++i) {
+            if (!customPaths[i].empty() && pathExists(customPaths[i]))
+                images[i] = nxui::Texture::decodeFile(customPaths[i], 128);
+            if (!images[i].valid())
+                images[i] = nxui::Texture::decodeFile(fallbackPaths[i], 128);
+        }
+        job->images = std::move(images);
+        job->done.store(true, std::memory_order_release);
+    });
+    cache = job;
+    return job;
+}
+
+void SidebarManager::prewarmIcons(nxui::ThreadPool& pool, const std::string& assetsBase) {
+    // The icon pack the player chose; a theme with its own icons asks for a
+    // different set and decodes it when Classic builds.
+    const std::string packDir = iconpack::activeDir();
+    requestIconDecode(pool, assetsBase, packDir);
+    DebugLog::log("[sidebar-assets] prewarm requested (pack=%s)",
+                  packDir.empty() ? "<built-in>" : packDir.c_str());
+}
+
 void SidebarManager::pumpAssets(nxui::GpuDevice& gpu, nxui::Renderer& ren) {
     if (!m_iconDecode || !m_iconDecode->done.load(std::memory_order_acquire))
         return;
     auto job = std::move(m_iconDecode);
     m_iconDecode.reset();
+    // The job may be the shared cache: compare against the generation this
+    // manager stamped when it asked, kept separately per request.
     if (job->generation != m_iconGeneration)
         return;
     if ((int)m_icons.size() != kSidebarIconCount)
         m_icons.resize(kSidebarIconCount);
     int loaded = 0;
-    for (int i = 0; i < kSidebarIconCount && i < (int)job->images.size(); ++i) {
-        if (m_icons[i].loadFromDecoded(gpu, ren, job->images[i]))
+    for (int i = 0; i < kSidebarIconCount; ++i) {
+        const int src = (i == 1 && !m_hasDiscord) ? kDecodeMiiEditor : i;
+        if (src < (int)job->images.size() && m_icons[i].loadFromDecoded(gpu, ren, job->images[src]))
             ++loaded;
         else
             DebugLog::log("[sidebar-assets] icon %d failed to decode", i);
     }
-    DebugLog::log("[sidebar-assets] %d icon(s) ready %llums after request", loaded,
+    DebugLog::log("[sidebar-assets] %d icon(s) ready %llums after decode request", loaded,
                   static_cast<unsigned long long>(
                       armTicksToNs(armGetSystemTick() - job->startTick) / 1000000ULL));
 }

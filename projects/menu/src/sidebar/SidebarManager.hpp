@@ -45,6 +45,10 @@ public:
     void setThreadPool(nxui::ThreadPool* pool) { m_pool = pool; }
     // Render thread, once per frame: uploads icons a worker has finished.
     void pumpAssets(nxui::GpuDevice& gpu, nxui::Renderer& ren);
+    // Render thread, at process start: decodes the active icon pack's sidebar
+    // icons on `pool` so the first Classic build finds them ready. The decoded
+    // set is kept for the process and reused by every later build.
+    static void prewarmIcons(nxui::ThreadPool& pool, const std::string& assetsBase);
 
     // The dynamic-line HOME layout turns the two side columns into one
     // horizontal control strip between the profile bar and the applications.
@@ -90,15 +94,24 @@ private:
                           const std::string& webpPath, AppletButton* button,
                           nxui::Texture* staticIcon);
 
-    // One worker decode of the static icons. Shared with the task, so the
-    // task never touches this object; a newer request bumps m_iconGeneration
-    // and the older result is dropped.
+    // One worker decode of the static icons, kept process-wide (iconCache)
+    // and keyed by the folders and icon pack generation it was read from.
+    // The worker writes only `images` and then `done`; every other field is
+    // render-thread only. A newer request bumps m_iconGeneration and the
+    // older result is not uploaded.
     struct IconDecode {
         std::vector<nxui::DecodedImage> images;
         std::atomic<bool> done{false};
+        std::string assetsBase;
+        std::string customBase;
+        std::uint32_t packGeneration = 0;
         std::uint32_t generation = 0;
         std::uint64_t startTick = 0;
     };
+    static std::shared_ptr<IconDecode>& iconCache();
+    static std::shared_ptr<IconDecode> requestIconDecode(nxui::ThreadPool& pool,
+                                                         const std::string& assetsBase,
+                                                         const std::string& customIconsBase);
     std::shared_ptr<IconDecode> m_iconDecode;
     std::uint32_t m_iconGeneration = 0;
     nxui::ThreadPool* m_pool = nullptr;

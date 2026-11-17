@@ -1,6 +1,7 @@
 
 #include "core/WiiUMenuApp.hpp"
 #include "core/IconPack.hpp"
+#include "sidebar/SidebarManager.hpp"
 #include "core/DebugLog.hpp"
 #include "core/Config.hpp"
 #include "core/NsService.hpp"
@@ -420,6 +421,10 @@ int main(int argc, char* argv[]) {
         homeCore.setRequestExit([&app] { app.requestExit(); });
         homeCore.config().load();
         iconpack::setActive(homeCore.config().iconPack);
+        // Classic's sidebar icons, decoded while either frontend starts, so
+        // the first switch to Classic does not wait on the card for them.
+        if (!homeCore.config().safeMode())
+            SidebarManager::prewarmIcons(homeCore.threadPool(), SD_ASSETS);
         app.setBeforeGpuShutdown([&homeCore] {
             homeCore.runShutdownPhase(home::ShutdownPhase::GpuResources);
         });
