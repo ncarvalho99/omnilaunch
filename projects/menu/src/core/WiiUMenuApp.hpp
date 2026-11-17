@@ -579,6 +579,8 @@ private:
     void loadMenuLayout();
     void saveMenuLayout();
     void quiesceWritersForPowerAction();
+    void queueConfigSave();
+    void saveConfigSync(const char* why = nullptr);
     void applyMenuLayoutToPending(std::vector<PendingApp>& apps);
     void startEditGhost(GlossyIcon* sourceIcon);
     nxui::Texture* adoptEditGhostTexture(GlossyIcon* sourceIcon);
@@ -806,6 +808,7 @@ private:
     // it: the corruption is intermittent at roughly one reboot in three, which
     // is what losing a race with an in-flight write looks like.
     std::future<void>    m_configSaveFuture;
+    std::atomic<std::uint64_t> m_configSaveGen{0};
     std::future<void>    m_themeDeleteFuture;
     // The batch itself is HomeCore's (HomePlaytime); the frontend keeps only
     // when to ask and how to re-sort.
@@ -956,8 +959,11 @@ private:
     bool m_folderOriginStale = false;
     bool m_gridSliding = false;
     // Frames the log stays unbuffered for after the run loop starts, so a hang
-    // in early-frame work (deferred asset uploads) still reaches the SD card.
-    int m_logImmediateFrames = 300;
+    // in early-frame work (deferred asset uploads, frame one) still reaches the
+    // SD card. Kept short: each unbuffered line is a synchronous card write and
+    // commit on the render thread, and 300 frames of them caused stutter.
+    static constexpr int kLogImmediateFrames = 30;
+    int m_logImmediateFrames = kLogImmediateFrames;
     float m_perfAccumDt = 0.f;
     int   m_perfFrames = 0;
     float m_perfWorstDt = 0.f;

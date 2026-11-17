@@ -352,6 +352,7 @@ bool AppConfig::load() {
 }
 
 bool AppConfig::save() const {
+    prepareForSave();
     // Saves come from the UI thread and from pool workers (snapshots). They
     // share the staging and backup paths, so one runs at a time.
     static std::mutex s_saveMutex;

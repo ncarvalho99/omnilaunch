@@ -415,6 +415,7 @@ bool CardsHomeActivity::onCreate() {
         m_art.releaseAll();
         waitWallpaper();
         if (m_perfWrite.valid()) { try { m_perfWrite.get(); } catch (...) {} }
+        flushConfigSave("cards quiesce");
     });
     m_core.frontendStarted();
     const uint64_t createStartTick = armGetSystemTick();
@@ -611,7 +612,7 @@ bool CardsHomeActivity::onCreate() {
         m_deferredBluetoothInitFrames = 120;
         DebugLog::log("[cards] Bluetooth manager initialization deferred for fast return");
     } else {
-        m_core.startBluetooth();
+        m_core.startBluetoothAsync();
     }
 #else
     // Bluetooth is a Core service; starting it is idempotent.
@@ -687,6 +688,14 @@ void CardsHomeActivity::onDestroy() {
     if (m_achievementsCancel) m_achievementsCancel->store(true);
     closingTrace.http_cancel_done_tick = armGetSystemTick();
 #endif
+    // Close sheets before draining workers and flushing the configuration:
+    // any callback triggered by closing (such as saving music options) must
+    // run before the pool is drained and before persistLastFocus flushes writes.
+    m_sheet.close();
+    m_musicSheet.close();
+    m_newsSheet.close();
+    m_newsSheet.clearTextures();
+    m_moving = false;
     // Stop our decodes and wait for our pool work before the Core loader is
     // handed to the next frontend.
     if (m_detailsPending)
@@ -741,11 +750,6 @@ void CardsHomeActivity::onDestroy() {
     m_deleteProgress.reset();
     m_selfUpdateProgress.reset();
     m_fetchProgress.reset();
-    m_sheet.close();
-    m_musicSheet.close();
-    m_newsSheet.close();
-    m_newsSheet.clearTextures();
-    m_moving = false;
     m_quick.reset();
     m_text.reset();
     m_padTest.reset();
@@ -782,18 +786,18 @@ nxui::Widget* CardsHomeActivity::focusRoot() {
     return nullptr;
 }
 
+// Teardown writes the configuration once: the focused title and any settings
+// change still queued go out in the same save.
 void CardsHomeActivity::persistLastFocus() {
-    if (m_selected < 0 || m_selected >= m_catalog.count())
-        return;
-    auto& config = m_core.config();
-    const std::uint64_t id = m_catalog.at(m_selected).app.titleId;
-    if (pages::isSystemId(id) || config.lastPageTitleId == id)
-        return;
-    config.lastPageTitleId = id;
-    config.save();
-#ifdef SWITCHU_MENU
-    switchu::commitSdCard("cards last focus");
-#endif
+    if (m_selected >= 0 && m_selected < m_catalog.count()) {
+        auto& config = m_core.config();
+        const std::uint64_t id = m_catalog.at(m_selected).app.titleId;
+        if (!pages::isSystemId(id) && config.lastPageTitleId != id) {
+            config.lastPageTitleId = id;
+            m_configSaveDirty = true;
+        }
+    }
+    flushConfigSave("cards last focus");
 }
 
 // Classic resolves theme music in applyThemeResources (resolveThemeAssetPath):
@@ -946,9 +950,10 @@ void CardsHomeActivity::onUpdate(float dt) {
     m_time += dt;
     m_inputDt = dt;
 #ifdef SWITCHU_MENU
-    // Startup logs line by line (a hang leaves a trace); once Cards has run
-    // a few seconds, buffer and let the background thread write the card.
-    // Without this every Cards log line was a synchronous SD write + commit.
+    // Startup logs line by line (a hang leaves a trace); after the first
+    // frames, buffer and let the background thread write the card. Every
+    // unbuffered line is a synchronous SD write + commit on this thread, which
+    // over 300 frames (about 5 s) cost visible stutter after a return.
     if (m_logImmediateFrames > 0 && --m_logImmediateFrames == 0) {
         DebugLog::log("[cards] run loop healthy, log buffering enabled");
         switchu::FileLog::setImmediate(false);
@@ -960,6 +965,7 @@ void CardsHomeActivity::onUpdate(float dt) {
         m_perfLastFrameTick = 0;
 #endif
 
+    switchu::menu::frame_probe::mark("cards-pre-catalog");
     const std::uint64_t previousId =
         (m_selected >= 0 && m_selected < m_catalog.count()) ? m_catalog.at(m_selected).app.titleId : 0;
     if (!m_moving && !m_sheet.isOpen() && !m_musicSheet.isOpen() && !m_newsSheet.isOpen() && !overlayActive() &&
@@ -1036,9 +1042,11 @@ void CardsHomeActivity::onUpdate(float dt) {
     }
 
     if (m_deferredBluetoothInitFrames > 0 && --m_deferredBluetoothInitFrames == 0) {
-        m_core.startBluetooth();
+        m_core.startBluetoothAsync();
     }
     switchu::menu::frame_probe::mark("cards-init");
+    pollConfigSave();
+    switchu::menu::frame_probe::mark("cards-config-save");
     updateLeaveSplashHandoff(dt);
 
     nxui::AnimationManager::instance().update(dt);
@@ -1240,10 +1248,11 @@ void CardsHomeActivity::onUpdate(float dt) {
                 config.noteOpened(m_leaveTitleId, config.nextLastOpenedAt());
                 config.lastPageTitleId = m_leaveTitleId;
                 trace.recency_submit_tick = armGetSystemTick();
-                if (!config.save())
+                // Synchronous, before the hand-off. It carries every pending
+                // settings change, and a queued older snapshot skips itself.
+                if (!saveConfigNow("last opened"))
                     DebugLog::log("[cards] could not save last-opened title=%016llX",
                                   static_cast<unsigned long long>(m_leaveTitleId));
-                switchu::commitSdCard("last opened");
                 trace.animation_complete_tick = armGetSystemTick();
                 trace.recency_commit_complete_tick = trace.animation_complete_tick;
 
@@ -1532,6 +1541,9 @@ void CardsHomeActivity::updateFrontendSwitch(float dt) {
     if (m_switchFade < kSwitchFadeOut)
         return;
     m_switchFade = -1.f;
+    // A queued settings snapshot must land before the switch saves the new
+    // style, or it would write Cards back over it.
+    flushConfigSave("cards before switch");
     if (!home::switchFrontend(app(), m_core, m_switchTarget))
         DebugLog::log("[cards] frontend switch not started");
 }

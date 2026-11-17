@@ -90,7 +90,8 @@ void WiiUMenuApp::startUpdateCheck(bool forced) {
         if (m_config.lastUpdateCheckDay == today)
             return;
         m_config.lastUpdateCheckDay = today;
-        m_config.save();
+        // A synchronous save here stalled a frame on every daily check.
+        queueConfigSave();
     }
     m_updateOffered = false;
     m_updateCheckForced = forced;

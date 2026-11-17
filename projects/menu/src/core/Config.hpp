@@ -383,6 +383,20 @@ struct AppConfig {
 
     bool load();
 
+    void prepareForSave() const {
+        if (m_safe) {
+            if (musicEnabled) m_touchedMusic = true;
+            if (customBgmEnabled) m_touchedBgm = true;
+            if (soundPreset != "wiiu") m_touchedSound = true;
+            if (themePreset != kSafeTheme) m_touchedTheme = true;
+        }
+    }
+
+    AppConfig snapshotForSave() const {
+        prepareForSave();
+        return *this;
+    }
+
     bool save() const;
 
     static constexpr const char* kSafeTheme = "Default Dark";

@@ -305,6 +305,7 @@ void AudioManager::play() {
     // that is already playing made an audible skip (PoloNX #133).
     if (m_playing.load() && Mix_PlayingMusic())
         return;
+    m_quickEnds = 0; // the player asked for music again
     if (m_current < 0 || m_current >= static_cast<int>(m_tracks.size())) {
         if (m_shuffle && !m_shuffleOrder.empty()) {
             m_shufflePos = 0;
@@ -319,6 +320,7 @@ void AudioManager::play() {
 void AudioManager::playTrack(int index) {
     std::lock_guard<std::mutex> lk(m_trackMutex);
     if (index < 0 || index >= static_cast<int>(m_tracks.size())) return;
+    m_quickEnds = 0;
     m_current = index;
     if (m_shuffle) {
         for (size_t i = 0; i < m_shuffleOrder.size(); ++i) {
@@ -349,6 +351,7 @@ void AudioManager::resume() {
         m_playing.store(true);
     } else if (!m_playing.load()) {
         if (!m_tracks.empty()) {
+            m_quickEnds = 0;
             if (m_current < 0 || m_current >= static_cast<int>(m_tracks.size())) {
                 m_current = 0;
             }
@@ -506,7 +509,42 @@ std::vector<TrackInfo> AudioManager::tracks() const {
 void AudioManager::update() {
     if (m_trackFinished.exchange(false)) {
         if (m_playing.load()) {
-            if (m_repeat) {
+            // A track that ends at once (undecodable or truncated file) made
+            // the menu load the next one, on this thread, several times a
+            // second. After a few in a row, stop instead of cycling the list.
+            constexpr double kQuickEndSeconds = 2.0;
+            constexpr int kQuickEndLimit = 3;
+            bool isRepeat = false;
+            {
+                std::lock_guard<std::mutex> lk(m_trackMutex);
+                isRepeat = m_repeat;
+                const double played =
+                    std::chrono::duration<double>(std::chrono::steady_clock::now() - m_trackStart).count() -
+                    m_pausedTotal;
+                // A track that was measured to be legitimately short (< 2 s)
+                // and played to completion is not a decoder failure.
+                const bool validShortTrack =
+                    (m_trackDuration > 0.0 && m_trackDuration <= kQuickEndSeconds && played >= m_trackDuration * 0.8);
+                // Also, if the track is in repeat mode and played its duration,
+                // normal loop completion is not a failure.
+                if (played < kQuickEndSeconds && !validShortTrack && !m_repeat) {
+                    const std::string path = (m_current >= 0 && m_current < static_cast<int>(m_tracks.size()))
+                        ? m_tracks[m_current].path : std::string();
+                    DebugLog::log("[audio] track ended at once: %s (%s)", path.c_str(), Mix_GetError());
+                    if (++m_quickEnds >= kQuickEndLimit) {
+                        DebugLog::log("[audio] %d tracks in a row ended at once; music stopped", m_quickEnds);
+                        Mix_HookMusicFinished(nullptr);
+                        Mix_HaltMusic();
+                        m_playing.store(false);
+                        m_paused.store(false);
+                        m_quickEnds = 0;
+                        return;
+                    }
+                } else if (!m_repeat) {
+                    m_quickEnds = 0;
+                }
+            }
+            if (isRepeat) {
                 std::lock_guard<std::mutex> lk(m_trackMutex);
                 playCurrentTrackLocked();
             } else {

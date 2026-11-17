@@ -11,6 +11,7 @@
 #include <nxui/core/Renderer.hpp>
 #include <nxui/core/ThreadPool.hpp>
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <system_error>
 
@@ -31,11 +32,20 @@ bool CardsCatalog::poll(AppListLoader& loader, const AppConfig& config) {
         return false;
     m_loading = false;
 
+    // Render-thread cost of the hand-over, logged so a slow first frame can be
+    // attributed to finalize() or to the page build (sort, filter).
+    using Clock = std::chrono::steady_clock;
+    const auto msSince = [](Clock::time_point from) {
+        return std::chrono::duration<double, std::milli>(Clock::now() - from).count();
+    };
+    const auto pollStart = Clock::now();
     // finalize() fills a model and an icon streamer; the streamer only holds
     // compressed bytes here (no textures) and is dropped at once.
     GridModel model;
     IconStreamer scratch;
-    if (!loader.finalize(model, scratch)) {
+    const bool finalized = loader.finalize(model, scratch);
+    const double finalizeMs = msSince(pollStart);
+    if (!finalized) {
         DebugLog::log("[cards] catalogue load failed; keeping %zu cards", m_entries.size());
         return false;
     }
@@ -51,8 +61,10 @@ bool CardsCatalog::poll(AppListLoader& loader, const AppConfig& config) {
     m_parked.clear();
     m_entries.clear();
     m_all = std::move(apps);
+    const auto pageStart = Clock::now();
     setPage(m_page, config);
-    DebugLog::log("[cards] catalogue %zu titles (sort %d)", m_all.size(), config.cardsSort);
+    DebugLog::log("[cards] catalogue %zu titles (sort %d) finalize %.1f ms, page %.1f ms, total %.1f ms",
+                  m_all.size(), config.cardsSort, finalizeMs, msSince(pageStart), msSince(pollStart));
     return true;
 }
 

@@ -6,6 +6,7 @@
 #include "smi_commands.hpp"
 #include <switchu/file_log.hpp>
 #include <switchu/sd_commit.hpp>
+#include <switch.h>
 #endif
 
 namespace home {
@@ -32,6 +33,7 @@ HomeCore::HomeCore() {
     // pool -> HTTP -> Bluetooth: workers can still be inside a request until
     // the pool has joined, and the HTTP runtime owns the shared socket ref.
     addShutdownHook(ShutdownPhase::Services, "bluetooth", [this] {
+        joinBluetoothStart();
         bluetooth::Finalize();
 #ifdef SWITCHU_MENU
         m_closingTrace.bluetooth_done_tick = armGetSystemTick();
@@ -95,15 +97,53 @@ void HomeCore::frontendStopping() {
 }
 
 void HomeCore::startBluetooth() {
+    // Waits for a start already running on the background thread.
+    std::lock_guard<std::mutex> lk(m_bluetoothMutex);
+    if (bluetooth::IsAvailable())
+        return;
     bluetooth::Initialize();
     DebugLog::log("[home-core] Bluetooth manager %s",
                   bluetooth::IsAvailable() ? "initialized" : "unavailable");
+}
+
+// btm start-up (several IPC calls plus a thread) took a whole frame on the
+// render thread. It runs once on its own thread, not the shared pool, since
+// btm calls can block. Settings rows still call startBluetooth(), which waits
+// for this one through the mutex.
+void HomeCore::startBluetoothAsync() {
+    if (m_bluetoothThread.joinable()) {
+        if (!m_bluetoothStartDone.load(std::memory_order_acquire))
+            return; // still starting
+        m_bluetoothThread.join(); // finished: a failed start may be retried
+    }
+    if (bluetooth::IsAvailable())
+        return;
+    m_bluetoothStartDone.store(false, std::memory_order_release);
+    try {
+        m_bluetoothThread = std::thread([this] {
+#ifdef __SWITCH__
+            // Keep btm IPC calls away from the core-0 render loop.
+            svcSetThreadCoreMask(CUR_THREAD_HANDLE, 2, UINT64_C(1) << 2);
+#endif
+            startBluetooth();
+            m_bluetoothStartDone.store(true, std::memory_order_release);
+        });
+    } catch (...) {
+        DebugLog::log("[home-core] Bluetooth start thread failed; starting inline");
+        startBluetooth();
+    }
+}
+
+void HomeCore::joinBluetoothStart() {
+    if (m_bluetoothThread.joinable())
+        m_bluetoothThread.join();
 }
 
 HomeCore::~HomeCore() {
     // A normal exit runs every phase explicitly from main(). This only covers
     // an early return; it never reorders work that already ran.
     runShutdownPhase(ShutdownPhase::ProcessExit);
+    joinBluetoothStart();
 }
 
 void HomeCore::setRequestExit(std::function<void()> cb) {

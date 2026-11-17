@@ -83,18 +83,106 @@ bool CardsHomeActivity::overlayActive(bool ignoreFetch) const {
            (m_discordPanel && m_discordPanel->isActive());
 }
 
-void CardsHomeActivity::saveConfig(const char* why) {
-    auto& config = m_core.config();
-    config.cards.normalize();
-    // Success is logged too: without it a settings test on hardware cannot
-    // tell which rows actually wrote the configuration.
-    if (!config.save())
+namespace {
+// Success is logged too: without it a settings test on hardware cannot tell
+// which rows actually wrote the configuration.
+bool writeConfig(const AppConfig& config, const char* why) {
+    const bool ok = config.save();
+    if (!ok)
         DebugLog::log("[cards] config save failed (%s)", why);
     else
         DebugLog::log("[cards] config saved (%s)", why);
 #ifdef SWITCHU_MENU
     switchu::commitSdCard(why);
 #endif
+    return ok;
+}
+} // namespace
+
+bool CardsHomeActivity::configSaveRunning() const {
+    return m_configSaveFuture.valid() &&
+           m_configSaveFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready;
+}
+
+// `why` must be a string literal: queued saves keep only the pointer.
+// The JSON write, its backup and the card commit took whole frames on the
+// render thread (a volume step, the daily update check), so they run on the
+// pool. One save is queued at a time; a change made meanwhile is written,
+// with the latest values, once it finishes (pollConfigSave).
+void CardsHomeActivity::saveConfig(const char* why) {
+    m_core.config().cards.normalize();
+    m_configSaveWhy = why;
+    if (configSaveRunning()) {
+        m_configSaveDirty = true;
+        return;
+    }
+    collectConfigSave();
+    startConfigSave(why);
+}
+
+void CardsHomeActivity::startConfigSave(const char* why) {
+    m_configSaveDirty = false;
+    std::uint64_t generation = 0;
+    {
+        std::lock_guard<std::mutex> lk(m_configWriter->mutex);
+        generation = ++m_configWriter->generation;
+    }
+    if (m_core.threadPool().acceptingTasks()) {
+        try {
+            m_configSaveFuture = m_core.threadPool().submit(
+                [writer = m_configWriter, generation, config = m_core.config().snapshotForSave(), why]() {
+                    // A later synchronous save (launch, flush) already wrote
+                    // newer values: this older snapshot must not land after it.
+                    std::lock_guard<std::mutex> lk(writer->mutex);
+                    if (writer->generation != generation)
+                        return;
+                    writeConfig(config, why);
+                });
+            return;
+        } catch (...) {
+            m_configSaveFuture = {};
+        }
+    }
+    saveConfigNow(why);
+}
+
+void CardsHomeActivity::pollConfigSave() {
+    if (!m_configSaveFuture.valid() || configSaveRunning())
+        return;
+    collectConfigSave();
+    if (m_configSaveDirty)
+        startConfigSave(m_configSaveWhy);
+}
+
+// Collects a finished save. A task the pool refused (shutting down) wrote
+// nothing, so its values are still pending.
+void CardsHomeActivity::collectConfigSave() {
+    if (!m_configSaveFuture.valid())
+        return;
+    try {
+        m_configSaveFuture.get();
+    } catch (...) {
+        DebugLog::log("[cards] config save task not run; kept pending");
+        m_configSaveDirty = true;
+    }
+}
+
+// Writes the current values now, on this thread. Waits at most for a write
+// already in progress, never for queued pool work; a queued older snapshot
+// then skips itself.
+bool CardsHomeActivity::saveConfigNow(const char* why) {
+    m_configSaveDirty = false;
+    std::lock_guard<std::mutex> lk(m_configWriter->mutex);
+    ++m_configWriter->generation;
+    return writeConfig(m_core.config(), why);
+}
+
+// Launch, power actions, frontend switch and teardown: nothing may stay pending.
+void CardsHomeActivity::flushConfigSave(const char* why) {
+    if (m_configSaveFuture.valid() && !configSaveRunning())
+        collectConfigSave();
+    if (m_configSaveDirty || configSaveRunning())
+        saveConfigNow(why);
 }
 
 void CardsHomeActivity::openPowerMenu() {

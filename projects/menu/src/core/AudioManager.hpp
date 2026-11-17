@@ -109,6 +109,7 @@ private:
     std::chrono::steady_clock::time_point m_pausedAt{};
     double m_pausedTotal = 0.0;
     double m_trackDuration = 0.0; // seconds, 0 = unknown (read from the MP3 header)
+    int m_quickEnds = 0; // tracks in a row that ended right after starting; under m_trackMutex
     std::unordered_map<std::string, double> m_durationCache; // path -> seconds, under m_trackMutex
     float m_volume  = 0.5f;
     float m_musicFade = 1.f;

@@ -27,9 +27,12 @@
 #include "discord/DiscordService.hpp"
 #include "core/Config.hpp"
 #include <nxui/core/ThreadPool.hpp>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <mutex>
+#include <thread>
 #include <vector>
 #ifdef SWITCHU_MENU
 #include <switchu/smi_protocol.hpp>
@@ -95,6 +98,9 @@ public:
     /// Bluetooth is process-lifetime: started once (immediately or deferred by
     /// the frontend on fast return) and finalized in the Services phase.
     void startBluetooth();
+    /// Same start on a background thread (once); the render thread does not
+    /// wait for btm. The Services phase joins it before Finalize.
+    void startBluetoothAsync();
 
     /// Live frontend switch (D2). True while the frontend being created was
     /// reached by a switch rather than by boot or a return from an applet;
@@ -161,6 +167,10 @@ private:
     std::function<void()> m_frontendQuiesce;
     bool m_preparingSleep = false;
     bool m_frontendSwitch = false;
+    std::mutex m_bluetoothMutex; // bluetooth::Initialize is not re-entrant
+    std::thread m_bluetoothThread;
+    std::atomic<bool> m_bluetoothStartDone{false};
+    void joinBluetoothStart();
 
 #ifdef SWITCHU_MENU
     switchu::smi::SystemStatus m_systemStatus{};

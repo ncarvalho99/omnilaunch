@@ -134,6 +134,12 @@ private:
     void finishMove(bool keep);
     void handleMoveInput();
     void saveConfig(const char* why);
+    void startConfigSave(const char* why);
+    void pollConfigSave();
+    void collectConfigSave();
+    bool configSaveRunning() const;
+    bool saveConfigNow(const char* why);
+    void flushConfigSave(const char* why);
     void openDotsMenu();
     bool handleDotsInput(nxui::Input& in);
     void drawDots(nxui::Renderer& ren);
@@ -255,7 +261,19 @@ private:
     // so the press that confirmed the switch does nothing here.
     bool m_waitRelease = false;
     float m_fadeIn = 1.f;  // 1 -> 0 over the first frames after a switch
-    int m_logImmediateFrames = 300; // unbuffered log for the first frames
+    int m_logImmediateFrames = 30; // unbuffered log for the first frames
+    // Settings saves run on the pool, one at a time; a change made while one
+    // is writing is saved (latest values) when it finishes.
+    // Synchronous saves bump the generation; a queued snapshot whose
+    // generation is no longer current skips its write.
+    struct ConfigWriter {
+        std::mutex mutex;
+        std::uint64_t generation = 0;
+    };
+    std::shared_ptr<ConfigWriter> m_configWriter = std::make_shared<ConfigWriter>();
+    std::future<void> m_configSaveFuture;
+    bool m_configSaveDirty = false;
+    const char* m_configSaveWhy = "cards settings";
     // Background cross-fade.
     std::uint64_t m_bgId = 0;
     std::uint64_t m_bgPrevId = 0;

@@ -138,6 +138,34 @@ int main() {
         TEST_ASSERT(!loaded.steamGridDbShowInFolders);
     }
 
+    // 8. Safe mode: snapshotForSave preserves touched status across copies and saves.
+    {
+        AppConfig cfg;
+        cfg.musicEnabled = true;
+        TEST_ASSERT(cfg.save());
+
+        AppConfig safeCfg;
+        TEST_ASSERT(safeCfg.load());
+        safeCfg.enterSafeMode();
+        TEST_ASSERT(safeCfg.safeMode() == true);
+        TEST_ASSERT(safeCfg.musicEnabled == false); // overridden in safe mode
+
+        // Player toggles music on
+        safeCfg.musicEnabled = true;
+        AppConfig snap = safeCfg.snapshotForSave();
+        TEST_ASSERT(snap.save());
+
+        // Player now toggles music back off
+        safeCfg.musicEnabled = false;
+        AppConfig snap2 = safeCfg.snapshotForSave();
+        TEST_ASSERT(snap2.save());
+
+        AppConfig reloaded;
+        TEST_ASSERT(reloaded.load());
+        // Since the player explicitly touched and chose off, it must remain off on disk
+        TEST_ASSERT(reloaded.musicEnabled == false);
+    }
+
     std::system("rm -rf 'sdmc:'");
     std::printf("PASS: config_cards_layout_test passed all assertions!\n");
     return 0;

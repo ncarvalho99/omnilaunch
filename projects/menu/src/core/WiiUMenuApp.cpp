@@ -750,7 +750,7 @@ bool WiiUMenuApp::onCreate() {
         m_deferredBluetoothInitFrames = 120;
         DebugLog::log("[init] Bluetooth manager initialization deferred for fast return");
     } else {
-        m_homeCore.startBluetooth();
+        m_homeCore.startBluetoothAsync();
     }
     DebugLog::log("[init-diag] i18n/audio/bluetooth %lums", initElapsedMs());
     DebugLog::log("[init] Theme Shop HTTP runtime deferred until first request");
@@ -865,6 +865,45 @@ bool WiiUMenuApp::onCreate() {
 // the console goes down. Deliberately does not ask the applet to exit: doing
 // that made the daemon see no menu running and relaunch it into the middle of
 // the reboot, leaving the console black and needing RCM.
+// Config snapshot written on the pool, in submission order (the previous one
+// is collected first). For automatic saves that happen while the HOME screen
+// is running; quiesce, switch and teardown collect the future. A generation
+// counter ensures an older in-flight snapshot never overwrites a newer save.
+void WiiUMenuApp::queueConfigSave() {
+    if (m_configSaveFuture.valid() &&
+        m_configSaveFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        try { m_configSaveFuture.get(); } catch (...) {}
+    }
+    const std::uint64_t gen = ++m_configSaveGen;
+    if (m_threadPool.acceptingTasks()) {
+        try {
+            m_configSaveFuture = m_threadPool.submit([this, gen, cfg = m_config.snapshotForSave()]() {
+                if (gen != m_configSaveGen.load())
+                    return;
+                cfg.save();
+            });
+            return;
+        } catch (...) {
+            m_configSaveFuture = {};
+        }
+    }
+    saveConfigSync(nullptr);
+}
+
+void WiiUMenuApp::saveConfigSync(const char* why) {
+    ++m_configSaveGen;
+    if (m_configSaveFuture.valid() &&
+        m_configSaveFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        try { m_configSaveFuture.get(); } catch (...) {}
+    }
+    m_config.prepareForSave();
+    m_config.save();
+#ifdef SWITCHU_MENU
+    if (why)
+        switchu::commitSdCard(why);
+#endif
+}
+
 void WiiUMenuApp::quiesceWritersForPowerAction() {
     m_browserFetch.stop();
     m_launcherFetch.stop();
@@ -974,15 +1013,15 @@ void WiiUMenuApp::onDestroy() {
     // nothing, and the menu came back on page one every time. Recorded as a
     // title rather than a page number: the grid can be rebuilt at a different
     // width between leaving and coming back, and the page number would then
-    // point somewhere else.
-    if (m_grid && m_grid->iconsPerPage() > 0) {
+    // point somewhere else. A switch to another frontend (Cards) has already
+    // saved the new homeStyle; do not write an extra snapshot during the switch.
+    if (m_grid && m_grid->iconsPerPage() > 0 && !app().activityChangePending()) {
         const int first = m_grid->currentPage() * m_grid->iconsPerPage();
         if (first >= 0 && first < m_model.count()) {
             const std::uint64_t anchor = m_model.at(first).titleId;
             if (anchor != m_config.lastPageTitleId) {
                 m_config.lastPageTitleId = anchor;
-                m_config.save();
-                switchu::commitSdCard("last page");
+                saveConfigSync("last page");
             }
         }
     }
@@ -1058,8 +1097,7 @@ void WiiUMenuApp::cycleSortMode() {
 #ifdef SWITCHU_MENU
     if (m_editMode) return;
     m_config.sortMode = (m_config.sortMode + 1) % AppConfig::kSortModeCount;
-    m_config.save();
-    switchu::commitSdCard("sort mode");
+    saveConfigSync("sort mode");
     DebugLog::log("[menu] sort mode -> %d", m_config.sortMode);
 
     // Rebuilt in place so the change is visible at once. The hand-made layout
@@ -7417,7 +7455,7 @@ void WiiUMenuApp::checkNewGameSteamGridDbPrompt() {
                 m_config.steamGridDbKnownTitles.push_back(app.titleId);
             }
         }
-        m_config.save();
+        saveConfigSync(nullptr);
         return;
     }
 
@@ -7438,7 +7476,7 @@ void WiiUMenuApp::checkNewGameSteamGridDbPrompt() {
     for (const auto& app : newGames) {
         m_config.steamGridDbKnownTitles.push_back(app.titleId);
     }
-    m_config.save();
+    saveConfigSync(nullptr);
 
     if (!m_dialog)
         return;
@@ -8148,7 +8186,7 @@ void WiiUMenuApp::onUpdate(float dt) {
     }
 
 #ifdef SWITCHU_MENU
-    // Stay unbuffered for the first few seconds of the run loop, not just up to
+    // Stay unbuffered for the first frames of the run loop, not just up to
     // the first frame. The deferred icon and sidebar uploads run on frame one,
     // and a menu that hangs there would otherwise leave no trace: the previous
     // attempt switched to buffered before writing its own marker, so the marker
@@ -8156,8 +8194,8 @@ void WiiUMenuApp::onUpdate(float dt) {
     if (m_logImmediateFrames > 0) {
         // Numbering the first frames pins down whether the loop ran at all and
         // how far it got, which "app.run..." as a last line could not say.
-        if (m_logImmediateFrames > 296)
-            DebugLog::log("[menu] frame %d", 301 - m_logImmediateFrames);
+        if (m_logImmediateFrames > kLogImmediateFrames - 4)
+            DebugLog::log("[menu] frame %d", kLogImmediateFrames + 1 - m_logImmediateFrames);
         if (--m_logImmediateFrames == 0) {
             DebugLog::log("[menu] run loop healthy, log buffering enabled");
             switchu::FileLog::setImmediate(false);
@@ -8370,7 +8408,7 @@ void WiiUMenuApp::onUpdate(float dt) {
         --m_deferredBluetoothInitFrames;
         if (m_deferredBluetoothInitFrames == 0) {
             DebugLog::log("[init] Bluetooth manager start (deferred)");
-            m_homeCore.startBluetooth();
+            m_homeCore.startBluetoothAsync();
             // Deferred with the rest of the network-dependent startup so the
             // grid is already on screen before anything reaches for the wire.
             publishUpdateState();   // bundled notes, before any network call
