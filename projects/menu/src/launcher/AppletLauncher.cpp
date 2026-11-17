@@ -658,6 +658,22 @@ bool AppletLauncher::launchNro(const std::string& path, uint64_t hostTitleId, Ac
     if (!writeSingleLine(kRunningNro, path))
         return abandon("running homebrew not written");
     m_runningHomebrew = path;
+    // Classic, Nextendo and the Cards homebrew page asked with no user, so
+    // the borrowed game started without a preselected account and a port
+    // that needs one could exit at once. Use the HOME user: the last opened
+    // account, else the first one.
+    if (!accountUidIsValid(&uid)) {
+        AccountUid home{};
+        if (R_FAILED(accountGetLastOpenedUser(&home)) || !accountUidIsValid(&home)) {
+            AccountUid uids[8]{};
+            s32 count = 0;
+            if (R_SUCCEEDED(accountListAllUsers(uids, 8, &count)) && count > 0)
+                home = uids[0];
+        }
+        if (accountUidIsValid(&home))
+            uid = home;
+        DebugLog::log("[launcher] homebrew user: %s", accountUidIsValid(&uid) ? "HOME user" : "none");
+    }
     quiesceForPower("launch-nro");
     const Result rc = switchu::menu::smi_cmd::launchHomebrewApp(uid, hostTitleId);
     DebugLog::log("[launcher] launchHomebrewApp host=0x%016llX rc=0x%X",
