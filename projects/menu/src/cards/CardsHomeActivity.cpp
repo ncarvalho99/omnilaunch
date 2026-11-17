@@ -1275,6 +1275,9 @@ void CardsHomeActivity::onUpdate(float dt) {
     pollDaemonNotifications();
     switchu::menu::frame_probe::mark("cards-daemon");
     updateFrontendSwitch(dt);
+    // Its own mark: the switch request used to be charged to the details
+    // adoption below, which made a frontend switch read as a slow pdm query.
+    switchu::menu::frame_probe::mark("cards-frontend-switch");
     updateDetails(dt);
 
     switchu::menu::frame_probe::mark("cards-details");
