@@ -98,4 +98,15 @@ void prewarm(nxui::ThreadPool& pool, const std::vector<std::string>& paths, int 
     DebugLog::log("[asset-cache] prewarm requested: %zu file(s)", count);
 }
 
+bool ready(const std::vector<std::string>& paths, int maxSide) {
+    std::lock_guard<std::mutex> lk(g_mutex);
+    syncGenerationLocked();
+    for (const auto& path : paths) {
+        const auto it = g_entries.find(Key{path, maxSide});
+        if (it != g_entries.end() && !it->second.image)
+            return false; // still decoding on the pool
+    }
+    return true;
+}
+
 } // namespace decoded_assets

@@ -8878,6 +8878,7 @@ void WiiUMenuApp::onUpdate(float dt) {
 
     switchu::menu::frame_probe::mark("input-screens");
     m_sidebar.pumpAssets(app().gpu(), app().renderer());
+    pumpIconPackApply();
     m_sidebar.update(dt, focusManager().current());
 
     if (m_pointerCursor) {

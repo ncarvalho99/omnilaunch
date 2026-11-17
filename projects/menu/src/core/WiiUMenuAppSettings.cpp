@@ -1,5 +1,6 @@
 #include "WiiUMenuApp.hpp"
 #include "core/IconPack.hpp"
+#include "core/DecodedAssetCache.hpp"
 #include "bluetooth/BluetoothManager.hpp"
 #include "news/NewsStore.hpp"
 #include "video/VideoPlayer.hpp"
@@ -2524,14 +2525,49 @@ void WiiUMenuApp::applyThemeMusic(const std::vector<std::string>& tracks) {
 // iconpack::generation() on their next frame.
 void WiiUMenuApp::applyIconPack(const std::string& packId) {
     m_config.iconPack = packId;
-    m_config.save();
+    // Off this frame: a synchronous save plus the reads below held it for
+    // 0.45-1.2 s on every pack applied.
+    queueConfigSave();
     iconpack::setActive(packId);
     DebugLog::log("[icon-pack] apply '%s' -> active '%s'", packId.c_str(), iconpack::activeId().c_str());
 
     // Sidebar: the theme's own icons still win (see SidebarManager::reloadAssets).
+    // Its icons are decoded on a worker and uploaded by pumpAssets.
     m_sidebar.invalidateAssetsCache();
     const std::string customIconsBase = resolveThemeAssetPath(m_effectivePreset, m_effectivePreset.icons.basePath);
     m_sidebar.reloadAssets(app().gpu(), app().renderer(), SD_ASSETS, customIconsBase);
+
+    // Page arrows, battery widgets, game card and XMB tiles: decoded on a
+    // worker first; pumpIconPackApply uploads them once that is done. Until
+    // then the previous pack's textures stay on screen.
+    const std::string iconDir = std::string(SD_ASSETS) + "/icons/";
+    auto icon = [&](const char* file) { return iconpack::resolve(file, iconDir + file); };
+    m_iconPackPaths = {icon("gamecard.png"), icon("page_arrow_left.png"), icon("page_arrow_right.png"),
+                       icon("widget_battery_switch.png"), icon("widget_battery_joycon_left.png"),
+                       icon("widget_battery_joycon_right.png"), icon("widget_battery_controller.png")};
+    if (m_appLayoutMode == AppLayoutMode::Xmb || m_xmbAlbumTex.valid())
+        for (const char* f : {"album.png", "settings.png", "controller.png", "power.png", "themes.png",
+                              "mii_editor.png", "media_center.png", "network.png", "browser.png", "homebrew.png"})
+            m_iconPackPaths.push_back(icon(f));
+    decoded_assets::prewarm(m_threadPool, m_iconPackPaths);
+    m_iconPackCustomBase = customIconsBase;
+    m_iconPackApplyStart = std::chrono::steady_clock::now();
+    m_iconPackApplyPending = true;
+}
+
+// Render thread, every frame. Finishes applyIconPack once the worker has
+// decoded the pack's files (or after 2 s, decoding what is left here).
+void WiiUMenuApp::pumpIconPackApply() {
+    if (!m_iconPackApplyPending)
+        return;
+    const auto waited = std::chrono::steady_clock::now() - m_iconPackApplyStart;
+    if (!decoded_assets::ready(m_iconPackPaths) && waited < std::chrono::seconds(2))
+        return;
+    m_iconPackApplyPending = false;
+    const std::string customIconsBase = std::move(m_iconPackCustomBase);
+    m_iconPackPaths.clear();
+    DebugLog::log("[icon-pack] textures applied %lldms after the request",
+                  static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(waited).count()));
 
     // Page arrows, battery widgets, game card, XMB tiles.
     loadStaticTextures();

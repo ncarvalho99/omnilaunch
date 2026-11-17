@@ -24,4 +24,8 @@ bool load(nxui::Texture& tex, nxui::GpuDevice& gpu, nxui::Renderer& ren,
 // being decoded is skipped. Safe to call from the render thread at start-up.
 void prewarm(nxui::ThreadPool& pool, const std::vector<std::string>& paths, int maxSide = 128);
 
+// True when no prewarm is still decoding any of `paths`, so load() on them
+// only uploads. A path never asked for counts as ready.
+bool ready(const std::vector<std::string>& paths, int maxSide = 128);
+
 } // namespace decoded_assets

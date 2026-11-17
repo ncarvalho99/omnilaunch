@@ -83,6 +83,7 @@
 #include <cstdint>
 #include <memory>
 #include <vector>
+#include <chrono>
 #include <mutex>
 #include <atomic>
 #include <future>
@@ -137,6 +138,12 @@ private:
     void loadStaticTextures();
     void ensureXmbTextures();
     void applyIconPack(const std::string& packId);
+    void pumpIconPackApply();
+    // applyIconPack waiting for its files to be decoded on a worker.
+    bool m_iconPackApplyPending = false;
+    std::vector<std::string> m_iconPackPaths;
+    std::string m_iconPackCustomBase;
+    std::chrono::steady_clock::time_point m_iconPackApplyStart{};
     void ensureMetroTextures();
     void ensureClockFont();
     void setupLockScreen();
