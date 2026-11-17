@@ -17,6 +17,7 @@ constexpr std::uint32_t kMagic = 0x50534E43; // "CNSP"
 constexpr std::uint32_t kVersion = 1;
 constexpr std::uint32_t kMaxItems = 32;
 constexpr auto kSettle = std::chrono::milliseconds(1500);
+constexpr auto kSettlePartial = std::chrono::milliseconds(5000);
 
 struct Header {
     std::uint32_t magic = kMagic;
@@ -222,8 +223,9 @@ bool CardsSnapshotCache::take(int page, std::vector<SnapItem>& out) {
     return true;
 }
 
-void CardsSnapshotCache::offer(nxui::ThreadPool& pool, int page, std::vector<SnapItem> items, bool complete) {
-    if (!complete || items.empty() || items.size() > kMaxItems || (page == m_loadPage && m_loadResult)) {
+void CardsSnapshotCache::offer(nxui::ThreadPool& pool, int page, std::vector<SnapItem> items, int pending,
+                               std::uint64_t firstPending, int firstKind) {
+    if (items.empty() || items.size() > kMaxItems || (page == m_loadPage && m_loadResult)) {
         m_pendingPage = -1; // not saveable now (or the file is still being read)
         return;
     }
@@ -243,7 +245,9 @@ void CardsSnapshotCache::offer(nxui::ThreadPool& pool, int page, std::vector<Sna
         m_pendingSince = now;
         return;
     }
-    if (now - m_pendingSince < kSettle || running(m_writeFuture))
+    // A window with images still decoding waits longer: they normally arrive
+    // within a second and would change the content again.
+    if (now - m_pendingSince < (pending > 0 ? kSettlePartial : kSettle) || running(m_writeFuture))
         return;
     auto shared = m_shared;
     try {
@@ -256,7 +260,11 @@ void CardsSnapshotCache::offer(nxui::ThreadPool& pool, int page, std::vector<Sna
                 shared->stored[page] = sig;
             }
         });
-        DebugLog::log("[cards-snap] page %d saved: %zu image(s)", page, n);
+        if (pending > 0)
+            DebugLog::log("[cards-snap] page %d saved: %zu image(s), %d pending (first %016llX %s)", page, n,
+                          pending, static_cast<unsigned long long>(firstPending), firstKind == 1 ? "cover" : "icon");
+        else
+            DebugLog::log("[cards-snap] page %d saved: %zu image(s)", page, n);
     } catch (...) {
     }
     m_pendingPage = -1;

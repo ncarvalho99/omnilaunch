@@ -1380,7 +1380,21 @@ void CardsHomeActivity::pumpPageSnapshot(int first, int last, int landFirst, int
     if (m_switchQueued || m_switchFade >= 0.f || m_leaving || app().activityChangePending())
         return;
     std::vector<SnapItem> items;
-    bool complete = true;
+    // Images of the window not freshly decoded yet. They used to make the
+    // whole offer incomplete, and one image that never became fresh kept the
+    // page file from ever being written again: after the last-opened title
+    // changed, the old file opened every switch on square icons. What is
+    // fresh is offered anyway; a partial window is written only after it has
+    // stayed the same for longer (CardsSnapshotCache::offer).
+    int pending = 0;
+    std::uint64_t firstPending = 0;
+    int firstPendingKind = 0;
+    const auto notePending = [&](std::uint64_t id, int kind) {
+        if (pending++ == 0) {
+            firstPending = id;
+            firstPendingKind = kind;
+        }
+    };
     // Landing cards first: their covers are uploaded first on the next read.
     std::vector<int> order;
     const auto addRange = [&](int a, int b) {
@@ -1392,13 +1406,11 @@ void CardsHomeActivity::pumpPageSnapshot(int first, int last, int landFirst, int
         addRange(landFirst, landLast);
     addRange(first, last);
     for (int i : order) {
-        if (!complete)
-            break;
         const auto& card = m_catalog.at(i);
         if (card.icon && card.iconFresh && card.iconSnap)
             items.push_back(*card.iconSnap);
         else if (!card.iconFailed)
-            complete = false;
+            notePending(card.app.titleId, 0);
         if (card.system || card.needsDownload)
             continue;
         std::shared_ptr<const SnapItem> cover;
@@ -1406,9 +1418,9 @@ void CardsHomeActivity::pumpPageSnapshot(int first, int last, int landFirst, int
         if (state == CardsArt::SnapState::Ready)
             items.push_back(*cover);
         else if (state == CardsArt::SnapState::Pending)
-            complete = false;
+            notePending(card.app.titleId, 1);
     }
-    m_snapCache.offer(m_core.threadPool(), page, std::move(items), complete);
+    m_snapCache.offer(m_core.threadPool(), page, std::move(items), pending, firstPending, firstPendingKind);
 }
 
 void CardsHomeActivity::ensureVisibleIcons() {

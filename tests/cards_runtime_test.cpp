@@ -10,6 +10,8 @@
 #include <iostream>
 #include <atomic>
 #include <future>
+#include <thread>
+#include "cards/CardsSnapshot.hpp"
 
 namespace iconpack { std::string resolve(const std::string&, const std::string& fallback) { return fallback; } }
 namespace home { std::string installedBrowserPath() { return {}; } }
@@ -117,6 +119,28 @@ int main() {
         assert(!art.cover(4242));
         art.releaseAll();
     }
+    // A window with an image that never becomes fresh is still saved (it
+    // used to block every write, so a stale page file opened each switch on
+    // square icons), but only after the longer partial settle.
+    {
+        cards::CardsSnapshotCache snap;
+        const int page = 7;
+        std::vector<cards::SnapItem> ready{cards::makeSnapItem(0x0100000000AA0000ULL, 1, pixels->data(), 2, 2, 0)};
+        snap.offer(pool, page, ready, 1, 0x0100000000BB0000ULL, 1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1700));
+        snap.offer(pool, page, ready, 1, 0x0100000000BB0000ULL, 1);
+        snap.wait();
+        snap.load(pool, page);
+        std::vector<cards::SnapItem> got;
+        pool.waitForIdle();
+        assert(snap.take(page, got) && got.empty()); // not before the partial settle
+        std::this_thread::sleep_for(std::chrono::milliseconds(3500));
+        snap.offer(pool, page, ready, 1, 0x0100000000BB0000ULL, 1);
+        snap.wait();
+        snap.load(pool, page);
+        pool.waitForIdle();
+        assert(snap.take(page, got) && got.size() == 1 && got[0].titleId == ready[0].titleId);
+    }
     pool.shutdown();
-    std::cout << "production Cards page retention, budget, invalidation PASS\n";
+    std::cout << "production Cards page retention, budget, invalidation, partial snapshot PASS\n";
 }

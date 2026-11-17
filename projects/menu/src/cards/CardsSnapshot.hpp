@@ -46,11 +46,14 @@ public:
     /// Main thread. Moves out a finished read for `page`; false otherwise.
     bool take(int page, std::vector<SnapItem>& out);
 
-    /// Main thread, every frame. `items` is the shown window of `page`;
-    /// `complete` says every image in it is a fresh decode. Once the window
-    /// has stayed the same for a moment it is written on the pool, unless the
-    /// file already holds the same content.
-    void offer(nxui::ThreadPool& pool, int page, std::vector<SnapItem> items, bool complete);
+    /// Main thread, every frame. `items` holds the freshly decoded images of
+    /// the shown window of `page`; `pending` counts the images of that window
+    /// still waiting for their fresh decode (`firstPending` / `firstKind`
+    /// name the first one, for the log). Once the items have stayed the same
+    /// for a moment (longer while some are pending) they are written on the
+    /// pool, unless the file already holds the same content.
+    void offer(nxui::ThreadPool& pool, int page, std::vector<SnapItem> items, int pending = 0,
+               std::uint64_t firstPending = 0, int firstKind = 0);
 
     /// Waits for the read and write in flight (onDestroy).
     void wait();
