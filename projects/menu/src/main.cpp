@@ -398,6 +398,11 @@ int main(int argc, char* argv[]) {
         nxui::Application app;
         homeCore.setRequestExit([&app] { app.requestExit(); });
         homeCore.config().load();
+        // The language query and the language files' parse run in the
+        // background while the GPU and the frontend start; the frontend's
+        // I18n::initialize() then mostly finds them done.
+        nxui::I18n::instance().prefetch(std::string(SD_ASSETS) + "/i18n",
+                                        homeCore.config().uiLanguageOverride);
         iconpack::setActive(homeCore.config().iconPack);
         // Classic's sidebar icons, decoded while either frontend starts, so
         // the first switch to Classic does not wait on the card for them.

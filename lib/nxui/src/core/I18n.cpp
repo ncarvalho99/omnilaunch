@@ -164,34 +164,123 @@ static uint64_t i18nNowUs() {
     return armTicksToNs(armGetSystemTick()) / 1000ULL;
 }
 
+// Background language work runs off core 0 (the render thread's core), as
+// the menu's worker pool does.
+static void i18nLeaveRenderCore(s32 core) {
+    svcSetThreadCoreMask(CUR_THREAD_HANDLE, core, UINT64_C(1) << core);
+}
+
+void I18n::prefetch(const std::string& basePath, const std::string& languageOverride) {
+    if (m_basePath != basePath)
+        m_fallbackFuture = {};
+    m_basePath = basePath;
+    startFallbackLoad();
+
+    // A thread that cannot be created leaves the work to initialize(), on the
+    // calling thread, as before.
+    if (m_systemTag.empty() && !m_systemFuture.valid()) {
+        // The query has taken 3-375 ms on a menu start; the parse of the
+        // language it names another 30-170 ms. Both overlap the rest of start-up.
+        try {
+            m_systemFuture = std::async(std::launch::async, [basePath]() {
+                i18nLeaveRenderCore(2);
+                std::string tag = detectSystemLanguageTag();
+                loadJsonMapFromFile(basePath + "/" + closestShippedTag(basePath, tag) + ".json");
+                return tag;
+            }).share();
+        } catch (...) {
+            m_systemFuture = {};
+        }
+    }
+
+    const std::string chosen = normalizeTag(languageOverride);
+    if (!chosen.empty() && chosen != "auto") {
+        // The parse lands in the process cache that setLanguage() reads.
+        try {
+            m_overrideFuture = std::async(std::launch::async,
+                                          [path = basePath + "/" + closestShippedTag(basePath, chosen) + ".json"]() {
+                i18nLeaveRenderCore(1);
+                loadJsonMapFromFile(path);
+            }).share();
+        } catch (...) {
+            m_overrideFuture = {};
+        }
+    }
+}
+
+const std::string& I18n::systemLanguageTag() {
+    if (m_systemTag.empty()) {
+        if (m_systemFuture.valid()) {
+            m_systemTag = m_systemFuture.get();
+            m_systemFuture = {};
+        } else {
+            m_systemTag = detectSystemLanguageTag();
+        }
+    }
+    return m_systemTag;
+}
+
+void I18n::startFallbackLoad() {
+    // Same path as the last start: the parsed map is already in hand (or on
+    // its way), nothing to do.
+    if (m_fallbackFuture.valid())
+        return;
+    const std::string path = buildLanguagePath(m_fallbackTag);
+    const std::string englishPath = buildLanguagePath("en-US");
+    auto load = [path, englishPath]() {
+        auto map = loadJsonMapFromFile(path);
+        if (!map && englishPath != path)
+            map = loadJsonMapFromFile(englishPath);
+        return map;
+    };
+    try {
+        m_fallbackFuture = std::async(std::launch::async, [load]() {
+            i18nLeaveRenderCore(1);
+            return load();
+        }).share();
+    } catch (...) {
+        // No thread: parse it here, as before.
+        std::promise<std::shared_ptr<const Map>> done;
+        done.set_value(load());
+        m_fallbackFuture = done.get_future().share();
+    }
+}
+
+const I18n::Map& I18n::fallbackMap() const {
+    static const Map kEmpty;
+    if (!m_fallbackFuture.valid())
+        return kEmpty;
+    // Normally finished long before the first miss; otherwise this waits for
+    // the rest of one ~70 ms parse, once.
+    const auto& map = m_fallbackFuture.get();
+    return map ? *map : kEmpty;
+}
+
 bool I18n::initialize(const std::string& basePath, const std::string& fallbackTag) {
     m_initTiming = {};
     m_cacheHits = 0;
     const uint64_t t0 = i18nNowUs();
+    std::string nextFallback = normalizeTag(fallbackTag);
+    if (nextFallback.empty()) nextFallback = "en-US";
+    if (basePath != m_basePath || nextFallback != m_fallbackTag)
+        m_fallbackFuture = {};
     m_basePath = basePath;
-    m_fallbackTag = normalizeTag(fallbackTag);
-    if (m_fallbackTag.empty()) m_fallbackTag = "en-US";
-
-    m_fallbackMap.clear();
-    if (!loadJsonMapFromFile(buildLanguagePath(m_fallbackTag), m_fallbackMap)) {
-        m_fallbackTag = "en-US";
-        m_fallbackMap.clear();
-        loadJsonMapFromFile(buildLanguagePath(m_fallbackTag), m_fallbackMap);
-    }
+    m_fallbackTag = nextFallback;
+    startFallbackLoad();
     const uint64_t t1 = i18nNowUs();
-    const std::string detected = detectSystemLanguageTag();
+    const std::string detected = systemLanguageTag();
     const uint64_t t2 = i18nNowUs();
     m_initTiming.fallbackUs = t1 - t0;
     m_initTiming.detectUs = t2 - t1;
 
     const bool ok = setLanguage(detected);
     m_initTiming.cacheHits = m_cacheHits;
-    m_initTiming.entries = static_cast<uint32_t>(m_activeMap.size());
+    m_initTiming.entries = m_activeMap ? static_cast<uint32_t>(m_activeMap->size()) : 0;
     return ok;
 }
 
 bool I18n::setLanguageAuto() {
-    return setLanguage(detectSystemLanguageTag());
+    return setLanguage(systemLanguageTag());
 }
 
 bool I18n::setLanguage(const std::string& tag) {
@@ -199,31 +288,21 @@ bool I18n::setLanguage(const std::string& tag) {
 
     std::string normalized = normalizeTag(tag);
     if (normalized.empty() || normalized == "auto") {
-        normalized = detectSystemLanguageTag();
+        normalized = systemLanguageTag();
     }
 
-    // Regional variants with no file of their own read the closest language
-    // that ships instead of dropping to English. The detected tag itself stays
-    // exact, since System Settings names the console's language with it.
-    static const std::pair<const char*, const char*> kClosest[] = {
-        {"es-419", "es-ES"}, {"pt-PT", "pt-BR"}, {"fr-CA", "fr-FR"}, {"en-GB", "en-US"},
-    };
-    std::error_code existsEc;
-    for (const auto& [variant, closest] : kClosest) {
-        if (normalized == variant && !std::filesystem::exists(buildLanguagePath(normalized), existsEc)) {
-            normalized = closest;
-            break;
-        }
-    }
+    normalized = closestShippedTag(m_basePath, normalized);
 
     const uint64_t loadStart = i18nNowUs();
-    std::unordered_map<std::string, std::string> nextMap;
-    if (!loadJsonMapFromFile(buildLanguagePath(normalized), nextMap)) {
+    bool hit = false;
+    // A parse prefetch() or the fallback load started is waited for here.
+    std::shared_ptr<const Map> nextMap = loadJsonMapFromFile(buildLanguagePath(normalized), &hit);
+    if (!nextMap) {
         normalized = m_fallbackTag;
-        if (!loadJsonMapFromFile(buildLanguagePath(normalized), nextMap)) {
-            nextMap.clear();
-        }
+        hit = false;
+        nextMap = loadJsonMapFromFile(buildLanguagePath(normalized), &hit);
     }
+    if (hit) ++m_cacheHits;
 
     m_activeTag = normalized;
     m_activeMap = std::move(nextMap);
@@ -235,15 +314,19 @@ bool I18n::setLanguage(const std::string& tag) {
     m_initTiming.notifyUs = i18nNowUs() - loadEnd;
     m_initTiming.listeners = static_cast<uint32_t>(m_languageListeners.size());
 
-    return !m_activeMap.empty() || !m_fallbackMap.empty();
+    return (m_activeMap && !m_activeMap->empty()) || m_fallbackFuture.valid();
 }
 
 std::string I18n::tr(std::string_view key, std::string_view fallback) const {
-    auto it = m_activeMap.find(std::string(key));
-    if (it != m_activeMap.end()) return it->second;
+    const std::string k(key);
+    if (m_activeMap) {
+        auto it = m_activeMap->find(k);
+        if (it != m_activeMap->end()) return it->second;
+    }
 
-    auto fb = m_fallbackMap.find(std::string(key));
-    if (fb != m_fallbackMap.end()) return fb->second;
+    const Map& fbMap = fallbackMap();
+    auto fb = fbMap.find(k);
+    if (fb != fbMap.end()) return fb->second;
 
     if (!fallback.empty()) return std::string(fallback);
     return std::string(key);
@@ -301,41 +384,73 @@ std::string I18n::normalizeTag(const std::string& tag) {
     return out;
 }
 
+std::string I18n::closestShippedTag(const std::string& basePath, const std::string& normalizedTag) {
+    // Regional variants with no file of their own read the closest language
+    // that ships instead of dropping to English. The detected tag itself stays
+    // exact, since System Settings names the console's language with it.
+    static const std::pair<const char*, const char*> kClosest[] = {
+        {"es-419", "es-ES"}, {"pt-PT", "pt-BR"}, {"fr-CA", "fr-FR"}, {"en-GB", "en-US"},
+    };
+    std::error_code existsEc;
+    for (const auto& [variant, closest] : kClosest) {
+        if (normalizedTag == variant &&
+            !std::filesystem::exists(basePath + "/" + normalizedTag + ".json", existsEc))
+            return closest;
+    }
+    return normalizedTag;
+}
+
 std::string I18n::buildLanguagePath(const std::string& normalizedTag) const {
     return m_basePath + "/" + normalizedTag + ".json";
 }
 
-bool I18n::loadJsonMapFromFile(const std::string& path,
-                               std::unordered_map<std::string, std::string>& out) const {
+std::shared_ptr<const I18n::Map> I18n::loadJsonMapFromFile(const std::string& path, bool* cacheHit) {
     // Parsed maps are kept per path for the process: the menu initialises
     // I18n again on every frontend switch, and reading and parsing the same
     // 100 KB files off the card each time was part of that switch's frame.
     // The language files only change with a menu update, which restarts it.
+    // Shared, never copied: a copy of a 1700-key map is itself a few ms.
+    // A parse already running on another thread (I18n::prefetch) is waited
+    // for, not repeated. A missing or broken file is not cached.
+    using Entry = std::shared_future<std::shared_ptr<const Map>>;
     static std::mutex cacheMutex;
-    static std::unordered_map<std::string, std::unordered_map<std::string, std::string>> cache;
+    static std::unordered_map<std::string, Entry> cache;
+    std::promise<std::shared_ptr<const Map>> promise;
+    Entry existing;
     {
         std::lock_guard<std::mutex> lk(cacheMutex);
         auto it = cache.find(path);
-        if (it != cache.end()) {
-            out = it->second;
-            ++m_cacheHits;
-            return true;
-        }
+        if (it != cache.end())
+            existing = it->second;
+        else
+            cache.emplace(path, promise.get_future().share());
+    }
+    if (existing.valid()) {
+        // Waited for outside the lock: the parse holding it may still run.
+        if (cacheHit) *cacheHit = true;
+        return existing.get();
     }
 
-    std::ifstream f(path);
-    if (!f.is_open()) return false;
-
-    std::string src((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-    f.close();
-
-    out.clear();
-    JsonFlatParser parser(src, out);
-    if (!parser.parse())
-        return false;
-    std::lock_guard<std::mutex> lk(cacheMutex);
-    cache.emplace(path, out);
-    return true;
+    std::shared_ptr<Map> out;
+    try {
+        std::ifstream f(path);
+        if (f.is_open()) {
+            std::string src((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+            f.close();
+            out = std::make_shared<Map>();
+            JsonFlatParser parser(src, *out);
+            if (!parser.parse())
+                out.reset();
+        }
+    } catch (...) {
+        out.reset();   // waiters must always get an answer
+    }
+    if (!out) {
+        std::lock_guard<std::mutex> lk(cacheMutex);
+        cache.erase(path);
+    }
+    promise.set_value(out);
+    return out;
 }
 
 static std::vector<std::string> scanI18nLanguageTags(const std::string& basePath) {
