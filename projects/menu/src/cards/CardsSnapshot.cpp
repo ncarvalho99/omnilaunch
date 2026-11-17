@@ -2,6 +2,7 @@
 #include "core/DebugLog.hpp"
 #include <nxui/core/ThreadPool.hpp>
 #include <algorithm>
+#include <cstdlib>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -15,7 +16,6 @@ namespace {
 constexpr const char* kDir = "sdmc:/config/OmniLaunch/control_cache/decoded";
 constexpr std::uint32_t kMagic = 0x50534E43; // "CNSP"
 constexpr std::uint32_t kVersion = 1;
-constexpr std::uint32_t kMaxItems = 32;
 constexpr auto kSettle = std::chrono::milliseconds(1500);
 constexpr auto kSettlePartial = std::chrono::milliseconds(5000);
 
@@ -53,23 +53,70 @@ std::uint64_t signature(const std::vector<SnapItem>& items) {
     return h;
 }
 
-std::vector<SnapItem> readFile(int page) {
-    std::vector<SnapItem> out;
+// The file holds the images card by card (a title's icon and cover next to
+// each other). The item headers are read first (the pixels are skipped);
+// then the cards around `focus` -- the card the page opens on now, which
+// moves when a title is started from Classic -- are read and handed to `sink`
+// first (one card before it, five after: the window decoded first), then the
+// rest by distance. So the cards on screen show while the rest of a large
+// page is still being read. Returns every item in file order (for the stored
+// signature). A damaged file stops the read; the items already handed over
+// stay valid images.
+template <class Sink>
+std::vector<SnapItem> readFile(int page, std::uint64_t focus, Sink&& sink) {
     std::ifstream in(pathFor(page), std::ios::binary);
     if (!in)
-        return out;
+        return {};
     Header h{};
     in.read(reinterpret_cast<char*>(&h), sizeof(h));
-    if (!in || h.magic != kMagic || h.version != kVersion || h.page != page || h.count > kMaxItems)
-        return out;
-    out.reserve(h.count);
+    if (!in || h.magic != kMagic || h.version != kVersion || h.page != page ||
+        h.count > CardsSnapshotCache::kMaxItems)
+        return {};
+    struct Entry {
+        ItemHeader e;
+        std::streamoff offset;
+        int card;
+    };
+    std::vector<Entry> entries;
+    entries.reserve(h.count);
+    std::streamoff pos = static_cast<std::streamoff>(sizeof(Header));
+    std::uint64_t lastId = 0;
+    int cards = -1, focusCard = -1;
     for (std::uint32_t i = 0; i < h.count; ++i) {
         ItemHeader e{};
+        in.seekg(pos);
         in.read(reinterpret_cast<char*>(&e), sizeof(e));
         if (!in || e.titleId == 0 || e.kind > 1 || e.width == 0 || e.height == 0 || e.width > 1024 ||
             e.height > 1024)
             return {};
+        if (e.titleId != lastId) {
+            lastId = e.titleId;
+            ++cards;
+            if (focus != 0 && e.titleId == focus && focusCard < 0)
+                focusCard = cards;
+        }
+        pos += static_cast<std::streamoff>(sizeof(e));
+        entries.push_back({e, pos, cards});
+        pos += static_cast<std::streamoff>(e.width) * e.height * 4;
+    }
+    std::vector<std::size_t> order(entries.size());
+    for (std::size_t i = 0; i < order.size(); ++i)
+        order[i] = i;
+    if (focusCard >= 0) {
+        const auto rank = [focusCard](int card) {
+            const bool window = card >= focusCard - 1 && card <= focusCard + 5;
+            return (window ? 0 : 1000) + std::abs(card - focusCard);
+        };
+        std::stable_sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
+            return rank(entries[a].card) < rank(entries[b].card);
+        });
+    }
+    std::vector<SnapItem> out(entries.size());
+    for (std::size_t i : order) {
+        const ItemHeader& e = entries[i].e;
         auto px = std::make_shared<std::vector<std::uint8_t>>(static_cast<std::size_t>(e.width) * e.height * 4);
+        in.clear();
+        in.seekg(entries[i].offset);
         in.read(reinterpret_cast<char*>(px->data()), static_cast<std::streamsize>(px->size()));
         if (!in)
             return {};
@@ -80,7 +127,8 @@ std::vector<SnapItem> readFile(int page) {
         item.h = static_cast<int>(e.height);
         item.hash = e.hash;
         item.rgba = std::move(px);
-        out.push_back(std::move(item));
+        sink(item);
+        out[i] = std::move(item);
     }
     return out;
 }
@@ -185,23 +233,30 @@ SnapItem makeSnapItem(std::uint64_t titleId, std::uint8_t kind, const std::uint8
     return item;
 }
 
-void CardsSnapshotCache::load(nxui::ThreadPool& pool, int page) {
+void CardsSnapshotCache::load(nxui::ThreadPool& pool, int page, std::uint64_t focus) {
     // A read of another page still running is abandoned, not waited for: the
     // pool's futures do not block on release and its result is shared.
     m_loadFuture = {};
     m_loadPage = page;
-    auto result = std::make_shared<std::vector<SnapItem>>();
+    auto result = std::make_shared<LoadState>();
     m_loadResult = result;
     auto shared = m_shared;
     try {
-        m_loadFuture = pool.submit([result, shared, page]() {
+        m_loadFuture = pool.submit([result, shared, page, focus]() {
             const auto start = std::chrono::steady_clock::now();
-            *result = readFile(page);
+            const auto all = readFile(page, focus, [&result](const SnapItem& item) {
+                std::lock_guard<std::mutex> lock(result->mutex);
+                result->items.push_back(item);
+            });
             {
                 std::lock_guard<std::mutex> lock(shared->mutex);
-                shared->stored[page] = result->empty() ? 0 : signature(*result);
+                shared->stored[page] = all.empty() ? 0 : signature(all);
             }
-            DebugLog::log("[cards-snap] page %d read: %zu image(s) in %lldms", page, result->size(),
+            {
+                std::lock_guard<std::mutex> lock(result->mutex);
+                result->done = true;
+            }
+            DebugLog::log("[cards-snap] page %d read: %zu image(s) in %lldms", page, all.size(),
                           static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
                               std::chrono::steady_clock::now() - start).count()));
         });
@@ -212,20 +267,48 @@ void CardsSnapshotCache::load(nxui::ThreadPool& pool, int page) {
 }
 
 bool CardsSnapshotCache::take(int page, std::vector<SnapItem>& out) {
-    if (page != m_loadPage || !m_loadResult || !m_loadFuture.valid() || running(m_loadFuture))
+    if (page != m_loadPage || !m_loadResult)
         return false;
-    try {
-        m_loadFuture.get();
-    } catch (...) {
+    // Checked before draining: once the read has ended nothing is added, so
+    // the drain below sees every item it produced.
+    const bool ended = !m_loadFuture.valid() || !running(m_loadFuture);
+    bool done = false;
+    bool moved = false;
+    {
+        std::lock_guard<std::mutex> lock(m_loadResult->mutex);
+        moved = !m_loadResult->items.empty();
+        for (auto& item : m_loadResult->items)
+            out.push_back(std::move(item));
+        m_loadResult->items.clear();
+        // `ended` without `done`: the read stopped early (it threw).
+        done = m_loadResult->done || ended;
     }
-    out = std::move(*m_loadResult);
-    m_loadResult.reset();
-    return true;
+    if (done) {
+        if (m_loadFuture.valid()) {
+            try {
+                m_loadFuture.get();
+            } catch (...) {
+            }
+        }
+        m_loadResult.reset();
+    }
+    return moved || done;
 }
 
 void CardsSnapshotCache::offer(nxui::ThreadPool& pool, int page, std::vector<SnapItem> items, int pending,
                                std::uint64_t firstPending, int firstKind) {
-    if (items.empty() || items.size() > kMaxItems || (page == m_loadPage && m_loadResult)) {
+    // Lowest-priority items (the end of the list) go first past the limits.
+    if (items.size() > kMaxItems)
+        items.resize(kMaxItems);
+    std::size_t bytes = 0;
+    for (std::size_t i = 0; i < items.size(); ++i) {
+        bytes += items[i].rgba ? items[i].rgba->size() : 0;
+        if (bytes > kMaxBytes) {
+            items.resize(i);
+            break;
+        }
+    }
+    if (items.empty() || (page == m_loadPage && m_loadResult)) {
         m_pendingPage = -1; // not saveable now (or the file is still being read)
         return;
     }

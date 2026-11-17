@@ -280,6 +280,7 @@ void CardsArt::releaseAll() {
 }
 
 void CardsArt::invalidate() {
+    ++m_generation;
     for (auto& j : m_jobs) {
         if (j.cancelled)
             j.cancelled->store(true);

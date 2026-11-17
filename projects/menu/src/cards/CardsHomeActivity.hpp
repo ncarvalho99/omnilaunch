@@ -209,6 +209,8 @@ private:
     // cards of each page, read when the page opens, written once it settles.
     CardsSnapshotCache m_snapCache;
     std::vector<SnapItem> m_snapItems; // read, waiting for the catalogue
+    std::vector<SnapItem> m_snapKept;  // every image read for m_snapPage, written back until re-decoded
+    unsigned m_snapKeptArtGen = 0;     // CardsArt::generation() the kept covers belong to
     std::uint64_t m_deferredPageFocus = 0; // HOME focus waiting on asynchronous NRO metadata
     int m_snapPage = -1;               // page m_snapItems / the read belong to
     void requestPageSnapshot(int page);

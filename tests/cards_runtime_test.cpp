@@ -140,6 +140,42 @@ int main() {
         snap.load(pool, page);
         pool.waitForIdle();
         assert(snap.take(page, got) && got.size() == 1 && got[0].titleId == ready[0].titleId);
+
+        // A whole page is saved in card order; the read hands over the card
+        // the page opens on now first, then the rest, and nothing is lost.
+        std::vector<cards::SnapItem> page3;
+        for (std::uint64_t id = 1; id <= 3; ++id) {
+            page3.push_back(cards::makeSnapItem(0x0100000000CC0000ULL + id, 0, pixels->data(), 2, 2, 0));
+            page3.push_back(cards::makeSnapItem(0x0100000000CC0000ULL + id, 1, pixels->data(), 2, 2, 0));
+        }
+        snap.offer(pool, page, page3);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1700));
+        snap.offer(pool, page, page3);
+        snap.wait();
+        snap.load(pool, page, 0x0100000000CC0003ULL);
+        pool.waitForIdle();
+        got.clear();
+        assert(snap.take(page, got) && got.size() == 6);
+        assert(got[0].titleId == 0x0100000000CC0003ULL && got[1].titleId == 0x0100000000CC0003ULL);
+        // Then by distance: card 2 (one before) before card 1 (two before).
+        assert(got[2].titleId == 0x0100000000CC0002ULL && got[5].titleId == 0x0100000000CC0001ULL);
+        assert(!snap.take(page, got)); // the read is over and was handed out
+
+        // The size limits drop images from the end of the list (the cards
+        // furthest from the landing card), never the first ones.
+        std::vector<cards::SnapItem> many;
+        for (std::uint64_t id = 1; id <= cards::CardsSnapshotCache::kMaxItems + 4; ++id)
+            many.push_back(cards::makeSnapItem(0x0100000000DD0000ULL + id, 0, pixels->data(), 2, 2, 0));
+        snap.offer(pool, page, many);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1700));
+        snap.offer(pool, page, many);
+        snap.wait();
+        snap.load(pool, page);
+        pool.waitForIdle();
+        got.clear();
+        assert(snap.take(page, got) && got.size() == cards::CardsSnapshotCache::kMaxItems);
+        assert(got.front().titleId == many.front().titleId &&
+               got.back().titleId == many[cards::CardsSnapshotCache::kMaxItems - 1].titleId);
     }
     pool.shutdown();
     std::cout << "production Cards page retention, budget, invalidation, partial snapshot PASS\n";

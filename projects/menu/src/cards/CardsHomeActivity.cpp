@@ -727,6 +727,7 @@ void CardsHomeActivity::onDestroy() {
     m_art.releaseAll();
     m_snapCache.wait(); // a page snapshot still being written finishes first
     m_snapItems.clear();
+    m_snapKept.clear();
     tSnap = destroyMs();
     waitWallpaper();
     m_wallImage.reset();
@@ -1311,7 +1312,23 @@ void CardsHomeActivity::onUpdate(float dt) {
 void CardsHomeActivity::requestPageSnapshot(int page) {
     m_snapPage = page;
     m_snapItems.clear();
-    m_snapCache.load(m_core.threadPool(), page);
+    m_snapKept.clear();
+    // The file is read starting with the cards the page opens on: the
+    // suspended game if any, else the last-opened title (only known before
+    // the catalogue is in through the configuration, not its page).
+    std::uint64_t focus = 0;
+#ifdef SWITCHU_MENU
+    focus = runningCardId();
+#endif
+    if (focus == 0) {
+        std::uint64_t best = 0;
+        for (const auto& e : m_core.config().lastOpened)
+            if (e.second > best) {
+                best = e.second;
+                focus = e.first;
+            }
+    }
+    m_snapCache.load(m_core.threadPool(), page, focus);
 }
 
 // Card of the current page with the latest last-opened mark, or -1: where a
@@ -1330,22 +1347,29 @@ int CardsHomeActivity::landingIndex() const {
 }
 
 // Saved images of the page go on their cards as soon as both the read and the
-// catalogue are in, and the window shown is offered back for saving. The
-// window the page will open on next (landFirst..landLast, empty when < 0) is
-// saved with it: a snapshot of only the cards last looked at left the
-// landing cards as square icons after a switch back from Classic.
+// catalogue are in, and the page is offered back for saving. On a small page
+// (every cover stays resident) the whole page is saved, in card order: the
+// page can open on any card -- the landing card moves whenever a title is
+// started from Classic, or a game is suspended -- and a file holding only the
+// window last looked at opened those cards as square icons for half a
+// second. A larger page saves the shown window and the landing window.
 void CardsHomeActivity::pumpPageSnapshot(int first, int last, int landFirst, int landLast) {
     const int page = m_catalog.page();
     if (page != m_snapPage)
         requestPageSnapshot(page); // every way of changing page lands here
-    std::vector<SnapItem> got;
-    if (m_snapCache.take(page, got)) {
+    // The read hands over its items as they come off the card, so the first
+    // ones are on screen while a large page file is still being read.
+    const std::size_t before = m_snapItems.size();
+    if (m_snapCache.take(page, m_snapItems)) {
+        // Also kept for the next save of the page: a card not decoded again
+        // this session is written back with its saved images, not dropped.
+        m_snapKept.insert(m_snapKept.end(), m_snapItems.begin() + static_cast<std::ptrdiff_t>(before),
+                          m_snapItems.end());
         // Portraits determine the card face. Upload them before square icons
         // so the per-frame budget cannot expose an avoidable icon-only frame.
-        std::stable_sort(got.begin(), got.end(), [](const SnapItem& a, const SnapItem& b) {
+        std::stable_sort(m_snapItems.begin(), m_snapItems.end(), [](const SnapItem& a, const SnapItem& b) {
             return a.kind > b.kind;
         });
-        m_snapItems = std::move(got);
     }
     // Kept until the catalogue is in: its first load drops every icon texture
     // (CardsCatalog::poll -> releaseAll), and the saved icons go back on then.
@@ -1395,21 +1419,48 @@ void CardsHomeActivity::pumpPageSnapshot(int first, int last, int landFirst, int
             firstPendingKind = kind;
         }
     };
-    // Landing cards first: their covers are uploaded first on the next read.
+    // Saved covers may be stale after a live art change (CardsArt::invalidate).
+    if (m_snapKeptArtGen != m_art.generation()) {
+        m_snapKeptArtGen = m_art.generation();
+        std::erase_if(m_snapKept, [](const SnapItem& it) { return it.kind == 1; });
+    }
+    const auto kept = [this](std::uint64_t id, std::uint8_t kind) -> const SnapItem* {
+        for (const auto& it : m_snapKept)
+            if (it.titleId == id && it.kind == kind)
+                return &it;
+        return nullptr;
+    };
     std::vector<int> order;
     const auto addRange = [&](int a, int b) {
         for (int i = std::max(0, a); i <= std::min(m_catalog.count() - 1, b); ++i)
             if (std::find(order.begin(), order.end(), i) == order.end())
                 order.push_back(i);
     };
-    if (landFirst >= 0)
-        addRange(landFirst, landLast);
-    addRange(first, last);
+    if (m_catalog.count() <= kKeepAllCoversUpTo) {
+        // Whole page in card order: moving the focus or the landing card
+        // does not change the file, so it is not written again for that.
+        // The read starts with the cards the page opens on (load()).
+        addRange(0, m_catalog.count() - 1);
+    } else {
+        // Landing cards first: their covers are uploaded first on the next
+        // read, and the size limits drop images from the end of the list.
+        if (landFirst >= 0)
+            addRange(landFirst, landLast);
+        addRange(first, last);
+    }
+    const auto inWindow = [&](int i) {
+        return (i >= first && i <= last) || (landFirst >= 0 && i >= landFirst && i <= landLast);
+    };
     for (int i : order) {
         const auto& card = m_catalog.at(i);
+        // Outside the windows nothing is decoded: the card keeps the images
+        // of the file it was read from, and counts as pending only without.
+        const bool window = inWindow(i);
         if (card.icon && card.iconFresh && card.iconSnap)
             items.push_back(*card.iconSnap);
-        else if (!card.iconFailed)
+        else if (const SnapItem* k = card.iconFailed ? nullptr : kept(card.app.titleId, 0))
+            items.push_back(*k);
+        else if (!card.iconFailed && window)
             notePending(card.app.titleId, 0);
         if (card.system || card.needsDownload)
             continue;
@@ -1417,7 +1468,9 @@ void CardsHomeActivity::pumpPageSnapshot(int first, int last, int landFirst, int
         const auto state = m_art.coverSnapshot(card.app.titleId, cover);
         if (state == CardsArt::SnapState::Ready)
             items.push_back(*cover);
-        else if (state == CardsArt::SnapState::Pending)
+        else if (const SnapItem* k = state == CardsArt::SnapState::Pending ? kept(card.app.titleId, 1) : nullptr)
+            items.push_back(*k);
+        else if (state == CardsArt::SnapState::Pending && window)
             notePending(card.app.titleId, 1);
     }
     m_snapCache.offer(m_core.threadPool(), page, std::move(items), pending, firstPending, firstPendingKind);

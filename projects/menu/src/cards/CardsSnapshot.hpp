@@ -38,20 +38,28 @@ SnapItem makeSnapItem(std::uint64_t titleId, std::uint8_t kind, const std::uint8
 
 class CardsSnapshotCache {
 public:
+    /// Limits of one page file. Items are written in priority order (the
+    /// cards the page opens on first); what exceeds either limit is dropped.
+    static constexpr std::uint32_t kMaxItems = 64;
+    static constexpr std::size_t kMaxBytes = 8u * 1024u * 1024u;
+
     ~CardsSnapshotCache() { wait(); }
 
     /// Starts reading the file of `page` on the pool (a result not taken yet
-    /// is dropped).
-    void load(nxui::ThreadPool& pool, int page);
-    /// Main thread. Moves out a finished read for `page`; false otherwise.
+    /// is dropped). Items are published as they are read: those of the cards
+    /// around `focus` (0: the start of the page) first.
+    void load(nxui::ThreadPool& pool, int page, std::uint64_t focus = 0);
+    /// Main thread. Moves out the items of `page` read since the last call
+    /// (appended to `out`); true when it moved any or the read has ended.
     bool take(int page, std::vector<SnapItem>& out);
 
-    /// Main thread, every frame. `items` holds the freshly decoded images of
-    /// the shown window of `page`; `pending` counts the images of that window
-    /// still waiting for their fresh decode (`firstPending` / `firstKind`
-    /// name the first one, for the log). Once the items have stayed the same
-    /// for a moment (longer while some are pending) they are written on the
-    /// pool, unless the file already holds the same content.
+    /// Main thread, every frame. `items` holds the images of `page` in card
+    /// order, at most kMaxItems / kMaxBytes (the excess is dropped from the
+    /// end); `pending` counts the images still waiting
+    /// for their fresh decode (`firstPending` / `firstKind` name the first
+    /// one, for the log). Once the items have stayed the same for a moment
+    /// (longer while some are pending) they are written on the pool, unless
+    /// the file already holds the same content.
     void offer(nxui::ThreadPool& pool, int page, std::vector<SnapItem> items, int pending = 0,
                std::uint64_t firstPending = 0, int firstKind = 0);
 
@@ -63,9 +71,14 @@ private:
         std::mutex mutex;
         std::map<int, std::uint64_t> stored; // content signature of each page's file
     };
+    struct LoadState {
+        std::mutex mutex;
+        std::vector<SnapItem> items; // read, not taken yet
+        bool done = false;
+    };
     std::shared_ptr<Shared> m_shared = std::make_shared<Shared>();
     int m_loadPage = -1;
-    std::shared_ptr<std::vector<SnapItem>> m_loadResult;
+    std::shared_ptr<LoadState> m_loadResult;
     std::future<void> m_loadFuture;
     std::future<void> m_writeFuture;
     std::uint64_t m_pendingSig = 0;

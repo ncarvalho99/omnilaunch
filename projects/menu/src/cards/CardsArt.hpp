@@ -58,6 +58,8 @@ public:
     /// its own buffers and is collected by pump() once it ends; its result is
     /// discarded.
     void invalidate();
+    /// Changes on every invalidate(): saved images of covers are out of date.
+    unsigned generation() const { return m_generation; }
 
     /// Path helpers (also used for "has a cover" decisions). Empty if none.
     static std::string coverPath(std::uint64_t titleId);
@@ -88,6 +90,7 @@ private:
     std::unordered_map<std::uint64_t, Slot> m_backgrounds;
     std::unordered_map<std::uint64_t, Slot> m_logos;
     const AppConfig* m_config = nullptr;
+    unsigned m_generation = 0;
     std::vector<Job> m_jobs;
     std::vector<std::future<void>> m_retired; // cancelled by invalidate(), not yet finished
 };
