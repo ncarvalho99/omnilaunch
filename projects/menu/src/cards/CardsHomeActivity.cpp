@@ -1352,6 +1352,11 @@ void CardsHomeActivity::pumpPageSnapshot(int first, int last, int landFirst, int
     // decode (a snapshot image is never saved back as if it were).
     if (m_catalog.loading() || m_catalog.count() == 0)
         return;
+    // Not while leaving: onDestroy waits for the write, and one started in the
+    // switch fade held the switch to Classic for ~1.1 s (a 23-image page).
+    // The page is saved again the next time it settles.
+    if (m_switchQueued || m_switchFade >= 0.f || m_leaving)
+        return;
     std::vector<SnapItem> items;
     bool complete = true;
     // Landing cards first: their covers are uploaded first on the next read.
