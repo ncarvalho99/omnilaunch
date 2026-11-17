@@ -160,7 +160,14 @@ I18n& I18n::instance() {
     return inst;
 }
 
+static uint64_t i18nNowUs() {
+    return armTicksToNs(armGetSystemTick()) / 1000ULL;
+}
+
 bool I18n::initialize(const std::string& basePath, const std::string& fallbackTag) {
+    m_initTiming = {};
+    m_cacheHits = 0;
+    const uint64_t t0 = i18nNowUs();
     m_basePath = basePath;
     m_fallbackTag = normalizeTag(fallbackTag);
     if (m_fallbackTag.empty()) m_fallbackTag = "en-US";
@@ -171,8 +178,16 @@ bool I18n::initialize(const std::string& basePath, const std::string& fallbackTa
         m_fallbackMap.clear();
         loadJsonMapFromFile(buildLanguagePath(m_fallbackTag), m_fallbackMap);
     }
+    const uint64_t t1 = i18nNowUs();
+    const std::string detected = detectSystemLanguageTag();
+    const uint64_t t2 = i18nNowUs();
+    m_initTiming.fallbackUs = t1 - t0;
+    m_initTiming.detectUs = t2 - t1;
 
-    return setLanguageAuto();
+    const bool ok = setLanguage(detected);
+    m_initTiming.cacheHits = m_cacheHits;
+    m_initTiming.entries = static_cast<uint32_t>(m_activeMap.size());
+    return ok;
 }
 
 bool I18n::setLanguageAuto() {
@@ -201,6 +216,7 @@ bool I18n::setLanguage(const std::string& tag) {
         }
     }
 
+    const uint64_t loadStart = i18nNowUs();
     std::unordered_map<std::string, std::string> nextMap;
     if (!loadJsonMapFromFile(buildLanguagePath(normalized), nextMap)) {
         normalized = m_fallbackTag;
@@ -211,9 +227,13 @@ bool I18n::setLanguage(const std::string& tag) {
 
     m_activeTag = normalized;
     m_activeMap = std::move(nextMap);
+    const uint64_t loadEnd = i18nNowUs();
+    m_initTiming.activeUs = loadEnd - loadStart;
 
     if (m_activeTag != previousTag)
         notifyLanguageChanged();
+    m_initTiming.notifyUs = i18nNowUs() - loadEnd;
+    m_initTiming.listeners = static_cast<uint32_t>(m_languageListeners.size());
 
     return !m_activeMap.empty() || !m_fallbackMap.empty();
 }
@@ -298,6 +318,7 @@ bool I18n::loadJsonMapFromFile(const std::string& path,
         auto it = cache.find(path);
         if (it != cache.end()) {
             out = it->second;
+            ++m_cacheHits;
             return true;
         }
     }

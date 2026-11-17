@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -31,6 +32,18 @@ public:
     static std::string detectSystemLanguageTag();
     static std::vector<std::string> supportedLanguageTags();
 
+    // Temporary start-up timing of the last initialize() (microseconds).
+    struct InitTiming {
+        uint64_t fallbackUs = 0;   // fallback (en-US) map load
+        uint64_t detectUs = 0;     // system language query
+        uint64_t activeUs = 0;     // active language map load
+        uint64_t notifyUs = 0;     // language-changed listeners
+        uint32_t listeners = 0;
+        uint32_t cacheHits = 0;    // maps served from the process cache
+        uint32_t entries = 0;      // keys in the active map
+    };
+    const InitTiming& lastInitTiming() const { return m_initTiming; }
+
 private:
     I18n() = default;
 
@@ -49,6 +62,8 @@ private:
     std::unordered_map<std::string, std::string> m_activeMap;
     std::unordered_map<int, LanguageChangedCb> m_languageListeners;
     int m_nextListenerId = 1;
+    InitTiming m_initTiming;
+    mutable uint32_t m_cacheHits = 0;
 };
 
 } // namespace nxui

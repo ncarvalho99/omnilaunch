@@ -738,6 +738,14 @@ bool WiiUMenuApp::onCreate() {
 
     nxui::I18n::instance().initialize(std::string(SD_ASSETS) + "/i18n", "en-US");
     DebugLog::log("[init-diag] i18n initialize %lums", initElapsedMs());
+    {
+        const auto& it = nxui::I18n::instance().lastInitTiming();
+        DebugLog::log("[init-diag] i18n split fallback=%lluus detect=%lluus active=%lluus notify=%lluus listeners=%u cache_hits=%u entries=%u lang=%s",
+                      static_cast<unsigned long long>(it.fallbackUs), static_cast<unsigned long long>(it.detectUs),
+                      static_cast<unsigned long long>(it.activeUs), static_cast<unsigned long long>(it.notifyUs),
+                      it.listeners, it.cacheHits, it.entries,
+                      nxui::I18n::instance().activeLanguageTag().c_str());
+    }
     applyUiLanguage();
     DebugLog::log("[init-diag] ui language %lums", initElapsedMs());
     m_homeCore.audioServices().configureAccessibility(
