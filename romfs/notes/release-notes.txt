@@ -1,65 +1,85 @@
 
-Docked performance (issue 5)
-- Leaving a game, port or homebrew while docked no longer switches the console to handheld clocks. The docked performance mode is kept when a title exits and when HOME is ready, so the next game runs at docked clocks again.
+Performance
+- Faster return to HOME: the menu program is less than half its old size (20.1 MB to 9.2 MB), so the console loads it faster after every game.
+- The video wallpaper opens on its own thread: returning to HOME no longer freezes for up to 1.6 s while the card is read.
+- The menu language is read in the background while the menu starts, and the wallpaper picture of a video theme is prepared before it is needed.
+- Smoother Classic: the clock sync, the network status, the notification check, the sidebar icons, applying an icon pack, saving settings and starting Bluetooth no longer hold the screen.
+- Repeating a song no longer reloads the whole file.
+- Faster style switch between Classic and Cards: icons, fonts and language files are kept between switches, and a switch no longer waits for background saves.
+- Cards: covers are kept when you move between pages, and Cards opens on covers instead of square icons, also on the card you played last.
+- Opening or closing a folder keeps the icons instead of showing loading spinners.
+- The start-up backup of your settings skips pictures, music and videos that did not change.
+- Very large pictures are refused and only one big picture is decoded at a time, and the menu leaves memory free for services running in the background (black screen or missing covers on some consoles).
 
-Theme look: Theme Shop > OmniLaunch
-- Text colour (issue 6): turn on a custom colour for titles, labels and hints, with hue, saturation and brightness sliders or a typed code such as FFD54F, for text that is hard to read over a theme.
-- Solid window colour: windows, side buttons, the top buttons and the button hints take one flat colour instead of the theme's glass. Opaque black is the lightest choice for the console and suits OLED screens.
-- Glass sharpness moved here. Below 100 % opacity, the solid colour blurs what shows through it by this amount.
-- Corner roundness from 0 % (square) to 100 %, for windows, buttons, icons, battery rings and the selection frame together.
-- Use the theme's look turns the three back to the theme's own glass, corners and text.
-- The other rows that were on this tab moved to the Options tab.
+Homebrew and forwarders
+- HOME suspends a forwarder or homebrew running as a game instead of closing it, so you can resume it like a game. If HOME does not come up, the forwarder is closed so HOME always opens.
+- Homebrew started from Classic, Nextendo or Cards uses your account (the last one used, or the first one).
+- Homebrew borrows only games that can start: fully installed and not downloading. The menu says when a homebrew could not be started, and refuses to start one while another software is suspended.
+- Moving the old configuration folders never deletes a file that could not be moved.
 
-Icon store
-- New Icons tab in the Theme Shop: download icon packs that replace the menu's icons (sidebar, top buttons, battery, arrows and more) and switch them without restarting.
-- Installed packs show an Update badge when a new version is published.
-- The Themes tab holds both catalogues behind an Animated / Static switch.
-- Catalogue previews are kept on the SD card, so reopening the shop does not download them again.
+New
+- SteamGridDB key from your phone: choose Use phone and scan the QR code to paste your API key on the phone.
+- Classic Quick Settings have a Bluetooth row.
+- Edit mode in Dynamic Line and Flow puts a title where you drop it, and a sorted grid first adopts the order on screen.
 
-Icons on HOME (issue 4)
-- Classic keeps the icons of the page you see and the pages beside it, and loads the next page before you reach it: the second page no longer opens on loading spinners after a style switch or a game.
-- Switching views with Minus reuses the icons already loaded.
+Fixes
+- The clock and the network keep working when the console's time service has few free connections.
+- More network connections for the menu, so Discord no longer leaves too few for downloads.
+- Discord: an expired QR code is renewed and the hint fits the panel; connection errors say how far they got and point to token sign-in when Discord asks for a CAPTCHA; the connection pauses for sleep and resumes with your chats.
+- Playtime belongs to the selected profile.
+- Music search no longer marks other songs as downloaded, and Delete removes the right song.
+- Turning Bluetooth off no longer turns on Airplane mode and drops Wi-Fi.
+- Theme installs no longer stop on themes that list folders as files.
+- Applying an icon pack also updates the Homebrew and System widgets.
+- When a game cannot start, the message no longer blames an update that is not needed.
+- Searching or downloading music can no longer close the menu in a rare case.
+- A slow moment is now named in menu.log, which helps bug reports.
 
-Music player
-- A held touch on the open player no longer drags icons on the HOME page.
-- Classic draws the player with its own frosted glass.
-- Downloaded songs keep accented and Japanese, Chinese or Korean letters in their names; styled letters are drawn as plain letters instead of boxes.
-- The music button looks like the buttons beside it; a small dot shows that music is playing.
-- Theme songs are listed only under Themes.
+Removed
+- WaraWara Plaza and the walking Miis. The background keeps the wallpaper, shapes and video.
 
-Top bar (Classic)
-- The top bar shows one account: the first one, or the one you chose. Press it to open the account picker with every account and the + tile to create one; press X on an account there to show it in the top bar and start games with it.
-- The button hints in the lower right corner take the solid window colour too.
+Credits
+- Fixes adapted from HomeNX by frcjules and ad3333m (also from cristowo and bshurikan), and edit mode moves by Tomas-Uribe, from PoloNX's upstream.
 --pt-BR--
 
-Desempenho no dock (issue 5)
-- Sair de um jogo, port ou homebrew com o console no dock não muda mais os clocks para o modo portátil. O modo de desempenho do dock é mantido quando o título fecha e quando o HOME fica pronto, então o próximo jogo volta a rodar com os clocks do dock.
+Desempenho
+- Volta mais rápida ao HOME: o programa do menu ficou com menos da metade do tamanho (20,1 MB para 9,2 MB), então o console o carrega mais rápido depois de cada jogo.
+- O vídeo de fundo abre em uma linha de execução própria: voltar ao HOME não trava mais por até 1,6 s enquanto o cartão é lido.
+- O idioma do menu é lido em segundo plano enquanto o menu abre, e a imagem de fundo de um tema de vídeo é preparada antes de ser usada.
+- Classic mais fluido: a sincronização do relógio, o estado da rede, a checagem de notificações, os ícones da barra lateral, aplicar um pacote de ícones, salvar as configurações e ligar o Bluetooth não seguram mais a tela.
+- Repetir uma música não recarrega mais o arquivo inteiro.
+- Troca de estilo mais rápida entre Classic e Cards: ícones, fontes e arquivos de idioma ficam guardados entre as trocas, e a troca não espera mais gravações em segundo plano.
+- Cards: as capas ficam guardadas ao passar de página, e o Cards abre com capas em vez de ícones quadrados, também no último card jogado.
+- Abrir ou fechar uma pasta mantém os ícones em vez de mostrar ícones carregando.
+- O backup das configurações na inicialização pula imagens, músicas e vídeos que não mudaram.
+- Imagens muito grandes são recusadas e só uma imagem grande é decodificada por vez, e o menu deixa memória livre para serviços em segundo plano (tela preta ou capas faltando em alguns consoles).
 
-Visual do tema: Loja de Temas > OmniLaunch
-- Cor do texto (issue 6): ative uma cor própria para títulos, rótulos e dicas, com controles de matiz, saturação e brilho ou um código digitado como FFD54F, para textos difíceis de ler sobre um tema.
-- Cor sólida das janelas: janelas, botões laterais, os botões do topo e as dicas de botões usam uma cor lisa em vez do vidro do tema. Preto opaco é a opção mais leve para o console e combina com telas OLED.
-- Nitidez do vidro veio para cá. Abaixo de 100 % de opacidade, a cor sólida desfoca o que aparece por trás dela nessa medida.
-- Arredondamento dos cantos de 0 % (quadrado) a 100 %, para janelas, botões, ícones, anéis de bateria e a moldura de seleção juntos.
-- Usar o visual do tema volta as três opções para o vidro, os cantos e o texto do próprio tema.
-- As outras opções que ficavam nesta aba foram para a aba Opções.
+Homebrew e forwarders
+- O HOME suspende um forwarder ou homebrew rodando como jogo em vez de fechar, então dá para retomar como um jogo. Se o HOME não abrir, o forwarder é fechado para o HOME sempre abrir.
+- Homebrew aberto pelo Classic, Nextendo ou Cards usa a sua conta (a última usada, ou a primeira).
+- O homebrew usa emprestado só jogos que podem abrir: instalados por completo e sem download em andamento. O menu avisa quando um homebrew não pôde abrir e não abre um enquanto outro software está suspenso.
+- Mover as pastas de configuração antigas nunca apaga um arquivo que não pôde ser movido.
 
-Loja de ícones
-- Nova aba Ícones na Loja de Temas: baixe pacotes de ícones que substituem os ícones do menu (barra lateral, botões do topo, bateria, setas e mais) e troque sem reiniciar.
-- Pacotes instalados mostram o selo Atualizar quando sai uma versão nova.
-- A aba Temas reúne os dois catálogos com a chave Animados / Estáticos.
-- As prévias do catálogo ficam guardadas no cartão SD, então reabrir a loja não baixa tudo de novo.
+Novidades
+- Chave do SteamGridDB pelo celular: escolha Usar celular e leia o QR code para colar a chave da API no celular.
+- As Configurações Rápidas do Classic ganharam a linha de Bluetooth.
+- O modo de edição no Dynamic Line e no Flow coloca o título onde você soltar, e uma grade ordenada primeiro adota a ordem da tela.
 
-Ícones no HOME (issue 4)
-- O Classic guarda os ícones da página vista e das páginas ao lado, e carrega a próxima página antes de você chegar nela: a segunda página não abre mais com ícones carregando depois de trocar de estilo ou sair de um jogo.
-- Trocar de visualização com Menos reaproveita os ícones já carregados.
+Correções
+- O relógio e a rede continuam funcionando quando o serviço de horário do console tem poucas conexões livres.
+- Mais conexões de rede para o menu, então o Discord não deixa mais poucas para os downloads.
+- Discord: um QR code expirado é renovado e a dica cabe no painel; erros de conexão dizem até onde chegaram e indicam o login por token quando o Discord pede CAPTCHA; a conexão pausa no modo de espera e volta com as suas conversas.
+- O tempo de jogo pertence ao perfil selecionado.
+- A busca de músicas não marca mais outras músicas como baixadas, e Apagar remove a música certa.
+- Desligar o Bluetooth não liga mais o Modo Avião nem derruba o Wi-Fi.
+- A instalação de temas não para mais em temas que listam pastas como arquivos.
+- Aplicar um pacote de ícones também atualiza os widgets Homebrew e Sistema.
+- Quando um jogo não pode abrir, a mensagem não culpa mais uma atualização que não é necessária.
+- Buscar ou baixar música não pode mais fechar o menu em um caso raro.
+- Um momento lento agora é identificado no menu.log, o que ajuda nos relatos de bugs.
 
-Player de música
-- Um toque segurado no player aberto não arrasta mais os ícones do HOME.
-- O Classic desenha o player com o próprio vidro fosco.
-- Músicas baixadas mantêm acentos e letras em japonês, chinês ou coreano no nome; letras estilizadas aparecem como letras normais em vez de quadrados.
-- O botão de música tem o mesmo visual dos botões ao lado; um pontinho indica que há música tocando.
-- As músicas de tema aparecem só em Temas.
+Removido
+- O WaraWara Plaza e os Miis andando. O fundo mantém o papel de parede, as formas e o vídeo.
 
-Barra superior (Classic)
-- A barra superior mostra uma conta só: a primeira, ou a que você escolher. Aperte nela para abrir o seletor com todas as contas e o bloco + para criar uma; aperte X numa conta para mostrá-la na barra e abrir os jogos com ela.
-- As dicas de botões no canto inferior direito também usam a cor sólida das janelas.
+Créditos
+- Correções adaptadas do HomeNX de frcjules e ad3333m (também de cristowo e bshurikan), e os movimentos do modo de edição de Tomas-Uribe, do upstream de PoloNX.

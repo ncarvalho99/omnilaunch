@@ -7,7 +7,7 @@ includes("toolchain/*.lua")
 add_rules("mode.debug", "mode.release")
 
 -- OmniLaunch versioning
-local version = "1.3.2"
+local version = "1.3.3"
 local upstream_version = "SwitchU + sLaunch"
 local version_define = string.format('SWITCHU_VERSION="%s"', version)
 local upstream_define = string.format('SWITCHU_UPSTREAM_VERSION="%s"', upstream_version)

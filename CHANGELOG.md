@@ -1,3 +1,98 @@
+# OmniLaunch 1.3.3
+
+Update for OmniLaunch 1.3.2.
+
+**Performance Update.** HOME comes back faster after a game, Classic and Cards stay smooth while they load, switching styles takes less time, and the menu uses less memory. Also: homebrew and forwarders that can be resumed from HOME, a phone QR code for the SteamGridDB key, Discord that survives sleep, and many fixes.
+
+If you encounter any bugs, please report them directly to the developer on Telegram at https://t.me/ncarvalho99 with your console logs (`/config/OmniLaunch/menu.log`).
+
+## English
+
+### Performance
+- **Faster return to HOME**: the menu program is less than half its old size (20.1 MB to 9.2 MB), so the console loads it faster after every game.
+- The video wallpaper opens on its own thread: returning to HOME no longer freezes for up to 1.6 s while the card is read.
+- The menu language is read in the background while the menu starts, and the wallpaper picture of a video theme is prepared before it is needed.
+- **Smoother Classic**: the clock sync, the network status, the notification check, the sidebar icons, applying an icon pack, saving settings and starting Bluetooth no longer hold the screen.
+- Repeating a song no longer reloads the whole file.
+- **Faster style switch** between Classic and Cards: icons, fonts and language files are kept between switches, and a switch no longer waits for background saves.
+- **Cards**: covers are kept when you move between pages, and Cards opens on covers instead of square icons, also on the card you played last.
+- Opening or closing a folder keeps the icons instead of showing loading spinners.
+- The start-up backup of your settings skips pictures, music and videos that did not change.
+- Very large pictures are refused and only one big picture is decoded at a time, and the menu leaves memory free for services running in the background (black screen or missing covers on some consoles).
+
+### Homebrew and forwarders
+- HOME suspends a forwarder or homebrew running as a game instead of closing it, so you can resume it like a game. If HOME does not come up, the forwarder is closed so HOME always opens.
+- Homebrew started from Classic, Nextendo or Cards uses your account (the last one used, or the first one).
+- Homebrew borrows only games that can start: fully installed and not downloading. The menu says when a homebrew could not be started, and refuses to start one while another software is suspended.
+- Moving the old configuration folders never deletes a file that could not be moved.
+
+### New
+- **SteamGridDB key from your phone**: choose Use phone and scan the QR code to paste your API key on the phone.
+- Classic Quick Settings have a Bluetooth row.
+- Edit mode in Dynamic Line and Flow puts a title where you drop it, and a sorted grid first adopts the order on screen.
+
+### Fixes
+- The clock and the network keep working when the console's time service has few free connections.
+- More network connections for the menu, so Discord no longer leaves too few for downloads.
+- Discord: an expired QR code is renewed and the hint fits the panel; connection errors say how far they got and point to token sign-in when Discord asks for a CAPTCHA; the connection pauses for sleep and resumes with your chats.
+- Playtime belongs to the selected profile.
+- Music search no longer marks other songs as downloaded, and Delete removes the right song.
+- Turning Bluetooth off no longer turns on Airplane mode and drops Wi-Fi.
+- Theme installs no longer stop on themes that list folders as files.
+- Applying an icon pack also updates the Homebrew and System widgets.
+- When a game cannot start, the message no longer blames an update that is not needed.
+- Searching or downloading music can no longer close the menu in a rare case.
+- A slow moment is now named in `menu.log`, which helps bug reports.
+
+### Removed
+- WaraWara Plaza and the walking Miis. The background keeps the wallpaper, shapes and video.
+
+### Credits
+- Fixes adapted from HomeNX by **frcjules** and **ad3333m** (also from **cristowo** and **bshurikan**), and edit mode moves by **Tomas-Uribe**, from **PoloNX**'s upstream.
+
+## Português
+
+### Desempenho
+- **Volta mais rápida ao HOME**: o programa do menu ficou com menos da metade do tamanho (20,1 MB para 9,2 MB), então o console o carrega mais rápido depois de cada jogo.
+- O vídeo de fundo abre em uma linha de execução própria: voltar ao HOME não trava mais por até 1,6 s enquanto o cartão é lido.
+- O idioma do menu é lido em segundo plano enquanto o menu abre, e a imagem de fundo de um tema de vídeo é preparada antes de ser usada.
+- **Classic mais fluido**: a sincronização do relógio, o estado da rede, a checagem de notificações, os ícones da barra lateral, aplicar um pacote de ícones, salvar as configurações e ligar o Bluetooth não seguram mais a tela.
+- Repetir uma música não recarrega mais o arquivo inteiro.
+- **Troca de estilo mais rápida** entre Classic e Cards: ícones, fontes e arquivos de idioma ficam guardados entre as trocas, e a troca não espera mais gravações em segundo plano.
+- **Cards**: as capas ficam guardadas ao passar de página, e o Cards abre com capas em vez de ícones quadrados, também no último card jogado.
+- Abrir ou fechar uma pasta mantém os ícones em vez de mostrar ícones carregando.
+- O backup das configurações na inicialização pula imagens, músicas e vídeos que não mudaram.
+- Imagens muito grandes são recusadas e só uma imagem grande é decodificada por vez, e o menu deixa memória livre para serviços em segundo plano (tela preta ou capas faltando em alguns consoles).
+
+### Homebrew e forwarders
+- O HOME suspende um forwarder ou homebrew rodando como jogo em vez de fechar, então dá para retomar como um jogo. Se o HOME não abrir, o forwarder é fechado para o HOME sempre abrir.
+- Homebrew aberto pelo Classic, Nextendo ou Cards usa a sua conta (a última usada, ou a primeira).
+- O homebrew usa emprestado só jogos que podem abrir: instalados por completo e sem download em andamento. O menu avisa quando um homebrew não pôde abrir e não abre um enquanto outro software está suspenso.
+- Mover as pastas de configuração antigas nunca apaga um arquivo que não pôde ser movido.
+
+### Novidades
+- **Chave do SteamGridDB pelo celular**: escolha Usar celular e leia o QR code para colar a chave da API no celular.
+- As Configurações Rápidas do Classic ganharam a linha de Bluetooth.
+- O modo de edição no Dynamic Line e no Flow coloca o título onde você soltar, e uma grade ordenada primeiro adota a ordem da tela.
+
+### Correções
+- O relógio e a rede continuam funcionando quando o serviço de horário do console tem poucas conexões livres.
+- Mais conexões de rede para o menu, então o Discord não deixa mais poucas para os downloads.
+- Discord: um QR code expirado é renovado e a dica cabe no painel; erros de conexão dizem até onde chegaram e indicam o login por token quando o Discord pede CAPTCHA; a conexão pausa no modo de espera e volta com as suas conversas.
+- O tempo de jogo pertence ao perfil selecionado.
+- A busca de músicas não marca mais outras músicas como baixadas, e Apagar remove a música certa.
+- Desligar o Bluetooth não liga mais o Modo Avião nem derruba o Wi-Fi.
+- A instalação de temas não para mais em temas que listam pastas como arquivos.
+- Aplicar um pacote de ícones também atualiza os widgets Homebrew e Sistema.
+- Quando um jogo não pode abrir, a mensagem não culpa mais uma atualização que não é necessária.
+- Buscar ou baixar música não pode mais fechar o menu em um caso raro.
+- Um momento lento agora é identificado no `menu.log`, o que ajuda nos relatos de bugs.
+
+### Removido
+- O WaraWara Plaza e os Miis andando. O fundo mantém o papel de parede, as formas e o vídeo.
+
+### Créditos
+- Correções adaptadas do HomeNX de **frcjules** e **ad3333m** (também de **cristowo** e **bshurikan**), e os movimentos do modo de edição de **Tomas-Uribe**, do upstream de **PoloNX**.
 # OmniLaunch 1.3.2
 
 Update for OmniLaunch 1.3.1. Docked clocks stay docked after a game (issue #5), a new OmniLaunch tab to change the look of any theme: text colour (issue #6), solid window colour and corner roundness, an icon store with icon packs that switch live, and icons that are ready on every page of HOME.
