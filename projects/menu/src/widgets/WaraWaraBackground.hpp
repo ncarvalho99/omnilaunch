@@ -103,6 +103,7 @@ public:
     void clearImage();
     bool loadVideo(const std::string& path, bool loop = true);
     bool isVideoActive() const;
+    bool isVideoOpened() const;
     // The video that was refused or abandoned by the decoder; empty if none.
     const std::string& failedVideoPath() const { return m_videoPlayer.failedPath(); }
     void forgetFailedVideo() { m_videoPlayer.clearFailedPath(); }

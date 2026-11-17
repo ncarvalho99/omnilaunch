@@ -2820,7 +2820,7 @@ void WiiUMenuApp::applyThemeResources(const ThemePreset& preset) {
     if (videoKnownBad)
         DebugLog::log("[theme-apply] video skipped, previously failed: %s", safeLogPath(backgroundVideoPath));
     const bool wantsVideo = videoExists && !videoKnownBad;
-    const bool isVideoLoaded = m_background && m_background->isVideoActive();
+    const bool isVideoLoaded = m_background && m_background->isVideoOpened();
 
     const bool imageExists = !backgroundImagePath.empty() && pathExists(backgroundImagePath);
     const bool wantsBackgroundImage = imageExists || wantsVideo;

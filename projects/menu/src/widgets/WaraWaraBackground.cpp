@@ -496,6 +496,10 @@ bool WaraWaraBackground::loadVideo(const std::string& path, bool loop) {
 }
 
 bool WaraWaraBackground::isVideoActive() const {
+    return m_videoPlayer.isOpened() && m_videoPlayer.texture() && m_videoPlayer.texture()->valid();
+}
+
+bool WaraWaraBackground::isVideoOpened() const {
     return m_videoPlayer.isOpened();
 }
 

@@ -296,9 +296,6 @@ void AudioManager::playCurrentTrackLocked() {
     if (Mix_FadeInMusic(m_activeMusic, loops, 250) < 0) {
         Mix_PlayMusic(m_activeMusic, loops);
     }
-    // A reused stream may still sit where it ended: start it from the top.
-    if (reuse)
-        Mix_RewindMusic();
     m_playing.store(true);
     m_paused.store(false);
     m_trackFinished.store(false);
