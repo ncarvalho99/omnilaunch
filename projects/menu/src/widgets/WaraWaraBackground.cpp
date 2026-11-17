@@ -6,6 +6,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
+#include <system_error>
 #ifdef __SWITCH__
 #include <switch.h>
 #endif
@@ -141,10 +143,135 @@ void WaraWaraBackground::setConfig(const Config& config) {
     regenerate(0);
 }
 
+namespace {
+
+// The still last shown, kept next to the other start-up caches (excluded from
+// the configuration backup with the rest of control_cache).
+constexpr const char* kStillHintPath = "sdmc:/config/OmniLaunch/control_cache/still_hint.txt";
+
+struct StillPrefetch {
+    std::string path;
+    std::future<nxui::DecodedImage> future;
+};
+
+// Main thread only.
+StillPrefetch& stillPrefetch() {
+    static StillPrefetch s;
+    return s;
+}
+
+std::string& stillHintCache() {
+    static std::string s;
+    return s;
+}
+
+bool stillHintRead = false;
+
+// The decode the start-up prefetch did for `path`, or an invalid future.
+std::future<nxui::DecodedImage> takePrefetchedStill(const std::string& path) {
+    auto& s = stillPrefetch();
+    if (path.empty() || s.path != path || !s.future.valid())
+        return {};
+    s.path.clear();
+    return std::move(s.future);
+}
+
+} // namespace
+
+std::string WaraWaraBackground::stillHint() {
+    if (!stillHintRead) {
+        stillHintRead = true;
+        std::string line;
+        if (FILE* f = std::fopen(kStillHintPath, "rb")) {
+            char buf[1024];
+            const size_t n = std::fread(buf, 1, sizeof(buf) - 1, f);
+            std::fclose(f);
+            line.assign(buf, n);
+            while (!line.empty() && (line.back() == '\n' || line.back() == '\r'))
+                line.pop_back();
+        }
+        // Only a path on the card, one line; anything else is ignored.
+        if (line.rfind("sdmc:/", 0) != 0 || line.find('\n') != std::string::npos)
+            line.clear();
+        stillHintCache() = line;
+    }
+    return stillHintCache();
+}
+
+void WaraWaraBackground::rememberStill(const std::string& path) {
+    if (path.empty() || path.size() >= 1023 || path == stillHint())
+        return;
+    stillHintCache() = path;
+    std::error_code ec;
+    std::filesystem::create_directories("sdmc:/config/OmniLaunch/control_cache", ec);
+    const std::string tmp = std::string(kStillHintPath) + ".tmp";
+    FILE* f = std::fopen(tmp.c_str(), "wb");
+    if (!f)
+        return;
+    const bool ok = std::fwrite(path.data(), 1, path.size(), f) == path.size();
+    std::fclose(f);
+    std::filesystem::remove(kStillHintPath, ec);
+    if (ok)
+        std::filesystem::rename(tmp, kStillHintPath, ec);
+    else
+        std::filesystem::remove(tmp, ec);
+}
+
+void WaraWaraBackground::prefetchStill(const std::string& path) {
+    auto& s = stillPrefetch();
+    if (path.empty() || s.future.valid())
+        return;
+    try {
+        // A promise, not std::async: dropping an unused result must neither
+        // block on the decode nor keep 8 MB of pixels for the whole process.
+        auto promise = std::make_shared<std::promise<nxui::DecodedImage>>();
+        std::future<nxui::DecodedImage> future = promise->get_future();
+        std::thread([promise, path]() {
+#ifdef __SWITCH__
+            // Off core 0, where the render thread runs.
+            svcSetThreadCoreMask(CUR_THREAD_HANDLE, 2, UINT64_C(1) << 2);
+#endif
+            promise->set_value(nxui::Texture::decodeFile(path, 0));
+        }).detach();
+        s.future = std::move(future);
+        s.path = path;
+        DebugLog::log("[background] still prefetch started: %s", path.c_str());
+    } catch (...) {
+        s = StillPrefetch{};
+    }
+}
+
+void WaraWaraBackground::dropPrefetchedStill() {
+    auto& s = stillPrefetch();
+    if (!s.path.empty()) {
+        // Nobody asked for it: the theme no longer shows that still, so the
+        // next start should not decode it either.
+        DebugLog::log("[background] still prefetch unused: %s", s.path.c_str());
+        if (stillHintCache() == s.path) {
+            stillHintCache().clear();
+            std::error_code ec;
+            std::filesystem::remove(kStillHintPath, ec);
+        }
+        s.path.clear();
+    }
+    // The decode, if still running, finishes into a promise nobody reads.
+    s = StillPrefetch{};
+}
+
 void WaraWaraBackground::requestStillAsync(nxui::ThreadPool& pool, const std::string& path) {
     m_pendingStill.reset();
-    if (path.empty() || !pool.acceptingTasks())
+    if (path.empty())
         return;
+    if (auto prefetched = takePrefetchedStill(path); prefetched.valid()) {
+        auto job = std::make_shared<PendingStill>();
+        job->prefetched = std::move(prefetched);
+        m_pendingStill = job;
+        rememberStill(path);
+        return;
+    }
+    if (!pool.acceptingTasks())
+        return;
+    rememberStill(path);
     auto job = std::make_shared<PendingStill>();
     m_pendingStill = job;
     pool.submit([job, path]() {
@@ -162,8 +289,20 @@ bool WaraWaraBackground::loadImage(nxui::GpuDevice& gpu, nxui::Renderer& ren, co
     }
 
     nxui::Texture texture;
-    if (!texture.loadFromFile(gpu, ren, path, 0))
+    if (auto prefetched = takePrefetchedStill(path); prefetched.valid()) {
+        // Decoded since main(); waits only for what is left of it.
+        const auto start = std::chrono::steady_clock::now();
+        nxui::DecodedImage image = prefetched.get();
+        const long long waitedMs = static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start).count());
+        const bool ok = image.valid() && texture.loadFromDecoded(gpu, ren, image);
+        DebugLog::log("[background] still prefetch used: ok=%d waited=%lldms", ok ? 1 : 0, waitedMs);
+        if (!ok && !texture.loadFromFile(gpu, ren, path, 0))
+            return false;
+    } else if (!texture.loadFromFile(gpu, ren, path, 0)) {
         return false;
+    }
+    rememberStill(path);
 
     // Keep the current wallpaper alive until the replacement has loaded, but
     // retire every part of it before publishing the still image. Otherwise an
@@ -362,6 +501,11 @@ bool WaraWaraBackground::loadImageSequence(nxui::GpuDevice& gpu, nxui::Renderer&
 }
 
 void WaraWaraBackground::pumpImageSequence(nxui::GpuDevice& gpu, nxui::Renderer& ren) {
+    if (m_pendingStill && m_pendingStill->prefetched.valid()
+        && m_pendingStill->prefetched.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        m_pendingStill->image = m_pendingStill->prefetched.get();
+        m_pendingStill->done.store(true, std::memory_order_release);
+    }
     if (m_pendingStill && m_pendingStill->done.load(std::memory_order_acquire)) {
         auto job = std::move(m_pendingStill);
         m_pendingStill.reset();

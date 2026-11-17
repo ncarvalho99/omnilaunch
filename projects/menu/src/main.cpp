@@ -3,6 +3,7 @@
 #include "core/IconPack.hpp"
 #include "sidebar/SidebarManager.hpp"
 #include "core/DecodedAssetCache.hpp"
+#include "widgets/WaraWaraBackground.hpp"
 #include <string>
 #include <vector>
 #include "core/DebugLog.hpp"
@@ -403,6 +404,11 @@ int main(int argc, char* argv[]) {
         // I18n::initialize() then mostly finds them done.
         nxui::I18n::instance().prefetch(std::string(SD_ASSETS) + "/i18n",
                                         homeCore.config().uiLanguageOverride);
+        // Classic's wallpaper still (the poster of a video theme): its 1080p
+        // decode ran on the render thread inside onCreate on every HOME return.
+        if (!homeCore.config().safeMode() && homeCore.config().tutorialCompleted
+            && homeCore.config().homeStyle == home::HomeStyle::Classic)
+            WaraWaraBackground::prefetchStill(WaraWaraBackground::stillHint());
         iconpack::setActive(homeCore.config().iconPack);
         // Classic's sidebar icons, decoded while either frontend starts, so
         // the first switch to Classic does not wait on the card for them.

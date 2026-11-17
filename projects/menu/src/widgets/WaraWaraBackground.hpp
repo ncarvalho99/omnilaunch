@@ -10,6 +10,7 @@
 #include <atomic>
 #include <cstdint>
 #include <deque>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -74,6 +75,18 @@ public:
     // on `pool` and uploaded by pumpImageSequence, or dropped if the video got
     // there first. A 720p JPEG decode was ~100 ms of the Classic switch frame.
     void requestStillAsync(nxui::ThreadPool& pool, const std::string& path);
+
+    // Start-up still prefetch. A new menu process (every HOME return) decoded
+    // the theme's 1080p still on the render thread inside onCreate (~200 ms).
+    // The path of the still last shown is kept in a small hint file; main()
+    // starts its decode on its own thread before the frontend exists, and the
+    // first loadImage()/requestStillAsync() for that same path takes the
+    // result instead of decoding again. Main (render) thread only.
+    static std::string stillHint();
+    static void rememberStill(const std::string& path);
+    static void prefetchStill(const std::string& path);
+    // Drops a prefetch nobody took (theme changed meanwhile). Never blocks.
+    static void dropPrefetchedStill();
     // A wallpaper that moves, without decoding anything while it runs.
     //
     // Real video was measured and ruled out: a 1080p still costs 365ms to
@@ -180,6 +193,8 @@ private:
     struct PendingStill {
         nxui::DecodedImage image;
         std::atomic<bool> done{false};
+        // Set instead of `image` when the start-up prefetch decodes it.
+        std::future<nxui::DecodedImage> prefetched;
     };
     std::shared_ptr<PendingStill> m_pendingStill;
     switchu::video::VideoPlayer m_videoPlayer;

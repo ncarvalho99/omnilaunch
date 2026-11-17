@@ -6340,6 +6340,8 @@ void WiiUMenuApp::buildGrid() {
     m_gameArtworkBackdrop->setArtworkOpacityScale(m_config.steamGridDbOpacity);
     applyThemeResources(m_effectivePreset);
     DebugLog::log("[init-diag] theme resources %lums", bgMs());
+    // A start-up still prefetch the theme did not ask for is not kept.
+    WaraWaraBackground::dropPrefetchedStill();
 
     // Compose the model the same way every later rebuild does. buildGrid() used
     // m_model straight from the loader, which is the raw slot arrangement: real
