@@ -280,18 +280,176 @@ def _normalise_title(value: str) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", value))
 
 
+# Bump whenever title cleanup or candidate matching changes. Negative cache
+# rows written by an older matcher are ignored, so a title that only failed
+# because of a matcher bug is retried instead of staying "not found" for a day.
+MATCHER_VERSION = 2
+
+# Words that describe how a homebrew/port was packaged, never the game itself.
+_PACKAGING_WORDS = (
+    r"port(?:ed)?|homebrew|hb|nx|switch|nintendo|scene|android|pc|windows|linux|render(?:96)?|anniversary|edition|"
+    r"decomp(?:ilation)?|recomp(?:ilation)?|native|unofficial|fan|fanmade|fan-made|"
+    r"mod(?:ded)?|build|release|beta|alpha|demo|wip|test|nightly|update|patch(?:ed)?|"
+    r"eng(?:lish)?|translated|translation|multi|nsp|nro|xci|forwarder|v?\d+(?:\.\d+)+[a-z]?"
+)
+_PACKAGING_ONLY = re.compile(rf"^(?:(?:{_PACKAGING_WORDS})[\s,/+&-]*)+$", re.IGNORECASE)
+_BRACKETED = re.compile(r"\s*[\(\[\{]([^\)\]\}]*)[\)\]\}]")
+_SEPARATED_TAIL = re.compile(r"\s+(?:-|–|—|\||~|:)\s+([^-–—|~:]+)$")
+
+
 def _catalogue_title(value: str) -> str:
     """Remove launcher packaging annotations before IGDB matching and caching.
 
-    Community ports commonly append a suffix such as ``(Android port)`` to the
-    NACP title. That text is not part of the game name, so including it in the
-    IGDB search and cache key turns otherwise exact matches (for example GTA:
-    San Andreas) into permanent negative-cache entries.
+    Community ports and forwarders decorate the NACP title with text that is
+    not part of the game name: ``(Android port)``, ``(homebrew)``, ``[NX]``,
+    ``- Switch Scene``, ``para Nintendo Switch``, ``v1.2.3``, trademark signs.
+    Leaving any of it in the IGDB search and cache key turns otherwise exact
+    matches (for example GTA: San Andreas) into negative-cache entries.
+    Square brackets are always tags; parentheses and separated tails are
+    removed only when every word in them is a packaging word, so real
+    subtitles ("- Wind Waker") survive.
     """
-    return re.sub(
-        r"\s*\((?:android\s+)?port\)\s*$", "", value,
-        flags=re.IGNORECASE,
-    ).strip()
+    # Drop trademark signs first: NFKC would turn them into the letters "TM".
+    text = re.sub(r"[\u2122\u00ae\u00a9\u2120]", "", value)
+    text = unicodedata.normalize("NFKC", text)
+    text = re.sub(r"\s*\[[^\]]*\]", " ", text)
+
+    def bracket(match: re.Match[str]) -> str:
+        return " " if _PACKAGING_ONLY.match(match.group(1).strip() or "port") else match.group(0)
+
+    text = _BRACKETED.sub(bracket, text)
+    text = re.sub(
+        r"\s+(?:for|para|pour|f(?:u|ü)r|per|voor|на)\s+(?:the\s+)?nintendo\s+switch(?:\s*(?:2|oled|lite))?\s*$",
+        "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s+nintendo\s+switch(?:\s+edition)?\s*$", "", text, flags=re.IGNORECASE)
+    for _ in range(3):
+        stripped = text.strip()
+        tail = _SEPARATED_TAIL.search(stripped)
+        if tail and _PACKAGING_ONLY.match(tail.group(1).strip()):
+            text = stripped[:tail.start()]
+            continue
+        # Bare trailing packaging words ("F-Zero X G Diffuser Port", "Celeste NX")
+        # once at least two real words remain in front of them.
+        words = stripped.split()
+        if len(words) > 2 and _PACKAGING_ONLY.match(words[-1]):
+            text = " ".join(words[:-1])
+            continue
+        break
+    text = " ".join(text.split()).strip(" -–—|~:,")
+    return text if len(text) >= 2 else " ".join(value.split())
+
+
+_ROMAN = {"ii": "2", "iii": "3", "iv": "4", "v": "5", "vi": "6", "vii": "7",
+          "viii": "8", "ix": "9", "x": "10", "xi": "11", "xii": "12", "xiii": "13"}
+_NUMBER_WORDS = {"one": "1", "two": "2", "three": "3", "four": "4", "five": "5",
+                 "six": "6", "seven": "7", "eight": "8", "nine": "9", "ten": "10"}
+_STOP_WORDS = {"the", "a", "an", "of", "and", "or", "to", "in", "on", "for", "de",
+               "la", "le", "el", "los", "las", "les", "der", "die", "das", "di", "do", "da"}
+_RERELEASE_WORDS = {"remastered", "remaster", "remake", "hd", "deluxe", "definitive", "render", "96",
+                    "enhanced", "anniversary", "edition", "reloaded", "redux", "plus", "dx",
+                    "complete", "goty", "ultimate", "special", "classic", "collection",
+                    "trilogy", "reforged", "reimagined", "rewritten", "64", "3d"}
+
+
+def _title_tokens(value: str) -> list[str]:
+    """Order-preserving comparison tokens for fuzzy title matching.
+
+    Apostrophes close up (Link's -> links), roman numerals and number words
+    become digits (Final Fantasy VII == Final Fantasy 7), "&" is "and",
+    trailing "s" possessives fold, and articles/prepositions are dropped, so
+    "The Legend of Zelda - Wind Waker" and "The Legend of Zelda: The Wind
+    Waker" produce the same tokens.
+    """
+    text = re.sub(r"['‘’ʼ`´]", "", value)
+    tokens: list[str] = []
+    for word in _normalise_title(text).split():
+        # "American McGee s Alice": an apostrophe already lost upstream.
+        if word == "s" and tokens:
+            tokens[-1] += "s"
+            continue
+        word = _ROMAN.get(word, _NUMBER_WORDS.get(word, word))
+        if word in _STOP_WORDS:
+            continue
+        tokens.append(word)
+    return tokens
+
+
+def _title_match_score(requested: str, candidate: str) -> float:
+    """0 = no match; higher is better. 1.0 means same significant tokens."""
+    want, have = _title_tokens(requested), _title_tokens(candidate)
+    if not want or not have:
+        return 0.0
+    want_set, have_set = set(want), set(have)
+    if want_set == have_set:
+        return 1.0
+    shared = want_set & have_set
+    # The longer candidate contains every requested word ("Zelda Wind Waker"
+    # -> "The Legend of Zelda: The Wind Waker"). Requires two words, or one
+    # distinctive word that is the candidate's whole name, to avoid matching
+    # anything with "Zelda" in it.
+    if want_set <= have_set and (len(want_set) >= 2 or len(have_set) == 1):
+        return 0.6 + 0.3 * len(want_set) / len(have_set)
+    # The request carries extra words the catalogue name lacks ("GoldenEye
+    # 007 Remastered", "Super Mario 64 Render 96"): accept when the candidate
+    # has two or more words and covers most of the request.
+    if have_set <= want_set and len(have_set) >= 1:
+        ratio = len(have_set) / len(want_set)
+        # (a) Extra words are known re-release/packaging words ("Super Mario 64 Render 96").
+        # (b) High overall coverage (>= 75%).
+        # (c) The candidate matches the exact leading token sequence of the request
+        #     ("F-Zero X" for "F-Zero X G Diffuser", "Silent Hill 2" for "Silent Hill 2 Enhanced Edition").
+        is_leading_prefix = len(have) >= 2 and want[:len(have)] == have
+        if (len(have_set) >= 2 and ratio >= 0.75) or ((want_set - have_set) <= _RERELEASE_WORDS) or is_leading_prefix:
+            return 0.5 + 0.3 * ratio
+    # Typos and small edits: high overlap in both directions.
+    jaccard = len(shared) / len(want_set | have_set)
+    if len(shared) >= 3 and jaccard >= 0.75:
+        return 0.4 + 0.2 * jaccard
+    return 0.0
+
+
+def _titles_match(requested: str, candidate: str) -> bool:
+    return _title_match_score(requested, candidate) > 0.0
+
+
+def _search_variants(title: str) -> list[str]:
+    """IGDB search strings to try in order, most specific first.
+
+    IGDB's text search is not token-order or punctuation tolerant enough on its
+    own for community titles, so a miss on the full name retries with the
+    separator rewritten as a colon, the main title before a subtitle, the
+    subtitle alone, and finally the leading words of a long name.
+    """
+    variants = [title]
+    # A possessive whose apostrophe was lost ("Dante s Inferno", "Luigis").
+    if re.search(r"\w s\b", title):
+        variants.append(re.sub(r"(\w) s\b", r"\1's", title))
+    parts = [part.strip() for part in re.split(r"\s+[-–—|~:]\s+|:\s+", title) if part.strip()]
+    if len(parts) > 1:
+        variants.append(": ".join(parts))
+        if len(_title_tokens(parts[-1])) >= 2:
+            variants.append(parts[-1])
+        if len(_title_tokens(parts[0])) >= 2:
+            variants.append(parts[0])
+    words = title.split()
+    if len(words) >= 4:
+        variants.append(" ".join(words[:max(2, (len(words) * 3 + 4) // 5)]))
+    if len(words) >= 3:
+        variants.append(" ".join(words[:2]))
+    if len(words) >= 2 and len(_title_tokens(words[0])) == 1 and len(words[0]) >= 4 and words[0].lower() not in _STOP_WORDS:
+        variants.append(words[0])
+    seen: set[str] = set()
+    unique: list[str] = []
+    for variant in variants:
+        key = _normalise_title(variant)
+        if len(key) >= 2 and key not in seen:
+            seen.add(key)
+            unique.append(variant)
+    return unique[:4]
+
+
+def _negative_from_old_matcher(cached: tuple[dict[str, Any], bool] | None) -> bool:
+    return cached is not None and not cached[0].get("found") and cached[0].get("matcher") != MATCHER_VERSION
 
 
 def _urlopen_with_retry(request: Request, *, timeout: int):
@@ -398,21 +556,71 @@ def _igdb_game_matches_platform(game: dict[str, Any], platform: str) -> bool:
     )
 
 
+# IGDB game_type: 0 main game, 8 remake, 9 remaster, 10 expanded game, 11 port,
+# 4 standalone expansion. Mods (5), bundles (3), packs (13), updates (14), DLC
+# (1) and episodes are kept as a last resort: a fan "Randomizer" must never
+# win over the real game when both match.
+_GAME_TYPE_RANK = {0: 5, 8: 4, 9: 4, 10: 3, 11: 3, 4: 2}
+_EDITION_WORDS = {"edition", "limited", "bundle", "collectors", "collector", "pack",
+                  "premium", "steelbook", "box", "set", "randomizer", "multiplayer"}
+
+
+def _numbers_compatible(requested: str, candidate: str) -> bool:
+    """Sequel numbers must agree: "Gears of War 2" is not "Gears of War"."""
+    want = {token for token in _title_tokens(requested) if token.isdigit()}
+    have = {token for token in _title_tokens(candidate) if token.isdigit()}
+    if not want and not have:
+        return True
+    if want and not have:
+        return False
+    return have <= want
+
+
 def _igdb_best_game(games: list[dict[str, Any]], requested_title: str,
                     platform: str) -> dict[str, Any] | None:
-    requested = _normalise_title(requested_title)
     candidates = [game for game in games if _igdb_game_matches_platform(game, platform)]
-    if not candidates:
+
+    def score(game: dict[str, Any]) -> tuple[float, int, int]:
+        name = str(game.get("name", ""))
+        names = [name] + [
+            str(alt.get("name", "")) for alt in game.get("alternative_names") or []
+            if isinstance(alt, dict)
+        ]
+        best = max(
+            (_title_match_score(requested_title, value)
+             for value in names if value and _numbers_compatible(requested_title, value)),
+            default=0.0,
+        )
+        exact = int(_normalise_title(name) == _normalise_title(requested_title))
+        rank = _GAME_TYPE_RANK.get(game.get("game_type"), 0)
+        # IGDB labels some retail bundles/limited editions as main games;
+        # demote them below the plain release unless the player asked for one.
+        extra = set(_title_tokens(name)) - set(_title_tokens(requested_title))
+        if extra & _EDITION_WORDS:
+            rank = min(rank, 1)
+        return best, exact, rank
+
+    scored = [(score(game), game) for game in candidates]
+    scored = [item for item in scored if item[0][0] > 0.0]
+    if not scored:
         return None
+    # Main games beat mods/bundles of the same quality band; a clearly better
+    # textual match still wins across bands.
+    return max(scored, key=lambda item: (round(item[0][0], 1), item[0][2], item[0][1], item[0][0]))[1]
 
-    def score(game: dict[str, Any]) -> tuple[int, int]:
-        name = _normalise_title(str(game.get("name", "")))
-        exact = int(name == requested)
-        contained = int(bool(name and (name in requested or requested in name)))
-        return exact, contained
 
-    best = max(candidates, key=score)
-    return best if score(best)[1] else None
+def _igdb_search_best(fields: str, title: str, platform: str) -> dict[str, Any] | None:
+    """Run the search variants until one yields an acceptable match."""
+    platform_id = IGDB_PLATFORM_IDS[platform]
+    for variant in _search_variants(title):
+        games = _igdb_query(
+            f"fields {fields}; search \"{_igdb_query_literal(variant)}\"; "
+            f"where platforms = ({platform_id}); limit 20;"
+        )
+        game = _igdb_best_game(games, title, platform)
+        if game is not None:
+            return game
+    return None
 
 
 def _igdb_date(value: Any) -> str | None:
@@ -835,35 +1043,34 @@ def _igdb_availability(title: str, platform: str) -> dict[str, Any]:
     12 full dossier fetches, which is what made it slow and prone to timing
     out on a re-open. This asks IGDB for id/name/platforms only.
     """
-    query = (
-        "fields id,name,platforms.id; "
-        f"search \"{_igdb_query_literal(title)}\"; "
-        f"where platforms = ({IGDB_PLATFORM_IDS[platform]}); limit 10;"
-    )
-    game = _igdb_best_game(_igdb_query(query), title, platform)
-    return {
+    game = _igdb_search_best("id,name,game_type,alternative_names.name,platforms.id", title, platform)
+    result = {
         "found": game is not None,
         "title": title,
         "platform": SUPPORTED_PLATFORMS[platform],
         "source": "IGDB",
+        "matcher": MATCHER_VERSION,
         "fetchedAt": _utc_now(),
     }
+    if game is not None and isinstance(game.get("name"), str):
+        result["matchedTitle"] = game["name"]
+    return result
 
 
 def _igdb_metadata(title: str, platform: str, language: str) -> dict[str, Any]:
-    query = (
-        "fields id,name,summary,storyline,first_release_date,platforms.id,platforms.name,genres.name,themes.name,game_modes.name,"
+    game = _igdb_search_best(
+        "id,name,game_type,alternative_names.name,summary,storyline,first_release_date,"
+        "platforms.id,platforms.name,genres.name,themes.name,game_modes.name,"
         "involved_companies.company.name,involved_companies.developer,involved_companies.publisher,"
-        f"screenshots.image_id,cover.image_id; search \"{_igdb_query_literal(title)}\"; "
-        f"where platforms = ({IGDB_PLATFORM_IDS[platform]}); limit 10;"
-    )
-    game = _igdb_best_game(_igdb_query(query), title, platform)
+        "screenshots.image_id,cover.image_id",
+        title, platform)
     if game is None:
         return {
             "found": False,
             "title": title,
             "platform": SUPPORTED_PLATFORMS[platform],
             "source": "IGDB",
+            "matcher": MATCHER_VERSION,
             "fetchedAt": _utc_now(),
         }
 
@@ -928,6 +1135,7 @@ def _igdb_metadata(title: str, platform: str, language: str) -> dict[str, Any]:
             "main": _igdb_hours(time_to_beat.get("normally")),
             "completionist": _igdb_hours(time_to_beat.get("completely")),
         },
+        "matcher": MATCHER_VERSION,
         "fetchedAt": _utc_now(),
     }
 
@@ -1047,7 +1255,8 @@ def _parse_page(page: str, final_url: str, requested_title: str, platform: str) 
     title = str(game.get("name", "")).strip()
     requested_normal = _normalise_title(requested_title)
     found_normal = _normalise_title(title)
-    if not title or (requested_normal != found_normal and requested_normal not in found_normal and found_normal not in requested_normal):
+    if not title or (requested_normal != found_normal and requested_normal not in found_normal
+                     and found_normal not in requested_normal and not _titles_match(requested_title, title)):
         return None
     if SUPPORTED_PLATFORMS[platform].casefold() not in page.casefold():
         return None
@@ -1078,11 +1287,31 @@ def _not_found(title: str, platform: str) -> dict[str, Any]:
         "sourceUrl": None,
         "metascore": None,
         "userScore": None,
+        "matcher": MATCHER_VERSION,
         "fetchedAt": _utc_now(),
     }
 
 
 def _resolve(title: str, platform: str) -> dict[str, Any]:
+    result = _resolve_slugs(title, platform)
+    if result["found"]:
+        return result
+    # Community titles rarely match Metacritic's slug ("The Legend of Zelda -
+    # Wind Waker" vs "the-legend-of-zelda-the-wind-waker"). Ask IGDB for the
+    # canonical name on this platform and try its slug before giving up.
+    try:
+        game = _igdb_search_best("id,name,game_type,alternative_names.name,platforms.id", title, platform)
+    except (HTTPException, RuntimeError):
+        game = None
+    canonical = game.get("name") if isinstance(game, dict) else None
+    if isinstance(canonical, str) and _normalise_title(canonical) != _normalise_title(title):
+        result = _resolve_slugs(canonical, platform)
+        if result["found"]:
+            return result
+    return _not_found(title, platform)
+
+
+def _resolve_slugs(title: str, platform: str) -> dict[str, Any]:
     for slug in _slug_candidates(title):
         url = f"{SOURCE_GAME_URL}/{quote(slug, safe='-')}?{urlencode({'platform': platform})}"
         try:
@@ -1270,7 +1499,7 @@ def scores(title: str, platform: str = "nintendo-switch") -> dict[str, Any]:
 
     cache_key = f"{platform}:{_normalise_title(title)}"
     cached = _load_cached(cache_key)
-    if cached is not None and cached[1]:
+    if cached is not None and cached[1] and not _negative_from_old_matcher(cached):
         result, _ = cached
         return {**result, "cached": True, "stale": False}
 
@@ -1305,7 +1534,7 @@ def availability(title: str, platform: str = "nintendo-switch") -> dict[str, Any
 
     cache_key = f"avail:v1:{platform}:{_normalise_title(title)}"
     cached = _load_cached(cache_key)
-    if cached is not None and cached[1]:
+    if cached is not None and cached[1] and not _negative_from_old_matcher(cached):
         result, _ = cached
         return {**result, "cached": True, "stale": False}
 
@@ -1338,7 +1567,7 @@ def metadata(title: str, platform: str = "nintendo-switch", language: str = "en-
     # dossiers for another 30 days.
     cache_key = f"igdb:v4:{platform}:{_language_code(language)}:{_normalise_title(title)}"
     cached = _load_cached(cache_key)
-    if cached is not None and cached[1]:
+    if cached is not None and cached[1] and not _negative_from_old_matcher(cached):
         result, _ = cached
         return {**_localize_cached_metadata(result, language), "cached": True, "stale": False}
 
