@@ -2141,9 +2141,18 @@ static void recoverMenuAfterApplicationHandoffFailure(
 }
 
 static uint64_t g_homebrewHostTitleId = 0;
+static uint64_t g_homebrewHostStartMs = 0;
 
 static void releaseHomebrewHost() {
     if (g_homebrewHostTitleId != 0) {
+        // A homebrew that ends within seconds of its start almost never ran:
+        // hbl or the loader failed inside the borrowed game. Say so, with the
+        // host, so a "port did not open" report can be told from a port exit.
+        const uint64_t ranMs = g_homebrewHostStartMs ? guardNowMs() - g_homebrewHostStartMs : 0;
+        if (g_homebrewHostStartMs && ranMs < 5000)
+            switchu::FileLog::log("[action] homebrew host 0x%016llX ended %llu ms after start (did not open?)",
+                                  (unsigned long long)g_homebrewHostTitleId, (unsigned long long)ranMs);
+        g_homebrewHostStartMs = 0;
         switchu::daemon::unregisterExternalContent(g_homebrewHostTitleId);
         switchu::FileLog::log("[action] released homebrew host 0x%016llX",
                               (unsigned long long)g_homebrewHostTitleId);
@@ -2167,9 +2176,19 @@ static std::vector<uint64_t> homebrewHostCandidates(uint64_t preferred) {
                 tid == daemon::app::suspendedTitleId() || (tid >> 56) == 0x05)
                 continue;
             const uint32_t flags = views[i].flags;
-            if (switchu::ns::viewHasFlag(flags, switchu::ns::AppViewFlag_IsGameCard) ||
-                switchu::ns::viewHasFlag(flags, switchu::ns::AppViewFlag_NeedsVerify))
+            // Only a game that can start now can carry hbl. An archived game,
+            // one still downloading or one needing an update was tried first
+            // when it had the lowest id, and the homebrew never opened.
+            if (!switchu::ns::viewHasFlag(flags, switchu::ns::AppViewFlag_CanLaunch) ||
+                !switchu::ns::viewHasFlag(flags, switchu::ns::AppViewFlag_HasMainContents) ||
+                switchu::ns::viewHasFlag(flags, switchu::ns::AppViewFlag_IsDownloading) ||
+                switchu::ns::viewHasFlag(flags, switchu::ns::AppViewFlag_NeedsUpdate) ||
+                switchu::ns::viewHasFlag(flags, switchu::ns::AppViewFlag_IsGameCard) ||
+                switchu::ns::viewHasFlag(flags, switchu::ns::AppViewFlag_NeedsVerify)) {
+                switchu::FileLog::log("[action] homebrew host 0x%016llX skipped (flags=0x%X)",
+                                      (unsigned long long)tid, flags);
                 continue;
+            }
             if (std::find(out.begin(), out.end(), tid) == out.end())
                 out.push_back(tid);
         }
@@ -2324,6 +2343,7 @@ static bool handleAction(Action& action) {
                 }
                 if (R_SUCCEEDED(rc)) {
                     action.title_id = host;
+                    g_homebrewHostStartMs = guardNowMs();
                     switchu::FileLog::log("[action] homebrew host 0x%016llX launch OK", (unsigned long long)host);
                     break;
                 }
@@ -3225,6 +3245,14 @@ int main(int argc, char* argv[]) {
         buildSystemStatus(smi::MenuTransitionReason::StartupBoot, daemonMainTick));
     if (R_FAILED(rc))
         switchu::FileLog::log("[daemon] menu launch failed: 0x%X", rc);
+
+    // Start-up ran unbuffered so a hang leaves a trace. From here every line
+    // was a write plus an SD commit on this thread, the one that serves HOME
+    // and the menu's commands, while the menu loads from the same card; the
+    // loop's flushIfStale() writes the buffer instead. Crash, power and wedge
+    // paths keep their explicit flush().
+    switchu::FileLog::log("[daemon] main loop running, log buffering enabled");
+    switchu::FileLog::setImmediate(false);
 
     while (g_running.load()) {
         if (g_powerSequenceStarted.load()) {

@@ -23,16 +23,30 @@ bool exists(const std::string& path) {
     return !path.empty() && stat(path.c_str(), &st) == 0;
 }
 
+// The whole first line, however long: a deep or non-ASCII path used to be cut
+// at 511 bytes, and the cut path made the homebrew fall back to hbmenu.
 std::string readLine(const char* path) {
     FILE* f = std::fopen(path, "r");
     if (!f) return {};
-    char buf[512] = {};
-    std::fgets(buf, sizeof(buf), f);
+    std::string line;
+    for (int c; (c = std::fgetc(f)) != EOF && c != '\n';)
+        line.push_back(static_cast<char>(c));
     std::fclose(f);
-    std::string line(buf);
-    while (!line.empty() && (line.back() == '\n' || line.back() == '\r'))
+    while (!line.empty() && line.back() == '\r')
         line.pop_back();
     return line;
+}
+
+// One line per start, overwritten each time: what this loader was asked to
+// open and whether it could. Without it a homebrew that did not open left no
+// trace at all.
+constexpr const char* kLoaderLog = "sdmc:/config/OmniLaunch/loader.log";
+void note(const char* what, const std::string& path, Result rc) {
+    if (FILE* f = std::fopen(kLoaderLog, "w")) {
+        std::fprintf(f, "%s target=%s exists=%d rc=0x%X\n", what, path.c_str(),
+                     exists(path) ? 1 : 0, static_cast<unsigned>(rc));
+        std::fclose(f);
+    }
 }
 
 std::string processId() {
@@ -44,9 +58,14 @@ std::string processId() {
 }
 
 bool chain(const std::string& path) {
-    if (!exists(path) || path == "sdmc:/hbmenu.nro") return false;
+    if (!exists(path) || path == "sdmc:/hbmenu.nro") {
+        note("chain-missing", path, 0);
+        return false;
+    }
     const std::string args = "\"" + path + "\"";
-    if (R_FAILED(envSetNextLoad(path.c_str(), args.c_str()))) return false;
+    const Result rc = envSetNextLoad(path.c_str(), args.c_str());
+    note(R_SUCCEEDED(rc) ? "chain" : "chain-failed", path, rc);
+    if (R_FAILED(rc)) return false;
     if (FILE* f = std::fopen(kChained, "w")) {
         std::fputs(processId().c_str(), f);
         std::fclose(f);

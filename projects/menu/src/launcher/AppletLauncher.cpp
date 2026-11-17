@@ -353,25 +353,31 @@ static bool patchHblNpdmAsApplication(std::vector<char>& npdm) {
         if (off + 4 <= npdm.size()) std::memcpy(&v, npdm.data() + off, 4);
         return v;
     };
+    // Returns how many application-type entries the KAC holds after patching
+    // (already application-type ones count), or 0 when it has none.
     auto patchKac = [&](std::size_t kacOff, std::size_t kacSize) {
-        int patched = 0;
+        int application = 0;
         for (std::size_t off = kacOff; off + 4 <= kacOff + kacSize && off + 4 <= npdm.size(); off += 4) {
             const u32 cap = u32At(off);
-            if ((cap & 0x3FFF) == 0x1FFF && ((cap >> 14) & 7) != 1) {
-                const u32 app = (1u << 14) | 0x1FFF;
-                std::memcpy(npdm.data() + off, &app, 4);
-                ++patched;
+            if ((cap & 0x3FFF) == 0x1FFF) {
+                if (((cap >> 14) & 7) != 1) {
+                    const u32 app = (1u << 14) | 0x1FFF;
+                    std::memcpy(npdm.data() + off, &app, 4);
+                }
+                ++application;
             }
         }
-        return patched;
+        return application;
     };
     if (npdm.size() < 0x80 || u32At(0) != 0x4154454D /* META */) return false;
     const std::size_t aci = u32At(0x70), acid = u32At(0x78);
     if (u32At(aci) != 0x30494341 /* ACI0 */ || u32At(acid + 0x200) != 0x44494341 /* ACID */) return false;
     const int a = patchKac(aci + u32At(aci + 0x30), u32At(aci + 0x34));
     const int b = patchKac(acid + u32At(acid + 0x230), u32At(acid + 0x234));
-    DebugLog::log("[launcher] hbl npdm application type patched aci=%d acid=%d", a, b);
-    return true;
+    DebugLog::log("[launcher] hbl npdm application type aci=%d acid=%d", a, b);
+    // Without an application-type entry the borrowed game's slot refuses hbl
+    // and the homebrew never opens: do not accept this extraction.
+    return a > 0 && b > 0;
 }
 
 static std::vector<std::uint8_t> readFileBytes(const char* path) {
@@ -425,7 +431,16 @@ bool AppletLauncher::prepareHbl() {
     const std::string npdmPath = std::string(kHblDir) + "/main.npdm";
     const std::string stampPath = std::string(kHblDir) + "/source-size";
     if (!std::filesystem::exists(kHblNsp, ec)) return false;
-    const std::string size = std::to_string(std::filesystem::file_size(kHblNsp, ec)) + "-app";
+    // Size and modification time: an Atmosphere update can ship an hbl.nsp of
+    // the same size, and the old extraction must not be reused for it.
+    std::string size = std::to_string(std::filesystem::file_size(kHblNsp, ec));
+    {
+        std::error_code timeEc;
+        const auto written = std::filesystem::last_write_time(kHblNsp, timeEc);
+        if (!timeEc)
+            size += "-" + std::to_string(written.time_since_epoch().count());
+    }
+    size += "-app";
     {
         std::ifstream stamp(stampPath);
         std::string seen;
