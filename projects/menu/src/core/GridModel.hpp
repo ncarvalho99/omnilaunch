@@ -74,8 +74,15 @@ struct AppEntry {
     bool hasContents() const {
         return switchu::ns::viewHasFlag(viewFlags, switchu::ns::AppViewFlag_HasMainContents);
     }
+    // Asks ns (one IPC): the NeedsUpdate view bit is set on every installed
+    // game, so it cannot tell a required update apart. Only used to word the
+    // dialog shown when a launch is refused.
     bool needsUpdate() const {
-        return switchu::ns::viewHasFlag(viewFlags, switchu::ns::AppViewFlag_NeedsUpdate);
+#ifdef __SWITCH__
+        return switchu::ns::applicationNeedsUpdate(titleId);
+#else
+        return false;
+#endif
     }
     bool isLaunchable() const {
         if (viewFlags == 0) return true;
