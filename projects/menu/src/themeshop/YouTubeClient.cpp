@@ -1,6 +1,7 @@
 #include "YouTubeClient.hpp"
 
 #include "ThemeHttp.hpp"
+#include "core/BackgroundThread.hpp"
 #include "core/DebugLog.hpp"
 
 #include <nxui/core/GpuDevice.hpp>
@@ -254,7 +255,7 @@ void YouTubeClient::search(const std::string& query, SearchCallback cb) {
     if (m_pool) {
         m_pool->submit(std::move(task));
     } else {
-        std::thread(std::move(task)).detach();
+        runInBackground(std::move(task));
     }
 }
 
@@ -756,7 +757,7 @@ bool YouTubeClient::downloadTrack(size_t trackIndex, StatusProgressCallback onPr
     if (m_pool) {
         m_pool->submit(std::move(task));
     } else {
-        std::thread(std::move(task)).detach();
+        runInBackground(std::move(task));
     }
 
     return true;
@@ -840,7 +841,7 @@ void YouTubeClient::primeThumbnail(const std::string& videoId, const std::string
     if (m_pool) {
         m_pool->submit(std::move(fetchTask));
     } else {
-        std::thread(std::move(fetchTask)).detach();
+        runInBackground(std::move(fetchTask));
     }
 }
 
