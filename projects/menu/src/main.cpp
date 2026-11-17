@@ -159,7 +159,13 @@ extern "C" void userAppExit(void) {
     romfsExit();
 }
 #else
+// HOME return time: the daemon measures holder start -> main() (~0.8-1.0 s).
+// These split it into the process load before __appInit and __appInit itself.
+static uint64_t g_appInitStartTick = 0;
+static uint64_t g_appInitEndTick = 0;
+
 extern "C" void __appInit(void) {
+    g_appInitStartTick = armGetSystemTick();
     Result rc;
 
     svcOutputDebugString("[SwitchU-menu] __appInit start", 30);
@@ -258,6 +264,7 @@ extern "C" void __appInit(void) {
 #endif
 
     svcOutputDebugString("[SwitchU-menu] __appInit done", 29);
+    g_appInitEndTick = armGetSystemTick();
 }
 
 extern "C" void __appExit(void) {
@@ -329,6 +336,10 @@ int main(int argc, char* argv[]) {
     DebugLog::log("[main] applet config...");
 #else
     DebugLog::log("[menu] main() entry");
+    // holder_to_main (daemon) minus these two is the process load itself.
+    DebugLog::log("[trace-menu-start] appinit_us=%llu appinit_to_main_us=%llu",
+                  static_cast<unsigned long long>(armTicksToNs(g_appInitEndTick - g_appInitStartTick) / 1000ULL),
+                  static_cast<unsigned long long>(armTicksToNs(menuMainTick - g_appInitEndTick) / 1000ULL));
 
     auto startMode = readStartMode();
     auto sysStatus = readSystemStatus();
