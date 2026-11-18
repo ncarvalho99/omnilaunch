@@ -352,6 +352,13 @@ void Application::run() {
                     }
                 }
                 m_gpu.beginFrame();
+                if (m_gpu.isQueueInError()) {
+                    // The GPU queue has faulted irrecoverably. Break out of
+                    // the run loop so the process exits cleanly: the daemon
+                    // will relaunch the menu rather than crash inside deko3d.
+                    m_running = false;
+                    break;
+                }
                 trace.beginFrameEnd = armGetSystemTick();
                 m_renderer->beginFrame();
                 m_activity->m_rootBox->render(*m_renderer);

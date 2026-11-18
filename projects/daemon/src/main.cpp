@@ -2817,14 +2817,32 @@ static void mainLoop() {
         didWork = true;
     }
 
+    // Recovery: relaunch the menu when nothing else owns the screen.
+    //
+    // The original condition required !isRunning(), which prevented recovery
+    // when a game was still suspended (running without foreground). If the
+    // menu died unexpectedly above a suspended game the user was stuck in
+    // the game with no way to reach HOME. Allow relaunch when the only
+    // running application has no foreground (it is suspended), because a
+    // new menu can coexist with a suspended title exactly as HOME does.
+    const bool appBlocksRelaunch = daemon::app::isRunning()
+                                && daemon::app::hasForeground();
     if (!didWork && g_menuRelaunchCooldown <= 0 && g_actionQueue.empty() &&
-        !daemon::app::isRunning() && !daemon::menu_la::hasHolder() &&
+        !appBlocksRelaunch && !daemon::menu_la::hasHolder() &&
         !g_foregroundAppletActive) {
-        switchu::FileLog::log("[main] no app/menu active; relaunching menu");
+        if (daemon::app::isRunning()) {
+            switchu::FileLog::log("[main] menu died above suspended app 0x%016lX; relaunching menu",
+                                  daemon::app::suspendedTitleId());
+        } else {
+            switchu::FileLog::log("[main] no app/menu active; relaunching menu");
+        }
         const Result idleRc = daemon::menu_la::launch(
             smi::MenuStartMode::MainMenu,
-            buildSystemStatus(smi::MenuTransitionReason::IdleRecovery,
-                              armGetSystemTick()));
+            buildSystemStatus(
+                daemon::app::isRunning()
+                    ? smi::MenuTransitionReason::HomeRequest
+                    : smi::MenuTransitionReason::IdleRecovery,
+                armGetSystemTick()));
         if (R_FAILED(idleRc))
             guardOnLaunchFailure(idleRc);
     }

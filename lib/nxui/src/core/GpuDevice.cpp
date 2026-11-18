@@ -112,6 +112,10 @@ void GpuDevice::checkQueue(const char* site) {
         emitQueueTrace("[gpu-q] ring", g_queueTrace[i % kQueueTraceRing]);
 }
 
+bool GpuDevice::isQueueInError() const {
+    return m_queueErrorReported;
+}
+
 GpuDevice::DebugSink GpuDevice::s_debugSink = nullptr;
 
 bool GpuDevice::initialize() {
@@ -378,6 +382,11 @@ void GpuDevice::createOffscreenGroup(bool overlay, GpuPool& pool) {
 }
 
 int GpuDevice::beginFrame() {
+    // If the queue is already in a fatal error state, do not touch it.
+    // Returning -1 tells the caller rendering cannot proceed.
+    if (isQueueInError())
+        return -1;
+
     // Most texture work happens in Activity::onUpdate, before beginFrame. Send
     // that batch now so it can execute while acquireImage waits for display.
     // A second batch submission in endFrame covers glyphs created while rendering.
@@ -422,6 +431,10 @@ int GpuDevice::beginFrame() {
 }
 
 void GpuDevice::endFrame() {
+    // A faulted queue must not receive further submissions.
+    if (isQueueInError())
+        return;
+
     // Upload lists must enter the queue before the frame that can sample their
     // destination images. Queue submission order supplies the GPU dependency;
     // no device-wide idle is needed here.
@@ -526,6 +539,8 @@ bool GpuDevice::takeFrameDump(std::vector<std::uint8_t>& rgba) {
 void GpuDevice::beginUploadBatch() {
     if (m_uploadBatchOpen)
         return;
+    if (isQueueInError())
+        return;
 
     const int slot = m_uploadSlot;
     if (m_uploadInFlight[slot]) {
@@ -557,6 +572,10 @@ void GpuDevice::beginUploadBatch() {
 void GpuDevice::submitUploadBatch() {
     if (!m_uploadBatchOpen)
         return;
+    if (isQueueInError()) {
+        m_uploadBatchOpen = false;
+        return;
+    }
 
     const int slot = m_uploadSlot;
     if (m_uploadCopyCount[slot] == 0) {

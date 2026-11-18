@@ -118,6 +118,11 @@ public:
     void endFrame();
     void waitIdle();
 
+    // True after deko3d detected an unrecoverable GPU channel fault on the
+    // command queue. Once set, no further queue operations are safe; the
+    // menu should shut down gracefully rather than continue rendering.
+    bool isQueueInError() const;
+
     // Arms a lossless diagnostic capture of the next fully-rendered frame.
     // The GPU copies RGBA8 pixels into a CPU-visible block before present;
     // takeFrameDump() returns them after queue completion on the following

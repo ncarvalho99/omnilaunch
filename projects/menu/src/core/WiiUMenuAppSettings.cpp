@@ -3052,7 +3052,11 @@ void WiiUMenuApp::applyThemeResources(const ThemePreset& preset) {
 
                 if (m_fastReturnRequested) {
                     m_deferredVideoWallpaperPath = backgroundVideoPath;
-                    m_deferredVideoWallpaperFrames = 3;
+                    // Start the video worker AFTER the deferred icon and sidebar
+                    // uploads have finished (icons at frame 3, sidebar at frame 4).
+                    // The concurrent NVDEC init + bulk icon upload on frame 3 has
+                    // been observed to fault the deko3d queue on HOME return.
+                    m_deferredVideoWallpaperFrames = 8;
                     DebugLog::log("[theme-apply] fast-return: deferring video wallpaper: %s",
                                   safeLogPath(backgroundVideoPath));
                 } else {
