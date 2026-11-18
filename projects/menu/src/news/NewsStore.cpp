@@ -213,16 +213,30 @@ std::vector<NewsArticle> loadNewsArticles(Result& rc, int maxArticles, NewsLoadS
         bool headLogged = false;
         for (u32 i = 0; i < count && (int)articles.size() < maxArticles; ++i) {
             std::vector<std::uint8_t> bytes;
-            Result r = readArticle(records[i], bytes);
             NewsArticle a;
             bool parsed = true;
-            if (R_FAILED(r)) {
-                ++st.readFails;
-                st.lastReadRc = r;
-            } else if (!parseNewsArticleFromMsgpack(bytes, a)) {
+            Result r = 0;
+            // Reading and parsing allocate up to the article size several times
+            // over (raw buffer, parsed document, copied picture). Under memory
+            // pressure that throws std::bad_alloc; uncaught on the UI thread it
+            // terminated the menu and the abort unmounted the SD card under the
+            // music thread (2168-0002 in _read_r). One article that does not
+            // fit is skipped; the rest of the list still loads.
+            try {
+                r = readArticle(records[i], bytes);
+                if (R_FAILED(r)) {
+                    ++st.readFails;
+                    st.lastReadRc = r;
+                } else if (!parseNewsArticleFromMsgpack(bytes, a)) {
+                    ++st.parseFails;
+                    parsed = false;
+                    r = MAKERESULT(Module_Libnx, LibnxError_BadInput);
+                }
+            } catch (const std::exception& e) {
+                DebugLog::log("[news] article %.24s skipped: %s (bytes=%d)", records[i].news_id, e.what(),
+                              (int)bytes.size());
                 ++st.parseFails;
-                parsed = false;
-                r = MAKERESULT(Module_Libnx, LibnxError_BadInput);
+                continue;
             }
             if (R_SUCCEEDED(r)) {
                 a.id.assign(records[i].news_id,

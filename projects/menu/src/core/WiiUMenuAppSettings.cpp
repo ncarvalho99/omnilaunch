@@ -3347,8 +3347,19 @@ void WiiUMenuApp::openNews() {
         if (m_overlayLayer) m_overlayLayer->addChild(m_newsScreen);
     }
     Result rc = 0;
-    auto articles = news::loadNewsArticles(rc, 40);
-    const auto readIds = news::loadReadArticleIds();
+    std::vector<news::NewsArticle> articles;
+    std::set<std::string> readIds;
+    // An exception escaping this UI-thread handler terminates the menu, and the
+    // abort unmounts the SD card under the music thread (2168-0002). A failed
+    // load shows the empty list instead.
+    try {
+        articles = news::loadNewsArticles(rc, 40);
+        readIds = news::loadReadArticleIds();
+    } catch (const std::exception& e) {
+        DebugLog::log("[news] open failed: %s", e.what());
+        articles.clear();
+        articles.shrink_to_fit();
+    }
     auto& i18n = nxui::I18n::instance();
     std::vector<ListDetailScreen::Entry> entries;
     for (auto& a : articles) {
