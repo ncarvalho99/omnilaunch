@@ -34,6 +34,7 @@ VECTEEZY_MAP = {
 
 # Themes pinned to appear first in the catalog for OmniLaunch
 FEATURED_THEMES = [
+    'empty-tomb', 'constantinople',
     'the-first-crusade', 'odysseus-and-argos', 'lord-jesus-christ-have-mercy-on-me',
     'the-large-jelling-runestone', 'st-ignatius-of-antioch', 'the-lord-is-my-shepherd',
     'archangel-michael', 'ascension-of-christ', 'saving-peter', 'belisarius',
