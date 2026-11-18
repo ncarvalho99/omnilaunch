@@ -1,3 +1,43 @@
+# OmniLaunch 1.3.4
+
+Update for OmniLaunch 1.3.3.
+
+**Stability & Recovery Update.** Resolves a critical stall where a menu crash while returning from a game left the console trapped without returning to HOME. Adds GPU driver fault containment to shut down cleanly instead of crashing on deko3d queue errors, staggers hardware NVDEC video wallpaper loading to eliminate rendering collisions on fast return, loads news asynchronously in Classic with D-pad hold auto-repeat, guards against out-of-memory errors on large articles, and improves title matching and normalization for homebrews and ports.
+
+If you encounter any bugs, please report them directly to the developer on Telegram at https://t.me/ncarvalho99 with your console logs (`/config/OmniLaunch/menu.log`).
+
+## English
+
+### Recovery and Stability
+- **Rescued from trapped games**: the daemon now automatically relaunches the menu if it crashes while returning from a game, ensuring you can always return to HOME even if the menu process encounters an unexpected error.
+- **GPU driver fault protection**: deko3d command queue errors are now caught gracefully; the menu terminates cleanly and the daemon recovers the session immediately instead of hanging or crashing inside driver calls.
+- **Video wallpaper stability**: hardware NVDEC video wallpaper initialization on fast return is now deferred until after background icon and sidebar uploads finish, eliminating GPU queue contention on the 4th frame after returning from a game.
+- **News memory safety**: articles that cannot fit into memory or fail to parse now fail gracefully and display an empty list instead of terminating the menu with an allocation error.
+
+### Interface
+- **Asynchronous news in Classic**: Classic News now opens instantly with a loading placeholder and loads articles in the background, eliminating the multi-hundred-millisecond UI freeze on opening.
+- **D-pad hold auto-repeat**: holding Up or Down on the D-pad or left analog stick in ListDetailScreen (News, Friends) smoothly scrolls and skips through entries automatically.
+
+### Metadata
+- **Robust title matching for ports and homebrews**: strips bracketed tags, locale suffixes, trademarks and packaging terms; introduces fuzzy token-overlap matching, Roman numeral/number word conversions, sequel compatibility verification and Metacritic score fallbacks.
+- **Featured themes**: added empty-tomb and constantinople to the featured themes showcase.
+
+## Português
+
+### Recuperação e Estabilidade
+- **Resgate de jogos travados**: o daemon agora relança o menu automaticamente caso ocorra uma falha ao voltar de um jogo suspenso, garantindo que o jogador nunca fique preso dentro do jogo sem conseguir retornar à HOME.
+- **Proteção contra falhas no driver de GPU**: erros na fila de comandos do deko3d agora são interceptados com segurança; o processo do menu finaliza de forma limpa e o daemon recupera a sessão imediatamente em vez de travar no driver.
+- **Estabilidade do papel de parede em vídeo**: a inicialização do decodificador de hardware NVDEC ao voltar do HOME agora aguarda o término dos uploads de ícones e da barra lateral, eliminando a colisão de comandos de GPU no 4º frame.
+- **Segurança de memória em notícias**: artigos de notícias que excederem a memória disponível agora falham com segurança e exibem uma lista vazia, em vez de derrubarem o menu por erro de alocação.
+
+### Interface
+- **Notícias assíncronas no Classic**: a tela de Notícias do Classic agora abre instantaneamente com indicador de carregamento e busca os artigos em segundo plano, eliminando o congelamento da interface ao abrir.
+- **Auto-repetição no D-pad**: segurar Cima ou Baixo no direcional digital ou analógico nas telas de detalhes (Notícias, Amigos) avança continuamente pelas listas.
+
+### Metadados
+- **Pareamento aprimorado para ports e homebrews**: remoção automática de tags entre colchetes, sufixos de região e marcas; suporte a numerais romanos, verificação de compatibilidade de sequências e busca de notas do Metacritic.
+- **Temas em destaque**: adicionados empty-tomb e constantinople à seleção de temas em destaque.
+
 # OmniLaunch 1.3.3
 
 Update for OmniLaunch 1.3.2.
