@@ -3336,8 +3336,11 @@ void WiiUMenuApp::deletePreset(const std::string& presetId) {
 
 // ── HomeNX Classic additions: News, Social, notifications, accounts ────────
 // News as a list/detail overlay (same NewsStore the Cards sheet reads).
+// Like CardsNewsSheet, articles are loaded asynchronously on the thread pool
+// so the UI never freezes (avoiding multi-hundred-millisecond frame spikes).
 void WiiUMenuApp::openNews() {
     m_audio.playSfx(Sfx::ModalShow);
+    auto& i18n = nxui::I18n::instance();
     if (!m_newsScreen) {
         m_newsScreen = std::make_shared<ListDetailScreen>();
         m_newsScreen->setInput(&app().input());
@@ -3346,20 +3349,72 @@ void WiiUMenuApp::openNews() {
         m_newsScreen->setTheme(&m_theme);
         if (m_overlayLayer) m_overlayLayer->addChild(m_newsScreen);
     }
-    Result rc = 0;
+
+    // Show initial loading placeholder while the background worker reads articles
+    m_newsScreen->setEntries({}, i18n.tr("common.loading", "Loading..."),
+                             i18n.tr("cards.news_loading", "Loading news articles..."));
+    raiseOverlay(m_newsScreen);
+    m_newsScreen->show();
+    focusManager().setFocus(m_newsScreen.get());
+
+    auto state = std::make_shared<NewsLoadState>();
+    m_newsLoadState = state;
+    if (m_threadPool.acceptingTasks()) {
+        try {
+            m_newsLoadFuture = m_threadPool.submit([state]() {
+                std::vector<news::NewsArticle> articles;
+                std::set<std::string> readIds;
+                bool failed = false;
+                try {
+                    Result rc = 0;
+                    articles = news::loadNewsArticles(rc, 40);
+                    readIds = news::loadReadArticleIds();
+                    news::requestNewsUpdate(120);
+                } catch (const std::exception& e) {
+                    DebugLog::log("[news] async load failed: %s", e.what());
+                    articles.clear();
+                    failed = true;
+                } catch (...) {
+                    articles.clear();
+                    failed = true;
+                }
+                std::lock_guard<std::mutex> lk(state->mu);
+                state->articles = std::move(articles);
+                state->readIds = std::move(readIds);
+                state->failed = failed;
+                state->ready = true;
+            });
+        } catch (...) {
+            m_newsLoadState.reset();
+            m_newsScreen->setEntries({}, i18n.tr("news.empty_title", "No news"),
+                                     i18n.tr("news.empty_message", "No news items available right now."));
+        }
+    } else {
+        m_newsLoadState.reset();
+        m_newsScreen->setEntries({}, i18n.tr("news.empty_title", "No news"),
+                                 i18n.tr("news.empty_message", "No news items available right now."));
+    }
+}
+
+void WiiUMenuApp::syncNewsLoad() {
+    if (!m_newsLoadState) return;
     std::vector<news::NewsArticle> articles;
     std::set<std::string> readIds;
-    // An exception escaping this UI-thread handler terminates the menu, and the
-    // abort unmounts the SD card under the music thread (2168-0002). A failed
-    // load shows the empty list instead.
-    try {
-        articles = news::loadNewsArticles(rc, 40);
-        readIds = news::loadReadArticleIds();
-    } catch (const std::exception& e) {
-        DebugLog::log("[news] open failed: %s", e.what());
-        articles.clear();
-        articles.shrink_to_fit();
+    bool failed = false;
+    {
+        std::lock_guard<std::mutex> lk(m_newsLoadState->mu);
+        if (!m_newsLoadState->ready) return;
+        articles = std::move(m_newsLoadState->articles);
+        readIds = std::move(m_newsLoadState->readIds);
+        failed = m_newsLoadState->failed;
     }
+    if (m_newsLoadFuture.valid()) {
+        try { m_newsLoadFuture.get(); } catch (...) {}
+    }
+    m_newsLoadState.reset();
+
+    if (!m_newsScreen || !m_newsScreen->isActive()) return;
+
     auto& i18n = nxui::I18n::instance();
     std::vector<ListDetailScreen::Entry> entries;
     for (auto& a : articles) {
@@ -3388,10 +3443,8 @@ void WiiUMenuApp::openNews() {
         entries.push_back(std::move(e));
     }
     m_newsScreen->setEntries(std::move(entries), i18n.tr("news.empty_title", "No news"),
-                             i18n.tr("news.empty_message", "No news items available right now."));
-    raiseOverlay(m_newsScreen);
-    m_newsScreen->show();
-    focusManager().setFocus(m_newsScreen.get());
+                             failed ? i18n.tr("cards.news_read_failed", "The console news could not be read.")
+                                    : i18n.tr("news.empty_message", "No news items available right now."));
 }
 
 void WiiUMenuApp::openFriends(AccountUid forUser) {

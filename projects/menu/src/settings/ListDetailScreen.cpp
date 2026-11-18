@@ -183,6 +183,43 @@ void ListDetailScreen::onContentUpdate(float dt) {
             speed -= 600.f;
         if (speed != 0.f)
             scrollBy(speed * dt);
+
+        // Fast list skipping when holding D-pad Up/Down or Left Stick Up/Down.
+        // Holding down smoothly auto-skips entries instead of requiring individual presses.
+        const bool holdDown = m_input->isHeld(nxui::Button::DDown) || m_input->isHeld(nxui::Button::LStickD);
+        const bool holdUp = m_input->isHeld(nxui::Button::DUp) || m_input->isHeld(nxui::Button::LStickU);
+        const int curDir = holdDown ? 1 : (holdUp ? -1 : 0);
+
+        if (curDir == 0 || curDir != m_listHoldDir) {
+            m_listHoldDir = curDir;
+            m_listHoldFrames = 0;
+            m_listStepDebounce = 0;
+        } else {
+            ++m_listHoldFrames;
+            constexpr int kHoldStart = 24;      // ~400ms before auto-skipping begins
+            constexpr int kStepSlow = 9;        // ~150ms per step initially
+            constexpr int kStepFast = 4;        // ~66ms per step once clearly held
+            constexpr int kFramesUntilFast = 30; // ~500ms after auto-skip starts
+
+            if (m_listHoldFrames > kHoldStart) {
+                if (m_listStepDebounce > 0) {
+                    --m_listStepDebounce;
+                } else {
+                    const int since = m_listHoldFrames - kHoldStart;
+                    m_listStepDebounce = (since > kFramesUntilFast) ? kStepFast : kStepSlow;
+
+                    if (m_listHoldDir > 0 && m_tabIndex < (int)m_tabs.size() - 1) {
+                        onNavDown();
+                    } else if (m_listHoldDir < 0 && m_tabIndex > 0) {
+                        onNavUp();
+                    }
+                }
+            }
+        }
+    } else {
+        m_listHoldDir = 0;
+        m_listHoldFrames = 0;
+        m_listStepDebounce = 0;
     }
     m_scroll += (m_scrollGoal - m_scroll) * std::min(1.f, dt * 14.f);
 }

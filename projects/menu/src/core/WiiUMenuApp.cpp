@@ -7731,6 +7731,7 @@ void WiiUMenuApp::onUpdate(float dt) {
     syncFolderPreviews();
     pollGameArtworkAssets();
     syncFolderHeader();
+    syncNewsLoad();
     switchu::menu::frame_probe::mark("widget-assets");
 
     // Harvest deferred account enumeration from fast return

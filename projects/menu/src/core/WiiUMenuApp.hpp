@@ -26,6 +26,7 @@
 #include "widgets/NotificationPanel.hpp"
 #include "widgets/ProfileCarouselScreen.hpp"
 #include "settings/ListDetailScreen.hpp"
+#include "news/NewsStore.hpp"
 #include "widgets/SocialScreen.hpp"
 #include "widgets/ProgressDialog.hpp"
 #include "widgets/LockScreen.hpp"
@@ -693,6 +694,16 @@ private:
     std::shared_ptr<NotificationPanel>     m_notifPanel;
     std::shared_ptr<ProfileCarouselScreen> m_profileCarousel;
     std::shared_ptr<ListDetailScreen>      m_newsScreen;
+    struct NewsLoadState {
+        std::mutex mu;
+        bool ready = false;
+        std::vector<news::NewsArticle> articles;
+        std::set<std::string> readIds;
+        bool failed = false;
+    };
+    std::shared_ptr<NewsLoadState> m_newsLoadState;
+    std::future<void>              m_newsLoadFuture;
+    void syncNewsLoad();
     std::shared_ptr<SocialScreen>          m_social;
 
     void openNotifications();

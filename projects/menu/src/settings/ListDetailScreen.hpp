@@ -83,4 +83,10 @@ private:
     float m_scroll = 0.f;
     float m_scrollGoal = 0.f;
     nxui::Input* m_input = nullptr;
+
+    // Fast list skip when D-pad Up/Down or analog stick is held.
+    // Follows the application repeat timing (~430ms initial hold, then ~130ms / ~65ms).
+    int m_listHoldDir = 0; // -1 for Up, +1 for Down, 0 none
+    int m_listHoldFrames = 0;
+    int m_listStepDebounce = 0;
 };
